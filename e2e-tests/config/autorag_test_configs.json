@@ -1,0 +1,10 @@
+[
+  {
+    "id": "autorag_rh_summit_basic",
+    "data_mode": "upload",
+    "documents_directory_path": "tests/data/autorag/rh_summit/documents",
+    "benchmark_dataset_path": "tests/data/autorag/rh_summit/benchmark_data.json",
+    "argument_overrides": {"top_n": 4},
+    "tags": ["autorag", "smoke"]
+  }
+]

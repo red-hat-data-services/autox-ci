@@ -1,0 +1,1 @@
+Placeholder document for root RHOAI AutoRAG upload tests. Replace with your corpus as needed.
