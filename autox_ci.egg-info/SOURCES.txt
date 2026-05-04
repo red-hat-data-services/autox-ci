@@ -15,6 +15,7 @@ e2e-tests/lib/integration_failures.py
 e2e-tests/lib/kfp_negative.py
 e2e-tests/lib/kfp_progress.py
 e2e-tests/lib/pipeline_yaml_sources.py
+e2e-tests/lib/pytest_terminal.py
 e2e-tests/lib/rhoai_support.py
 e2e-tests/lib/s3_data.py
 e2e-tests/lib/settings.py
