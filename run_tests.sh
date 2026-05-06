@@ -153,6 +153,9 @@ if [[ ${#PYTEST_EXTRA_ARGS[@]} -gt 0 ]]; then
 fi
 
 # --- Execute ---
+# Change into autox-ci so pytest does not pick up conftest.py from a parent repo.
+cd "$SCRIPT_DIR"
+
 if [[ "$DRY_RUN" == true ]]; then
     echo "[dry-run] ${PYTEST_CMD[*]}"
     exit 0
