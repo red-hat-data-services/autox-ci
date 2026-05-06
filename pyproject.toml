@@ -32,7 +32,11 @@ package-dir = { autox_tests = "autox_tests" }
 packages = ["autox_tests", "autox_tests.lib"]
 
 [tool.pytest.ini_options]
-testpaths = ["autox_tests/scenarios"]
+testpaths = [
+  "autox_tests/scenarios",
+  "autox_tests/automl/scenarios",
+  "autox_tests/autorag/functional",
+]
 markers = [
   "integration: integration tests hitting live cluster/APIs",
   "openshift_ai: OpenShift AI / RHOAI scenarios",
@@ -40,4 +44,5 @@ markers = [
   "tabular: tabular AutoML family",
   "timeseries: time series AutoML family",
   "autorag: AutoRAG pipeline family",
+  "functional: functional tests with artifact validation and notebook execution",
 ]
