@@ -1,1 +1,1 @@
-tests
+autox_tests

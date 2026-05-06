@@ -7,4 +7,9 @@ pyyaml>=6.0
 
 [test_automl]
 
+[test_autorag]
+nbformat
+notebook
+papermill
+
 [test_rhoai]

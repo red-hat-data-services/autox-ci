@@ -12,6 +12,10 @@ Requires-Dist: python-dotenv>=1.0.0
 Requires-Dist: pyyaml>=6.0
 Provides-Extra: test-rhoai
 Provides-Extra: test-automl
+Provides-Extra: test-autorag
+Requires-Dist: nbformat; extra == "test-autorag"
+Requires-Dist: notebook; extra == "test-autorag"
+Requires-Dist: papermill; extra == "test-autorag"
 
 # AutoX CI
 

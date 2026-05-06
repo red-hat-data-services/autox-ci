@@ -21,13 +21,18 @@ dependencies = [
 # Same runtime stack as `dependencies`; kept so `pip install -e ".[test_rhoai]"` / `test_automl` match docs.
 test_rhoai = []
 test_automl = []
+test_autorag = [
+  "nbformat",
+  "notebook",
+  "papermill",
+]
 
 [tool.setuptools]
-package-dir = { tests = "e2e-tests" }
-packages = ["tests", "tests.lib"]
+package-dir = { autox_tests = "autox_tests" }
+packages = ["autox_tests", "autox_tests.lib"]
 
 [tool.pytest.ini_options]
-testpaths = ["e2e-tests/scenarios"]
+testpaths = ["autox_tests/scenarios"]
 markers = [
   "integration: integration tests hitting live cluster/APIs",
   "openshift_ai: OpenShift AI / RHOAI scenarios",
