@@ -35,6 +35,7 @@
         "llama_stack_vector_io_provider_type": "milvus::inline",
         "llama_stack_vector_io_provider_id": "milvus-lite",
         "input_data_key": "non/existing/key",
+        "test_data_key": "datasets/rh_summit_2026/benchmark_data.json",
         "optimization_metric": "answer_correctness",
         "optimization_max_rag_patterns": 6,
         "embeddings_models": null,
