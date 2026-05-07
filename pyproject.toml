@@ -35,6 +35,7 @@ packages = ["autox_tests", "autox_tests.lib"]
 testpaths = [
   "autox_tests/scenarios",
   "autox_tests/automl/scenarios",
+  "autox_tests/automl/functional",
   "autox_tests/autorag/functional",
 ]
 markers = [
