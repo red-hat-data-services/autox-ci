@@ -109,15 +109,11 @@ def compiled_pipeline_path(tmp_path_factory):
     Set ``AUTORAG_PIPELINE_PATH`` to a local file, an ``https://`` URL, or leave
     unset to download from the default pipelines-components GitHub repo.
     """
-    from autox_tests.lib.pipeline_yaml_sources import (
-        PIPELINE_TRAINING_AUTORAG_REL,
-        resolve_precompiled_pipeline_yaml,
-    )
+    from autox_tests.lib.pipeline_yaml_sources import resolve_precompiled_pipeline_yaml
 
     try:
         return resolve_precompiled_pipeline_yaml(
             path_env_var="AUTORAG_PIPELINE_PATH",
-            repo_relative_under_training=PIPELINE_TRAINING_AUTORAG_REL,
             cache_dir=tmp_path_factory.mktemp("pipeline-yaml"),
             cache_file_name="documents-rag-optimization-pipeline.yaml",
         )

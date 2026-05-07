@@ -51,23 +51,30 @@ def _download(url: str, dest: Path, timeout_seconds: float = 120.0) -> None:
 def resolve_precompiled_pipeline_yaml(
     *,
     path_env_var: str,
-    repo_relative_under_training: str,
     cache_dir: Path,
     cache_file_name: str,
 ) -> str:
     """Return absolute path to a ``pipeline.yaml``.
 
-    Resolution order for the value of ``path_env_var``:
+    The environment variable ``path_env_var`` **must** be set to one of:
 
     1. **Local file path** — used directly (must exist).
     2. **URL** (``http://`` or ``https://``) — downloaded into ``cache_dir``.
-    3. **Unset / empty** — downloaded from the default pipelines-components
-       GitHub repo (override repo/ref via ``RHOAI_PIPELINES_COMPONENTS_*``).
+       This includes GitHub raw URLs, e.g.
+       ``https://raw.githubusercontent.com/org/repo/branch/path/pipeline.yaml``
+
+    Raises :class:`EnvironmentError` when the variable is unset or empty.
     """
     load_tests_env()
     raw = (os.environ.get(path_env_var) or "").strip()
 
-    if raw and raw.startswith(("http://", "https://")):
+    if not raw:
+        raise EnvironmentError(
+            f"{path_env_var} is not set. Provide a local file path or a URL "
+            f"(e.g. https://raw.githubusercontent.com/org/repo/branch/path/pipeline.yaml)."
+        )
+
+    if raw.startswith(("http://", "https://")):
         dest = cache_dir / cache_file_name
         if dest.is_file() and dest.stat().st_size > 0:
             return str(dest.resolve())
@@ -76,19 +83,9 @@ def resolve_precompiled_pipeline_yaml(
             raise RuntimeError(f"Downloaded pipeline YAML is missing or empty: {dest}")
         return str(dest.resolve())
 
-    if raw:
-        p = Path(raw).expanduser().resolve()
-        if not p.is_file():
-            raise FileNotFoundError(
-                f"{path_env_var} is set but does not point to a file: {p}"
-            )
-        return str(p)
-
-    url = _default_raw_url(repo_relative_under_training)
-    dest = cache_dir / cache_file_name
-    if dest.is_file() and dest.stat().st_size > 0:
-        return str(dest.resolve())
-    _download(url, dest)
-    if not dest.is_file() or dest.stat().st_size == 0:
-        raise RuntimeError(f"Downloaded pipeline YAML is missing or empty: {dest}")
-    return str(dest.resolve())
+    p = Path(raw).expanduser().resolve()
+    if not p.is_file():
+        raise FileNotFoundError(
+            f"{path_env_var} does not point to a file: {p}"
+        )
+    return str(p)

@@ -22,9 +22,6 @@ from autox_tests.lib.dspa_support import (
 from autox_tests.lib.env import load_tests_env, resolve_suite_asset_path
 from autox_tests.lib.pytest_terminal import emit_terminal_line
 from autox_tests.lib.pipeline_yaml_sources import (
-    PIPELINE_TRAINING_AUTORAG_REL,
-    PIPELINE_TRAINING_TABULAR_REL,
-    PIPELINE_TRAINING_TIMESERIES_REL,
     PIPELINE_YAML_AUTORAG_ENV,
     PIPELINE_YAML_TABULAR_ENV,
     PIPELINE_YAML_TIMESERIES_ENV,
@@ -519,11 +516,10 @@ def autorag_run_name() -> str:
 
 @pytest.fixture(scope="session")
 def automl_tabular_pipeline_package(pipeline_yaml_cache_dir: Path) -> str:
-    """Path to tabular AutoML ``pipeline.yaml`` (local path or downloaded from pipelines-components)."""
+    """Path to tabular AutoML ``pipeline.yaml`` (local path or URL)."""
     try:
         return resolve_precompiled_pipeline_yaml(
             path_env_var=PIPELINE_YAML_TABULAR_ENV,
-            repo_relative_under_training=PIPELINE_TRAINING_TABULAR_REL,
             cache_dir=pipeline_yaml_cache_dir,
             cache_file_name="autogluon-tabular-pipeline.yaml",
         )
@@ -533,11 +529,10 @@ def automl_tabular_pipeline_package(pipeline_yaml_cache_dir: Path) -> str:
 
 @pytest.fixture(scope="session")
 def automl_timeseries_pipeline_package(pipeline_yaml_cache_dir: Path) -> str:
-    """Path to time series AutoML ``pipeline.yaml`` (local path or downloaded)."""
+    """Path to time series AutoML ``pipeline.yaml`` (local path or URL)."""
     try:
         return resolve_precompiled_pipeline_yaml(
             path_env_var=PIPELINE_YAML_TIMESERIES_ENV,
-            repo_relative_under_training=PIPELINE_TRAINING_TIMESERIES_REL,
             cache_dir=pipeline_yaml_cache_dir,
             cache_file_name="autogluon-timeseries-pipeline.yaml",
         )
@@ -547,11 +542,10 @@ def automl_timeseries_pipeline_package(pipeline_yaml_cache_dir: Path) -> str:
 
 @pytest.fixture(scope="session")
 def autorag_pipeline_package(pipeline_yaml_cache_dir: Path) -> str:
-    """Path to AutoRAG ``pipeline.yaml`` (local path or downloaded)."""
+    """Path to AutoRAG ``pipeline.yaml`` (local path or URL)."""
     try:
         return resolve_precompiled_pipeline_yaml(
             path_env_var=PIPELINE_YAML_AUTORAG_ENV,
-            repo_relative_under_training=PIPELINE_TRAINING_AUTORAG_REL,
             cache_dir=pipeline_yaml_cache_dir,
             cache_file_name="documents-rag-optimization-pipeline.yaml",
         )
