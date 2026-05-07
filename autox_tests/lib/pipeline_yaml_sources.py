@@ -57,12 +57,25 @@ def resolve_precompiled_pipeline_yaml(
 ) -> str:
     """Return absolute path to a ``pipeline.yaml``.
 
-    If ``path_env_var`` is set to a non-empty path, that file is used (must exist).
-    Otherwise the YAML is downloaded from the default pipelines-components raw URL
-    (override repo/ref via ``RHOAI_PIPELINES_COMPONENTS_*``).
+    Resolution order for the value of ``path_env_var``:
+
+    1. **Local file path** — used directly (must exist).
+    2. **URL** (``http://`` or ``https://``) — downloaded into ``cache_dir``.
+    3. **Unset / empty** — downloaded from the default pipelines-components
+       GitHub repo (override repo/ref via ``RHOAI_PIPELINES_COMPONENTS_*``).
     """
     load_tests_env()
     raw = (os.environ.get(path_env_var) or "").strip()
+
+    if raw and raw.startswith(("http://", "https://")):
+        dest = cache_dir / cache_file_name
+        if dest.is_file() and dest.stat().st_size > 0:
+            return str(dest.resolve())
+        _download(raw, dest)
+        if not dest.is_file() or dest.stat().st_size == 0:
+            raise RuntimeError(f"Downloaded pipeline YAML is missing or empty: {dest}")
+        return str(dest.resolve())
+
     if raw:
         p = Path(raw).expanduser().resolve()
         if not p.is_file():

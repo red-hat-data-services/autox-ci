@@ -103,13 +103,26 @@ def s3_client_functional(functional_env_config):
 
 
 @pytest.fixture(scope="session")
-def compiled_pipeline_path():
-    """Compile the Documents RAG Optimization pipeline to a temp YAML file."""
-    pipeline_path = os.getenv("AUTORAG_PIPELINE_PATH")
-    if pipeline_path is None:
-        raise EnvironmentError("AUTORAG_PIPELINE_PATH environment variable not set.")
+def compiled_pipeline_path(tmp_path_factory):
+    """Resolve AutoRAG pipeline YAML: local path, URL, or GitHub default.
 
-    return pipeline_path
+    Set ``AUTORAG_PIPELINE_PATH`` to a local file, an ``https://`` URL, or leave
+    unset to download from the default pipelines-components GitHub repo.
+    """
+    from autox_tests.lib.pipeline_yaml_sources import (
+        PIPELINE_TRAINING_AUTORAG_REL,
+        resolve_precompiled_pipeline_yaml,
+    )
+
+    try:
+        return resolve_precompiled_pipeline_yaml(
+            path_env_var="AUTORAG_PIPELINE_PATH",
+            repo_relative_under_training=PIPELINE_TRAINING_AUTORAG_REL,
+            cache_dir=tmp_path_factory.mktemp("pipeline-yaml"),
+            cache_file_name="documents-rag-optimization-pipeline.yaml",
+        )
+    except (FileNotFoundError, OSError, RuntimeError) as e:
+        pytest.fail(str(e))
 
 
 @pytest.fixture(scope="session")
