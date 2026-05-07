@@ -133,7 +133,11 @@ if [[ "$SKIP_SETUP" == false ]]; then
     done
 
     echo "Installing autox-ci [${EXTRAS_SPEC}] ..."
-    pip install -q -e "${SCRIPT_DIR}[${EXTRAS_SPEC}]"
+    if command -v uv &>/dev/null; then
+        uv pip install -q -e "${SCRIPT_DIR}[${EXTRAS_SPEC}]"
+    else
+        python -m pip install -q -e "${SCRIPT_DIR}[${EXTRAS_SPEC}]"
+    fi
 else
     if [[ -f "$VENV_DIR/bin/activate" ]]; then
         # shellcheck disable=SC1091
