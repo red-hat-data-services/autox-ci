@@ -7,7 +7,11 @@ from pathlib import Path
 import pytest
 
 from autox_tests.lib.env import load_tests_env
-from autox_tests.lib.pipeline_yaml_sources import resolve_precompiled_pipeline_yaml
+from autox_tests.lib.pipeline_yaml_sources import (
+    PIPELINE_YAML_TABULAR_ENV,
+    PIPELINE_YAML_TIMESERIES_ENV,
+    resolve_precompiled_pipeline_yaml,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +96,7 @@ def compiled_tabular_pipeline_path(tmp_path_factory):
     """Resolve tabular AutoML pipeline YAML: local path or URL."""
     try:
         return resolve_precompiled_pipeline_yaml(
-            path_env_var="AUTOML_TABULAR_PIPELINE_PATH",
+            path_env_var=PIPELINE_YAML_TABULAR_ENV,
             cache_dir=tmp_path_factory.mktemp("pipeline-yaml-tabular"),
             cache_file_name="autogluon-tabular-pipeline.yaml",
         )
@@ -105,7 +109,7 @@ def compiled_timeseries_pipeline_path(tmp_path_factory):
     """Resolve timeseries AutoML pipeline YAML: local path or URL."""
     try:
         return resolve_precompiled_pipeline_yaml(
-            path_env_var="AUTOML_TIMESERIES_PIPELINE_PATH",
+            path_env_var=PIPELINE_YAML_TIMESERIES_ENV,
             cache_dir=tmp_path_factory.mktemp("pipeline-yaml-timeseries"),
             cache_file_name="autogluon-timeseries-pipeline.yaml",
         )
