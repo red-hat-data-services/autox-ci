@@ -1,0 +1,15 @@
+# Single-dataset smoke test. Upload the sampled CSV to S3 using the same key.
+#
+#   python scripts/make_benchmark_sample.py \\
+#     downloaded_datasets/classification/breast-w.csv \\
+#     -o samples/breast-w_n200.csv -n 200 --label Class --stratify
+#
+#   aws s3 cp samples/breast-w_n200.csv s3://YOUR_BUCKET/benchmark/smoke/breast-w_n200.csv
+#   # (or mc, boto3, cluster upload UI — match train_data_file_key below)
+
+datasets:
+  - id: breast-w-smoke
+    name: breast-w-smoke
+    train_data_file_key: "benchmark/smoke/breast-w_n200.csv"
+    label_column: "Class"
+    task_type: "binary"

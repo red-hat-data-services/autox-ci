@@ -1,0 +1,15 @@
+# One row per pipeline run. train_data_file_key is the S3 object key (CSV with features + label).
+# task_type must be binary, multiclass, or regression (matches pipeline.py).
+
+datasets:
+  - id: breast-w
+    name: breast-w
+    train_data_file_key: "benchmark/classification/breast-w.csv"
+    label_column: "Class"
+    task_type: "binary"
+
+  - id: boston
+    name: boston
+    train_data_file_key: "benchmark/regression/boston.csv"
+    label_column: "MEDV"
+    task_type: "regression"

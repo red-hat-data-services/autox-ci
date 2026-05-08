@@ -1,0 +1,28 @@
+# Non-secret benchmark layout only. Cluster / S3 / KFP API identity lives exclusively in
+# config/credentials.ini (required — copy from credentials.example.ini).
+#
+# Merge order: this file (and optional kubernetes_configmap), then credentials.ini on top.
+# Do not put host, namespace, bucket, or Kubernetes secret names here.
+
+pipeline:
+  # Compiled IR YAML (paths are relative to this file's directory; repo root is one level up)
+  package_path: "../pipelines/autogluon-tabular-training-pipeline.yaml"
+  # Used for manifest rows with task_type: timeseries
+  timeseries_package_path: "../pipelines/autogluon-timeseries-training-pipeline.yaml"
+
+run:
+  top_n: 3
+  poll_interval_seconds: 30
+  timeout_seconds: 86400
+  enable_caching: false
+  run_name_prefix: "benchmark"
+
+# Resolved relative to this file's directory
+dataset_manifest_path: "dataset_manifest.example.yaml"
+
+# Optional: merge non-secret keys from an in-cluster ConfigMap (same schema as this file;
+# do not store credentials in the ConfigMap — use credentials.ini).
+# kubernetes_configmap:
+#   name: "automl-benchmark-config"
+#   namespace: "your-data-science-project"
+#   key: "benchmark.yaml"
