@@ -77,10 +77,11 @@ class AutoRAGTestConfig:
             "llama_stack_secret_name": base_config["llama_stack_secret_name"],
             "test_data_key": self.test_data_key or "",
             "input_data_key": self.input_data_key or "",
-            "llama_stack_vector_io_provider_id": self.llama_stack_vector_io_provider_id or "",
             "optimization_metric": self.optimization_metric or "",
         }
 
+        if self.llama_stack_vector_io_provider_id:
+            arguments["llama_stack_vector_io_provider_id"] = self.llama_stack_vector_io_provider_id
         if self.optimization_max_rag_patterns is not None:
             arguments["optimization_max_rag_patterns"] = self.optimization_max_rag_patterns
         if self.embeddings_models:
