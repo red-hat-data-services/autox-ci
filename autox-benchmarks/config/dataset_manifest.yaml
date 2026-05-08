@@ -1,0 +1,6 @@
+datasets:
+  - id: breast-w
+    name: breast-w
+    train_data_file_key: "datasets/classification/breast-w.csv"
+    label_column: "Class"
+    task_type: "binary"
