@@ -1,5 +1,6 @@
 **/.env
-.env.ml
+**/.env.ml
+**/.env.rag
 
 # Local documents and files
 local/

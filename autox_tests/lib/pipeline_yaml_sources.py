@@ -14,9 +14,9 @@ PIPELINE_TRAINING_TABULAR_REL = "automl/autogluon_tabular_training_pipeline/pipe
 PIPELINE_TRAINING_TIMESERIES_REL = "automl/autogluon_timeseries_training_pipeline/pipeline.yaml"
 PIPELINE_TRAINING_AUTORAG_REL = "autorag/documents_rag_optimization_pipeline/pipeline.yaml"
 
-PIPELINE_YAML_TABULAR_ENV = "RHOAI_PIPELINE_YAML_TABULAR"
-PIPELINE_YAML_TIMESERIES_ENV = "RHOAI_PIPELINE_YAML_TIMESERIES"
-PIPELINE_YAML_AUTORAG_ENV = "RHOAI_PIPELINE_YAML_AUTORAG"
+PIPELINE_YAML_TABULAR_ENV = "AUTOML_TABULAR_PIPELINE_PATH"
+PIPELINE_YAML_TIMESERIES_ENV = "AUTOML_TIMESERIES_PIPELINE_PATH"
+PIPELINE_YAML_AUTORAG_ENV = "AUTORAG_PIPELINE_PATH"
 
 # Default: https://github.com/red-hat-data-services/pipelines-components/tree/rhoai-3.4/pipelines/training
 PIPELINES_COMPONENTS_REPO_ENV = "RHOAI_PIPELINES_COMPONENTS_REPO"
@@ -51,31 +51,41 @@ def _download(url: str, dest: Path, timeout_seconds: float = 120.0) -> None:
 def resolve_precompiled_pipeline_yaml(
     *,
     path_env_var: str,
-    repo_relative_under_training: str,
     cache_dir: Path,
     cache_file_name: str,
 ) -> str:
     """Return absolute path to a ``pipeline.yaml``.
 
-    If ``path_env_var`` is set to a non-empty path, that file is used (must exist).
-    Otherwise the YAML is downloaded from the default pipelines-components raw URL
-    (override repo/ref via ``RHOAI_PIPELINES_COMPONENTS_*``).
+    The environment variable ``path_env_var`` **must** be set to one of:
+
+    1. **Local file path** — used directly (must exist).
+    2. **URL** (``http://`` or ``https://``) — downloaded into ``cache_dir``.
+       This includes GitHub raw URLs, e.g.
+       ``https://raw.githubusercontent.com/org/repo/branch/path/pipeline.yaml``
+
+    Raises :class:`EnvironmentError` when the variable is unset or empty.
     """
     load_tests_env()
     raw = (os.environ.get(path_env_var) or "").strip()
-    if raw:
-        p = Path(raw).expanduser().resolve()
-        if not p.is_file():
-            raise FileNotFoundError(
-                f"{path_env_var} is set but does not point to a file: {p}"
-            )
-        return str(p)
 
-    url = _default_raw_url(repo_relative_under_training)
-    dest = cache_dir / cache_file_name
-    if dest.is_file() and dest.stat().st_size > 0:
+    if not raw:
+        raise EnvironmentError(
+            f"{path_env_var} is not set. Provide a local file path or a URL "
+            f"(e.g. https://raw.githubusercontent.com/org/repo/branch/path/pipeline.yaml)."
+        )
+
+    if raw.startswith(("http://", "https://")):
+        dest = cache_dir / cache_file_name
+        if dest.is_file() and dest.stat().st_size > 0:
+            return str(dest.resolve())
+        _download(raw, dest)
+        if not dest.is_file() or dest.stat().st_size == 0:
+            raise RuntimeError(f"Downloaded pipeline YAML is missing or empty: {dest}")
         return str(dest.resolve())
-    _download(url, dest)
-    if not dest.is_file() or dest.stat().st_size == 0:
-        raise RuntimeError(f"Downloaded pipeline YAML is missing or empty: {dest}")
-    return str(dest.resolve())
+
+    p = Path(raw).expanduser().resolve()
+    if not p.is_file():
+        raise FileNotFoundError(
+            f"{path_env_var} does not point to a file: {p}"
+        )
+    return str(p)

@@ -1,0 +1,26 @@
+[
+  {
+    "id": "TC-B-1_timeseries_sales",
+    "dataset_path": "data/timeseries_sales.csv",
+    "target": "target",
+    "id_column": "item_id",
+    "timestamp_column": "timestamp",
+    "known_covariates_names": ["promo"],
+    "prediction_length": 7,
+    "top_n": 1,
+    "train_data_file_key": "functional-test/timeseries/sales.csv",
+    "tags": ["timeseries", "smoke"]
+  },
+  {
+    "id": "TC-B-2_timeseries_m4_hourly",
+    "dataset_path": "data/m4_hourly_subset_train.csv",
+    "target": "target",
+    "id_column": "item_id",
+    "timestamp_column": "timestamp",
+    "known_covariates_names": [],
+    "prediction_length": 24,
+    "top_n": 2,
+    "train_data_file_key": "functional-test/timeseries/m4_hourly.csv",
+    "tags": ["timeseries", "hourly"]
+  }
+]

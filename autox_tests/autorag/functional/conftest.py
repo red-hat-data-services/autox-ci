@@ -4,12 +4,18 @@ import os
 
 import pytest
 
+from autox_tests.lib.env import load_tests_env
 from .utils import (
     make_kfp_client,
     make_s3_client,
 )
 
 logger = logging.getLogger(__name__)
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    """Load env vars from ``autox_tests/.env`` before collection."""
+    load_tests_env()
 
 
 def _parse_json_list(env_name):
@@ -32,9 +38,7 @@ def get_functional_config():
     llama_stack_vector_io_provider_id or input_data_key since those are
     overridden per-scenario). Adds milvus provider IDs and constrained model lists.
     """
-    from dotenv import find_dotenv, load_dotenv
-
-    load_dotenv(find_dotenv(".env"))
+    load_tests_env()
 
     kfp_url = os.environ.get("RHOAI_KFP_URL") or os.environ.get("KFP_HOST")
     token = os.environ.get("RHOAI_TOKEN") or os.environ.get("KFP_TOKEN")
@@ -99,13 +103,22 @@ def s3_client_functional(functional_env_config):
 
 
 @pytest.fixture(scope="session")
-def compiled_pipeline_path():
-    """Compile the Documents RAG Optimization pipeline to a temp YAML file."""
-    pipeline_path = os.getenv("AUTORAG_PIPELINE_PATH")
-    if pipeline_path is None:
-        raise EnvironmentError("AUTORAG_PIPELINE_PATH environment variable not set.")
+def compiled_pipeline_path(tmp_path_factory):
+    """Resolve AutoRAG pipeline YAML: local path, URL, or GitHub default.
 
-    return pipeline_path
+    Set ``AUTORAG_PIPELINE_PATH`` to a local file, an ``https://`` URL, or leave
+    unset to download from the default pipelines-components GitHub repo.
+    """
+    from autox_tests.lib.pipeline_yaml_sources import resolve_precompiled_pipeline_yaml
+
+    try:
+        return resolve_precompiled_pipeline_yaml(
+            path_env_var="AUTORAG_PIPELINE_PATH",
+            cache_dir=tmp_path_factory.mktemp("pipeline-yaml"),
+            cache_file_name="documents-rag-optimization-pipeline.yaml",
+        )
+    except (FileNotFoundError, OSError, RuntimeError) as e:
+        pytest.fail(str(e))
 
 
 @pytest.fixture(scope="session")

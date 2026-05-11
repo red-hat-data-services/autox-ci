@@ -10,7 +10,8 @@ from typing import Any
 from autox_tests.lib.env import tests_dir
 from autox_tests.lib.settings import TEST_CONFIG_TAGS_ENV
 
-_CONFIG_DIR = tests_dir() / "config"
+_AUTOML_CONFIG_DIR = tests_dir() / "automl" / "config"
+_AUTORAG_CONFIG_DIR = tests_dir() / "autorag" / "config"
 
 
 def _filter_by_tags(configs: list[Any], get_tags: Any) -> list[Any]:
@@ -58,7 +59,7 @@ class AutomlTabularTestConfig:
 
 
 def _load_tabular_raw() -> list[AutomlTabularTestConfig]:
-    path = _CONFIG_DIR / "automl_tabular_test_configs.json"
+    path = _AUTOML_CONFIG_DIR / "automl_tabular_test_configs.json"
     data = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(data, list):
         raise ValueError("automl_tabular_test_configs.json must be a JSON array")
@@ -157,7 +158,7 @@ class AutomlTimeseriesTestConfig:
 
 
 def _load_timeseries_raw() -> list[AutomlTimeseriesTestConfig]:
-    path = _CONFIG_DIR / "automl_timeseries_test_configs.json"
+    path = _AUTOML_CONFIG_DIR / "automl_timeseries_test_configs.json"
     data = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(data, list):
         raise ValueError("automl_timeseries_test_configs.json must be a JSON array")
@@ -243,7 +244,7 @@ class AutoragOptimizationTestConfig:
 
 
 def _load_autorag_raw() -> list[AutoragOptimizationTestConfig]:
-    path = _CONFIG_DIR / "autorag_test_configs.json"
+    path = _AUTORAG_CONFIG_DIR / "autorag_test_configs.json"
     data = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(data, list):
         raise ValueError("autorag_test_configs.json must be a JSON array")
