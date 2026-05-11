@@ -142,7 +142,7 @@ def get_test_configs_for_run(pass_type: str, tags: None | list[str] = None) -> l
 
     tags = tags or []
 
-    env_tags_raw = os.getenv("FUNCTIONAL_TESTS_TAGS")
+    env_tags_raw = os.getenv("TESTS_TAGS")
     env_tags = [t.strip().lower() for t in env_tags_raw.split(",") if t.strip()] if env_tags_raw else []
 
     all_tags = {t.lower() for t in (tags + env_tags)}

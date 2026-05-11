@@ -23,7 +23,7 @@ import pytest
 from .conftest import (
     get_functional_config,
 )
-from autox_tests.autorag.functional.configs.configs import (
+from autox_tests.autorag.configs.configs import (
     AutoRAGTestConfig,
     get_test_configs_for_run,
 )
@@ -53,7 +53,7 @@ PIPELINE_DISPLAY_NAME = "documents-rag-optimization-pipeline"
 _EXPECTED_FAIL_TIMEOUT_CAP = 600
 
 
-@pytest.mark.functional
+@pytest.mark.autorag
 @pytest.mark.skipif(
     DOCRAG_FUNCTIONAL_CONFIG is None,
     reason="RHOAI functional test env not set (set RHOAI_KFP_URL, RHOAI_TOKEN, pipeline params; see .env.example)",
@@ -61,6 +61,7 @@ _EXPECTED_FAIL_TIMEOUT_CAP = 600
 class TestAutoRAGFunctional:
     """Functional tests for the Documents RAG Optimization pipeline."""
 
+    @pytest.mark.negative
     @pytest.mark.parametrize(
         "test_scenario_config", NEGATIVE_CONFIGS_FOR_RUN, ids=[c.id for c in NEGATIVE_CONFIGS_FOR_RUN]
     )
@@ -97,6 +98,7 @@ class TestAutoRAGFunctional:
         # Log failure details for observability even on expected failures
         logger.info(_collect_failure_details(kfp_client_functional, run_id, config=functional_env_config))
 
+    @pytest.mark.positive
     @pytest.mark.parametrize(
         "test_scenario_config", POSITIVE_CONFIGS_FOR_RUN, ids=[c.id for c in POSITIVE_CONFIGS_FOR_RUN]
     )

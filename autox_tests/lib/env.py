@@ -7,19 +7,25 @@ Variables already present in the process environment are not overwritten
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Literal
 
 # This file lives in ``tests/lib/``; the suite root is the parent of ``lib``.
 _TESTS_DIR = Path(__file__).resolve().parents[1]
 
 
-def load_tests_env() -> None:
+def load_tests_env(component: Literal["autorag", "automl"] | None = None) -> None:
     """Load ``tests/.env`` if present; never override existing environment variables."""
     try:
         from dotenv import load_dotenv
     except ImportError:
         return
 
-    env_path = _TESTS_DIR / ".env"
+    if component == "autorag":
+        env_path = _TESTS_DIR / ".env.rag"
+    elif component == "automl":
+        env_path = _TESTS_DIR / ".env.ml"
+    else:
+        env_path = _TESTS_DIR / ".env"
     load_dotenv(env_path, override=False)
 
 

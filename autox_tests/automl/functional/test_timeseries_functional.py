@@ -30,7 +30,6 @@ TIMESERIES_CONFIGS = get_timeseries_configs_for_run()
 PIPELINE_DISPLAY_NAME = "autogluon-timeseries-training-pipeline"
 
 
-@pytest.mark.functional
 @pytest.mark.timeseries
 @pytest.mark.skipif(
     AUTOML_FUNCTIONAL_CONFIG is None,

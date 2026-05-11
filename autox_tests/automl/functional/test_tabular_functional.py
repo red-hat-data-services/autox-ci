@@ -30,7 +30,6 @@ TABULAR_CONFIGS = get_tabular_configs_for_run()
 PIPELINE_DISPLAY_NAME = "autogluon-tabular-training-pipeline"
 
 
-@pytest.mark.functional
 @pytest.mark.tabular
 @pytest.mark.skipif(
     AUTOML_FUNCTIONAL_CONFIG is None,

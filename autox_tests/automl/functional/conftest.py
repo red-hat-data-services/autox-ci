@@ -19,12 +19,12 @@ _DATA_DIR = Path(__file__).resolve().parent / "data"
 
 
 def pytest_configure(config: pytest.Config) -> None:
-    load_tests_env()
+    load_tests_env("automl")
 
 
 def get_automl_functional_config():
     """Build AutoML functional test config from environment; None if not configured."""
-    load_tests_env()
+    load_tests_env("automl")
 
     kfp_url = os.environ.get("RHOAI_KFP_URL") or os.environ.get("KFP_HOST")
     token = os.environ.get("RHOAI_TOKEN") or os.environ.get("KFP_TOKEN")

@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 def pytest_configure(config: pytest.Config) -> None:
     """Load env vars from ``autox_tests/.env`` before collection."""
-    load_tests_env()
+    load_tests_env("autorag")
 
 
 def _parse_json_list(env_name):
@@ -38,7 +38,7 @@ def get_functional_config():
     llama_stack_vector_io_provider_id or input_data_key since those are
     overridden per-scenario). Adds milvus provider IDs and constrained model lists.
     """
-    load_tests_env()
+    load_tests_env("autorag")
 
     kfp_url = os.environ.get("RHOAI_KFP_URL") or os.environ.get("KFP_HOST")
     token = os.environ.get("RHOAI_TOKEN") or os.environ.get("KFP_TOKEN")
