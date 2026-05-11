@@ -19,6 +19,7 @@ _DATA_DIR = Path(__file__).resolve().parent / "data"
 
 
 def pytest_configure(config: pytest.Config) -> None:
+    """Load env vars from ``.env.ml`` before collection."""
     load_tests_env("automl")
 
 
@@ -72,11 +73,13 @@ AUTOML_FUNCTIONAL_CONFIG = get_automl_functional_config()
 
 @pytest.fixture(scope="session")
 def automl_functional_config():
+    """Session-scoped AutoML functional test config dict (None if env is incomplete)."""
     return AUTOML_FUNCTIONAL_CONFIG
 
 
 @pytest.fixture(scope="session")
 def kfp_client_automl_functional(automl_functional_config):
+    """Session-scoped KFP client for AutoML functional tests."""
     if automl_functional_config is None:
         return None
     from .utils import make_kfp_client
@@ -85,6 +88,7 @@ def kfp_client_automl_functional(automl_functional_config):
 
 @pytest.fixture(scope="session")
 def s3_client_automl_functional(automl_functional_config):
+    """Session-scoped S3 client for AutoML functional tests (None if S3 not configured)."""
     if automl_functional_config is None or not automl_functional_config.get("s3_endpoint"):
         return None
     from .utils import make_s3_client
@@ -144,6 +148,7 @@ def uploaded_timeseries_datasets(automl_functional_config, s3_client_automl_func
 
 
 def _upload_datasets(s3_client, bucket, configs):
+    """Upload distinct dataset files from configs to S3; return path-to-location mapping."""
     result = {}
     seen = set()
     for config in configs:
@@ -171,4 +176,5 @@ def _upload_datasets(s3_client, bucket, configs):
 
 @pytest.fixture(scope="session")
 def pipeline_run_timeout():
+    """Max seconds to wait for a pipeline run (``RHOAI_PIPELINE_RUN_TIMEOUT``)."""
     return int(os.environ.get("RHOAI_PIPELINE_RUN_TIMEOUT", "3600"))

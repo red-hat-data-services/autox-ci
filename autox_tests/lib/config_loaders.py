@@ -15,6 +15,7 @@ _AUTORAG_CONFIG_DIR = tests_dir() / "autorag" / "config"
 
 
 def _filter_by_tags(configs: list[Any], get_tags: Any) -> list[Any]:
+    """Return only configs whose tags overlap with ``RHOAI_TEST_CONFIG_TAGS``, or all if unset."""
     raw = os.environ.get(TEST_CONFIG_TAGS_ENV)
     if not raw or not str(raw).strip():
         return configs
@@ -59,6 +60,7 @@ class AutomlTabularTestConfig:
 
 
 def _load_tabular_raw() -> list[AutomlTabularTestConfig]:
+    """Parse automl_tabular_test_configs.json into validated config dataclass instances."""
     path = _AUTOML_CONFIG_DIR / "automl_tabular_test_configs.json"
     data = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(data, list):
@@ -158,6 +160,7 @@ class AutomlTimeseriesTestConfig:
 
 
 def _load_timeseries_raw() -> list[AutomlTimeseriesTestConfig]:
+    """Parse automl_timeseries_test_configs.json into validated config dataclass instances."""
     path = _AUTOML_CONFIG_DIR / "automl_timeseries_test_configs.json"
     data = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(data, list):
@@ -244,6 +247,7 @@ class AutoragOptimizationTestConfig:
 
 
 def _load_autorag_raw() -> list[AutoragOptimizationTestConfig]:
+    """Parse autorag_test_configs.json into validated config dataclass instances."""
     path = _AUTORAG_CONFIG_DIR / "autorag_test_configs.json"
     data = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(data, list):

@@ -15,6 +15,7 @@ TASK_PRIMARY_METRICS = {
 
 
 def make_kfp_client(config):
+    """Create a KFP client from a config dict; returns None if config is None."""
     if config is None:
         return None
     import kfp
@@ -33,6 +34,7 @@ def make_kfp_client(config):
 
 
 def make_s3_client(config):
+    """Create a boto3 S3 client from a config dict; returns None if not configured."""
     if config is None or not config.get("s3_endpoint"):
         return None
     try:
@@ -49,12 +51,14 @@ def make_s3_client(config):
 
 
 def make_run_name(prefix: str) -> str:
+    """Return a unique run name: ``<prefix>-<6 hex chars>-<YYYYMMDD-HHMMSS>``."""
     hex_part = secrets.token_hex(3)
     time_part = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     return f"{prefix}-{hex_part}-{time_part}"
 
 
 def run_pipeline_and_wait(client, compiled_path, arguments, timeout):
+    """Submit a pipeline run and block until completion; return ``(run_id, detail)``."""
     run_name = make_run_name("automl-func")
     run = client.create_run_from_pipeline_package(
         compiled_path,
@@ -68,12 +72,14 @@ def run_pipeline_and_wait(client, compiled_path, arguments, timeout):
 
 
 def normalize_state(state):
+    """Normalize a state value (str or enum) to an uppercase string."""
     if state is None:
         return None
     return str(getattr(state, "name", state)).upper()
 
 
 def get_run_state(detail):
+    """Extract the run state string from a KFP run detail object."""
     run = getattr(detail, "run", detail)
     state = getattr(run, "state", None)
     if state is None and hasattr(run, "status"):
@@ -82,10 +88,12 @@ def get_run_state(detail):
 
 
 def run_succeeded(detail):
+    """Return True if the run finished with SUCCEEDED state."""
     return get_run_state(detail) == "SUCCEEDED"
 
 
 def run_failed(detail):
+    """Return True if the run finished with FAILED state."""
     return get_run_state(detail) == "FAILED"
 
 

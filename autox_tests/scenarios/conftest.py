@@ -497,6 +497,7 @@ def pipeline_negative_run_timeout(pipeline_run_timeout: int) -> int:
 
 
 def _make_run_name(prefix: str) -> str:
+    """Return a unique run name: ``<prefix>-<6 hex chars>-<YYYYMMDD-HHMMSS>``."""
     hex_part = secrets.token_hex(3)
     time_part = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     return f"{prefix}-{hex_part}-{time_part}"

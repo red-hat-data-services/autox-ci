@@ -40,10 +40,12 @@ def _should_omit_task(display_name: str, *, pipeline_display_name: str | None) -
 
 
 def _task_display_label(task: Any) -> str:
+    """Return the human-readable label for a KFP task (display_name or task_id fallback)."""
     return (getattr(task, "display_name", None) or getattr(task, "task_id", None) or "").strip()
 
 
 def _runtime_state_str(state: Any) -> str:
+    """Convert a KFP runtime state (str or enum) to its string representation."""
     if state is None:
         return "unknown"
     if isinstance(state, str):
@@ -119,6 +121,7 @@ def _emit_poll_block(
     pipeline_display_name: str | None,
     blank_before: bool,
 ) -> None:
+    """Write one progress block: run-level state line plus per-task status lines."""
     if blank_before:
         _write_progress_line("")
     _write_progress_line(

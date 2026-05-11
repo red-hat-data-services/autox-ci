@@ -28,6 +28,7 @@ _RAW_GITHUB = "https://raw.githubusercontent.com"
 
 
 def _default_raw_url(repo_relative_under_training: str) -> str:
+    """Build a raw GitHub URL for a pipeline YAML under ``pipelines/training/``."""
     load_tests_env()
     repo = (os.environ.get(PIPELINES_COMPONENTS_REPO_ENV) or "").strip() or _DEFAULT_REPO
     ref = (os.environ.get(PIPELINES_COMPONENTS_REF_ENV) or "").strip() or _DEFAULT_REF
@@ -36,6 +37,7 @@ def _default_raw_url(repo_relative_under_training: str) -> str:
 
 
 def _download(url: str, dest: Path, timeout_seconds: float = 120.0) -> None:
+    """Download a URL to a local file path, raising RuntimeError on HTTP failures."""
     dest.parent.mkdir(parents=True, exist_ok=True)
     req = urllib.request.Request(url, headers={"User-Agent": "autox-ci-e2e-tests"})
     try:

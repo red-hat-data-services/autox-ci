@@ -16,6 +16,7 @@ _ROUTE_PLURAL = "routes"
 
 
 def _brief_dsp_conditions(conditions: list[Any]) -> str:
+    """Format DSPA status conditions into a compact summary string for progress output."""
     if not conditions:
         return "no conditions in status yet"
     parts: list[str] = []

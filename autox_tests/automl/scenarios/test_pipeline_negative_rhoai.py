@@ -68,6 +68,7 @@ class TestAutomlTabularNegativeRhoaiKfp:
         pipeline_negative_run_timeout: int,
         pipeline_poll_interval_seconds: int,
     ) -> None:
+        """Submit with a fabricated unknown parameter and assert the run does not succeed."""
         require_rhoai_automl_env()
         if not rhoai_automl_project or not kfp_client_automl:
             pytest.fail(
@@ -111,6 +112,7 @@ class TestAutomlTabularNegativeRhoaiKfp:
         pipeline_negative_run_timeout: int,
         pipeline_poll_interval_seconds: int,
     ) -> None:
+        """Submit with an invalid non-data parameter and assert the run does not succeed."""
         require_rhoai_automl_env()
         if not rhoai_automl_project or not kfp_client_automl:
             pytest.fail(
@@ -155,6 +157,7 @@ class TestAutomlTimeseriesNegativeRhoaiKfp:
         pipeline_negative_run_timeout: int,
         pipeline_poll_interval_seconds: int,
     ) -> None:
+        """Submit with a fabricated unknown parameter and assert the run does not succeed."""
         require_rhoai_automl_env()
         if not rhoai_automl_project or not kfp_client_automl:
             pytest.fail(
@@ -198,6 +201,7 @@ class TestAutomlTimeseriesNegativeRhoaiKfp:
         pipeline_negative_run_timeout: int,
         pipeline_poll_interval_seconds: int,
     ) -> None:
+        """Submit with an invalid non-data parameter and assert the run does not succeed."""
         require_rhoai_automl_env()
         if not rhoai_automl_project or not kfp_client_automl:
             pytest.fail(
@@ -241,6 +245,7 @@ class TestAutoragNegativeRhoaiKfp:
         pipeline_negative_run_timeout: int,
         pipeline_poll_interval_seconds: int,
     ) -> None:
+        """Submit with a fabricated unknown parameter and assert the run does not succeed."""
         require_autorag_env()
         if not kfp_client_autorag:
             pytest.fail("AutoRAG session setup did not produce a KFP client.")
@@ -289,6 +294,7 @@ class TestAutoragNegativeRhoaiKfp:
         pipeline_negative_run_timeout: int,
         pipeline_poll_interval_seconds: int,
     ) -> None:
+        """Submit with an invalid non-data parameter and assert the run does not succeed."""
         require_autorag_env()
         if not kfp_client_autorag:
             pytest.fail("AutoRAG session setup did not produce a KFP client.")

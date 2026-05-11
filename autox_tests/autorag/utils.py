@@ -1,3 +1,5 @@
+"""Shared utilities for AutoRAG functional tests."""
+
 import logging
 from datetime import datetime, timezone
 import os

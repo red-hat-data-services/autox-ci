@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 def _s3_error_code(exc: BaseException) -> str:
+    """Extract the S3 error code string from a botocore ClientError."""
     if hasattr(exc, "response"):
         err = getattr(exc, "response", {}) or {}
         if isinstance(err, dict):
@@ -19,6 +20,7 @@ def _s3_error_code(exc: BaseException) -> str:
 
 
 def _s3_http_status(exc: BaseException) -> int | None:
+    """Extract the HTTP status code from a botocore ClientError."""
     if hasattr(exc, "response"):
         err = getattr(exc, "response", {}) or {}
         if isinstance(err, dict):
@@ -29,6 +31,7 @@ def _s3_http_status(exc: BaseException) -> int | None:
 
 
 def _bucket_not_found(exc: BaseException) -> bool:
+    """Return True if the exception indicates the S3 bucket does not exist."""
     code = _s3_error_code(exc)
     status = _s3_http_status(exc)
     if status == 404:

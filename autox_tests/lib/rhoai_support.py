@@ -60,6 +60,7 @@ def build_temp_kubeconfig(
 
 
 def _decode_jwt_sub(token: str) -> str | None:
+    """Extract the ``sub`` claim from a JWT without signature verification."""
     try:
         parts = token.strip().split(".")
         if len(parts) != 3:
@@ -76,6 +77,7 @@ def _decode_jwt_sub(token: str) -> str | None:
 
 
 def _parse_service_account_sub(sub: str) -> tuple[str, str] | None:
+    """Parse ``system:serviceaccount:<ns>:<name>`` into ``(namespace, name)``; None otherwise."""
     if not sub or not isinstance(sub, str):
         return None
     prefix = "system:serviceaccount:"
@@ -95,6 +97,7 @@ def _ensure_admin_role_for_sa_in_namespace(
     sa_name: str,
     binding_name: str = "rhoai-root-tests-admin",
 ) -> None:
+    """Create or replace an admin RoleBinding for a ServiceAccount in the target namespace."""
     from kubernetes import client
     from kubernetes.client.rest import ApiException
 

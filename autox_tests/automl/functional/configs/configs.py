@@ -18,6 +18,8 @@ _TIMESERIES_JSON = _CONFIGS_DIR / "timeseries_test_configs.json"
 
 @dataclass
 class AutoMLTabularFunctionalConfig:
+    """Single tabular AutoML test scenario loaded from tabular_test_configs.json."""
+
     __test__ = False
 
     id: str
@@ -30,6 +32,7 @@ class AutoMLTabularFunctionalConfig:
     inference_sample: list[dict] | None = None
 
     def get_pipeline_arguments(self, base_config: dict) -> dict[str, Any]:
+        """Merge scenario-specific fields with shared S3 secret/bucket from base config."""
         return {
             "train_data_secret_name": base_config["train_data_secret_name"],
             "train_data_bucket_name": base_config["train_data_bucket_name"],
@@ -42,6 +45,8 @@ class AutoMLTabularFunctionalConfig:
 
 @dataclass
 class AutoMLTimeseriesFunctionalConfig:
+    """Single timeseries AutoML test scenario loaded from timeseries_test_configs.json."""
+
     __test__ = False
 
     id: str
@@ -59,6 +64,7 @@ class AutoMLTimeseriesFunctionalConfig:
     inference_sample: list[dict] | None = None
 
     def get_pipeline_arguments(self, base_config: dict) -> dict[str, Any]:
+        """Merge scenario-specific fields with shared S3 secret/bucket from base config."""
         return {
             "train_data_secret_name": base_config["train_data_secret_name"],
             "train_data_bucket_name": base_config["train_data_bucket_name"],
@@ -73,6 +79,7 @@ class AutoMLTimeseriesFunctionalConfig:
 
 
 def _load_tabular_configs() -> list[AutoMLTabularFunctionalConfig]:
+    """Parse tabular_test_configs.json into config dataclass instances."""
     data = json.loads(_TABULAR_JSON.read_text(encoding="utf-8"))
     configs = []
     for item in data:
@@ -90,6 +97,7 @@ def _load_tabular_configs() -> list[AutoMLTabularFunctionalConfig]:
 
 
 def _load_timeseries_configs() -> list[AutoMLTimeseriesFunctionalConfig]:
+    """Parse timeseries_test_configs.json into config dataclass instances."""
     data = json.loads(_TIMESERIES_JSON.read_text(encoding="utf-8"))
     configs = []
     for item in data:
@@ -112,6 +120,7 @@ def _load_timeseries_configs() -> list[AutoMLTimeseriesFunctionalConfig]:
 
 
 def _filter_by_tags(configs: list, tags_env: str = "AUTOML_FUNCTIONAL_TESTS_TAGS") -> list:
+    """Return only configs whose tags overlap with the comma-separated env var, or all if unset."""
     raw = os.getenv(tags_env)
     if not raw or not raw.strip():
         return configs
@@ -122,8 +131,10 @@ def _filter_by_tags(configs: list, tags_env: str = "AUTOML_FUNCTIONAL_TESTS_TAGS
 
 
 def get_tabular_configs_for_run() -> list[AutoMLTabularFunctionalConfig]:
+    """Return tabular configs for this session, filtered by AUTOML_FUNCTIONAL_TESTS_TAGS."""
     return _filter_by_tags(_load_tabular_configs())
 
 
 def get_timeseries_configs_for_run() -> list[AutoMLTimeseriesFunctionalConfig]:
+    """Return timeseries configs for this session, filtered by AUTOML_FUNCTIONAL_TESTS_TAGS."""
     return _filter_by_tags(_load_timeseries_configs())

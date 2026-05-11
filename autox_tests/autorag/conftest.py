@@ -1,3 +1,5 @@
+"""Pytest fixtures for AutoRAG functional tests (Documents RAG Optimization)."""
+
 import json
 import logging
 import os
@@ -19,6 +21,7 @@ def pytest_configure(config: pytest.Config) -> None:
 
 
 def _parse_json_list(env_name):
+    """Parse an env var as a JSON array; return None if unset, raise on invalid JSON."""
     raw = os.environ.get(env_name)
     if not raw:
         return None
