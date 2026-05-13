@@ -1,1 +1,48 @@
 **/.env
+**/.env.ml
+**/.env.rag
+
+# Local documents and files
+local/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+dist/
+build/
+*.whl
+
+# pytest
+.pytest_cache/
+
+# mypy / type checkers
+.mypy_cache/
+.pytype/
+
+# Coverage
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+
+# Jupyter
+.ipynb_checkpoints/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db

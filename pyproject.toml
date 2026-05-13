@@ -12,7 +12,7 @@ dependencies = [
   "pytest>=7.0",
   "kubernetes>=28.0",
   "boto3>=1.28",
-  "kfp>=2.5.0",
+  "kfp>=2.15.2",
   "python-dotenv>=1.0.0",
   "pyyaml>=6.0",
 ]
@@ -21,13 +21,22 @@ dependencies = [
 # Same runtime stack as `dependencies`; kept so `pip install -e ".[test_rhoai]"` / `test_automl` match docs.
 test_rhoai = []
 test_automl = []
+test_autorag = [
+  "nbformat",
+  "notebook",
+  "papermill",
+]
 
 [tool.setuptools]
-package-dir = { tests = "e2e-tests" }
-packages = ["tests", "tests.lib"]
+package-dir = { autox_tests = "autox_tests" }
+packages = ["autox_tests", "autox_tests.lib"]
 
 [tool.pytest.ini_options]
-testpaths = ["e2e-tests/scenarios"]
+testpaths = [
+  "autox_tests/automl/scenarios",
+  "autox_tests/automl/functional",
+  "autox_tests/autorag",
+]
 markers = [
   "integration: integration tests hitting live cluster/APIs",
   "openshift_ai: OpenShift AI / RHOAI scenarios",
@@ -35,4 +44,6 @@ markers = [
   "tabular: tabular AutoML family",
   "timeseries: time series AutoML family",
   "autorag: AutoRAG pipeline family",
+  "positive: Tests expected to pass covering positive paths",
+  "negative: Tests expected to fail covering negative paths",
 ]
