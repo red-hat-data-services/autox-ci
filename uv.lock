@@ -242,7 +242,7 @@ test-autorag = [
 [package.metadata]
 requires-dist = [
     { name = "boto3", specifier = ">=1.28" },
-    { name = "kfp", specifier = ">=2.5.0" },
+    { name = "kfp", specifier = ">=2.15.2" },
     { name = "kubernetes", specifier = ">=28.0" },
     { name = "nbformat", marker = "extra == 'test-autorag'" },
     { name = "notebook", marker = "extra == 'test-autorag'" },
