@@ -26,6 +26,8 @@ class BenchmarkSettings:
     enable_caching: bool
     experiment_name: str
     run_name_prefix: str
+    benchmark_s3_prefix: str
+    upload_benchmark_results: bool
 
 
 def benchmark_settings_from_config(cfg: dict[str, Any], config_dir: Path) -> BenchmarkSettings:
@@ -63,6 +65,15 @@ def benchmark_settings_from_config(cfg: dict[str, Any], config_dir: Path) -> Ben
             "storage.input_data_bucket_name, storage.test_data_bucket_name"
         )
 
+    bench_prefix = str(storage_cfg.get("benchmark_s3_prefix") or "benchmarks").strip().strip("/")
+    upload_raw = storage_cfg.get("upload_benchmark_results")
+    if upload_raw is None:
+        upload_benchmark_results = True
+    elif isinstance(upload_raw, bool):
+        upload_benchmark_results = upload_raw
+    else:
+        upload_benchmark_results = str(upload_raw).strip().lower() in ("1", "true", "yes", "on")
+
     return BenchmarkSettings(
         config_dir=config_dir,
         pipeline_yaml=pipeline_yaml,
@@ -79,4 +90,6 @@ def benchmark_settings_from_config(cfg: dict[str, Any], config_dir: Path) -> Ben
         enable_caching=bool(run_cfg.get("enable_caching", False)),
         experiment_name=str(kfp_cfg.get("experiment_name", "rag-optimization-benchmark")),
         run_name_prefix=str(run_cfg.get("run_name_prefix", "rag-benchmark")),
+        benchmark_s3_prefix=bench_prefix,
+        upload_benchmark_results=upload_benchmark_results,
     )

@@ -6,3 +6,5 @@ pandas>=2.0
 lxml>=5.0,<6
 # Optional: load the same YAML from a mounted OpenShift/Kubernetes ConfigMap
 kubernetes>=28.0.0
+# Open RAGBench / HF dataset downloads (autorag_benchmark.datasets.open_ragbench)
+huggingface-hub>=0.20.0

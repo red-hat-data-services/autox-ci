@@ -215,3 +215,4 @@ credentials.ini
 downloaded_datasets/
 results/
 .idea/
+generated_datasets/

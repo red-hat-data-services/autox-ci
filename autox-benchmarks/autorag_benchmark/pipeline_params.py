@@ -39,7 +39,7 @@ def build_pipeline_arguments(
     else:
         args["optimization_max_rag_patterns"] = settings.optimization_max_rag_patterns
 
-    for model_type in ("embedding_models", "retrieval_models", "generation_models"):
+    for model_type in ("embeddings_models", "generation_models"):
         if model_type in dataset and isinstance(dataset[model_type], list):
             args[model_type] = dataset[model_type]
 
