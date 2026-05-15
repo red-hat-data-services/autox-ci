@@ -51,10 +51,10 @@ def validate_merged_benchmark_config(cfg: dict[str, Any]) -> None:
         raise ValueError(f"Missing pipeline.input_data_secret_name. {_CREDENTIALS_HELP}")
     if not str(pipeline.get("test_data_secret_name", "")).strip():
         raise ValueError(f"Missing pipeline.test_data_secret_name. {_CREDENTIALS_HELP}")
-    if not str(pipeline.get("llama_stack_secret_name", "")).strip():
-        raise ValueError(f"Missing pipeline.llama_stack_secret_name. {_CREDENTIALS_HELP}")
-    if not str(pipeline.get("llama_stack_vector_io_provider_id", "")).strip():
-        raise ValueError(f"Missing pipeline.llama_stack_vector_io_provider_id. {_CREDENTIALS_HELP}")
+    if not str(pipeline.get("ogx_secret_name", "")).strip():
+        raise ValueError(f"Missing pipeline.ogx_secret_name. {_CREDENTIALS_HELP}")
+    if not str(pipeline.get("vector_io_provider_id", "")).strip():
+        raise ValueError(f"Missing pipeline.vector_io_provider_id. {_CREDENTIALS_HELP}")
 
 
 def load_merged_benchmark_config(

@@ -101,8 +101,8 @@ def main():
     # SlideVQA-specific options
     parser.add_argument(
         "--slidevqa-split",
-        default="validation",
-        help="SlideVQA dataset split (train, validation, test) - only for --dataset slidevqa (default: validation)",
+        default="val",
+        help="SlideVQA dataset split (train, val, test) - only for --dataset slidevqa (default: val)",
     )
 
     # S3 upload options

@@ -17,8 +17,8 @@ class BenchmarkSettings:
     input_data_bucket_name: str
     test_data_secret_name: str
     test_data_bucket_name: str
-    llama_stack_secret_name: str
-    llama_stack_vector_io_provider_id: str
+    ogx_secret_name: str
+    vector_io_provider_id: str
     optimization_metric: str
     optimization_max_rag_patterns: int
     poll_interval_seconds: float
@@ -45,8 +45,8 @@ def benchmark_settings_from_config(cfg: dict[str, Any], config_dir: Path) -> Ben
     input_data_bucket = storage_cfg.get("input_data_bucket_name")
     test_data_secret = pipeline_cfg.get("test_data_secret_name")
     test_data_bucket = storage_cfg.get("test_data_bucket_name")
-    llama_stack_secret = pipeline_cfg.get("llama_stack_secret_name")
-    llama_stack_provider = pipeline_cfg.get("llama_stack_vector_io_provider_id")
+    ogx_secret = pipeline_cfg.get("ogx_secret_name")
+    vector_io_provider = pipeline_cfg.get("vector_io_provider_id")
 
     if not all(
         [
@@ -54,14 +54,14 @@ def benchmark_settings_from_config(cfg: dict[str, Any], config_dir: Path) -> Ben
             input_data_bucket,
             test_data_secret,
             test_data_bucket,
-            llama_stack_secret,
-            llama_stack_provider,
+            ogx_secret,
+            vector_io_provider,
         ]
     ):
         raise ValueError(
             "Required configuration missing. Please set in credentials.ini: "
             "pipeline.input_data_secret_name, pipeline.test_data_secret_name, "
-            "pipeline.llama_stack_secret_name, pipeline.llama_stack_vector_io_provider_id, "
+            "pipeline.ogx_secret_name, pipeline.vector_io_provider_id, "
             "storage.input_data_bucket_name, storage.test_data_bucket_name"
         )
 
@@ -81,8 +81,8 @@ def benchmark_settings_from_config(cfg: dict[str, Any], config_dir: Path) -> Ben
         input_data_bucket_name=str(input_data_bucket),
         test_data_secret_name=str(test_data_secret),
         test_data_bucket_name=str(test_data_bucket),
-        llama_stack_secret_name=str(llama_stack_secret),
-        llama_stack_vector_io_provider_id=str(llama_stack_provider),
+        ogx_secret_name=str(ogx_secret),
+        vector_io_provider_id=str(vector_io_provider),
         optimization_metric=str(run_cfg.get("optimization_metric", "faithfulness")),
         optimization_max_rag_patterns=int(run_cfg.get("optimization_max_rag_patterns", 8)),
         poll_interval_seconds=float(run_cfg.get("poll_interval_seconds", 30)),

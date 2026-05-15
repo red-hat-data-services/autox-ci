@@ -17,7 +17,7 @@ from autorag_benchmark.datasets.document_formats import save_binary_document, ge
 
 # Constants
 SLIDEVQA_REPO_ID = "NTT-hil-insight/SlideVQA"
-SLIDEVQA_DEFAULT_SPLIT = "validation"
+SLIDEVQA_DEFAULT_SPLIT = "val"
 
 
 def prepare(
@@ -37,7 +37,7 @@ def prepare(
         bench_path: Path to write benchmark JSON file
         num_samples: Number of question samples to generate (default: 50)
         repo_id: HuggingFace repository ID (default: NTT-hil-insight/SlideVQA)
-        split: Dataset split - "train", "validation", or "test" (default: "validation")
+        split: Dataset split - "train", "val", or "test" (default: "val")
         output_format: Output format for slides - "png" or "jpg" (default: "png")
                       Note: SlideVQA provides slide images; PPTX conversion not supported
 
@@ -58,7 +58,7 @@ def prepare(
         )
 
     # Validate split
-    valid_splits = ["train", "validation", "test"]
+    valid_splits = ["train", "val", "test"]
     if split not in valid_splits:
         raise ValueError(f"Invalid split '{split}'. Choose from: {', '.join(valid_splits)}")
 
@@ -97,42 +97,43 @@ def prepare(
             skipped += 1
             continue
 
-        # Get slide images (SlideVQA provides images for each slide in the deck)
-        # The exact field names may vary - adjust based on actual dataset structure
-        slides = entry.get("slides") or entry.get("images") or []
+        # Get deck information
+        deck_name = entry.get("deck_name", f"deck_{idx}")
+        # Sanitize deck name for filesystem
+        deck_id = "".join(c if c.isalnum() or c in "-_" else "_" for c in deck_name)[:100]
 
-        if not slides or len(slides) == 0:
+        # Get evidence pages (1-indexed in dataset)
+        evidence_pages = entry.get("evidence_pages", [])
+
+        # SlideVQA stores slides as page_1, page_2, ..., page_20
+        slides = []
+        for page_num in range(1, 21):
+            page_key = f"page_{page_num}"
+            if page_key in entry and entry[page_key] is not None:
+                slides.append((page_num, entry[page_key]))
+
+        if not slides:
             skipped += 1
             continue
 
-        # Get evidence slide indices (which slides answer the question)
-        evidence_indices = entry.get("evidence") or entry.get("evidence_indices") or []
-
-        # For simplicity, we'll save all slides in the deck and mark evidence slides
-        deck_id = entry.get("deck_id") or entry.get("id") or f"deck_{idx}"
         slide_doc_ids = []
 
-        for slide_idx, slide_image in enumerate(slides):
-            slide_doc_id = f"slidevqa_{deck_id}_slide_{slide_idx}"
+        for page_num, slide_image in slides:
+            slide_doc_id = f"slidevqa_{deck_id}_page_{page_num}"
 
             # Skip if already written (same deck might be referenced multiple times)
             if slide_doc_id in slide_images_written:
-                slide_doc_ids.append(f"{slide_doc_id}.{output_format}")
+                slide_doc_ids.append((page_num, f"{slide_doc_id}.{output_format}"))
                 continue
 
             try:
-                # Extract image bytes from PIL Image object
-                if hasattr(slide_image, "tobytes"):
-                    # Convert PIL Image to bytes
-                    from io import BytesIO
-                    img_bytes = BytesIO()
-                    # Determine format for PIL save
-                    pil_format = "PNG" if output_format == "png" else "JPEG"
-                    slide_image.save(img_bytes, format=pil_format)
-                    image_data = img_bytes.getvalue()
-                else:
-                    # Assume it's already bytes
-                    image_data = slide_image
+                # Convert PIL Image to bytes
+                from io import BytesIO
+                img_bytes = BytesIO()
+                # Determine format for PIL save
+                pil_format = "PNG" if output_format == "png" else "JPEG"
+                slide_image.save(img_bytes, format=pil_format)
+                image_data = img_bytes.getvalue()
 
                 # Save slide image
                 output_path = kb_dir / slide_doc_id
@@ -143,7 +144,7 @@ def prepare(
                 )
 
                 slide_images_written.add(slide_doc_id)
-                slide_doc_ids.append(f"{slide_doc_id}.{output_format}")
+                slide_doc_ids.append((page_num, f"{slide_doc_id}.{output_format}"))
 
             except Exception as e:
                 print(f"  Warning: Failed to save slide {slide_doc_id}: {e}")
@@ -153,16 +154,20 @@ def prepare(
             skipped += 1
             continue
 
-        # Determine correct answer slides (evidence slides)
+        # Create a mapping from page number to document ID
+        page_to_doc = {page_num: doc_id for page_num, doc_id in slide_doc_ids}
+        all_doc_ids = [doc_id for _, doc_id in slide_doc_ids]
+
+        # Determine correct answer slides (evidence pages are 1-indexed in the dataset)
         correct_doc_ids = []
-        if evidence_indices:
-            for evidence_idx in evidence_indices:
-                if 0 <= evidence_idx < len(slide_doc_ids):
-                    correct_doc_ids.append(slide_doc_ids[evidence_idx])
+        if evidence_pages:
+            for page_num in evidence_pages:
+                if page_num in page_to_doc:
+                    correct_doc_ids.append(page_to_doc[page_num])
 
         # If no evidence specified, use all slides (conservative approach)
         if not correct_doc_ids:
-            correct_doc_ids = slide_doc_ids
+            correct_doc_ids = all_doc_ids
 
         benchmark_data.append({
             "question": question,

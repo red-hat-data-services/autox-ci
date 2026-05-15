@@ -89,8 +89,9 @@ train_data_secret_name = automl-s3-credentials
 # AutoRAG
 input_data_secret_name = rag-input-s3-credentials
 test_data_secret_name = rag-test-s3-credentials
-llama_stack_secret_name = llama-stack-credentials
-llama_stack_vector_io_provider_id = milvus-lite
+ogx_secret_name = llama-stack-credentials
+vector_io_provider_id = milvus-lite
+# Legacy parameter names (llama_stack_secret_name, llama_stack_vector_io_provider_id) also supported
 
 [s3]
 endpoint = https://s3.amazonaws.com
@@ -170,7 +171,7 @@ python scripts/generate_rag_datasets.py \
   --dataset slidevqa \
   --num-samples 50 \
   --output-format png \
-  --slidevqa-split validation \
+  --slidevqa-split val \
   --upload-to-s3
 ```
 
@@ -209,7 +210,7 @@ s3://bucket/datasets/rag/
 │               ├── knowledge_base/
 │               └── benchmark_data.json
 └── slidevqa/
-    └── {split}/             # train, validation, test
+    └── {split}/             # train, val, test
         └── {format}/        # png, jpg
             └── {num_samples}/
                 ├── knowledge_base/
@@ -228,19 +229,19 @@ datasets:
     input_data_key: "datasets/rag/open_ragbench/arxiv/pdf/50/knowledge_base"
     test_data_key: "datasets/rag/open_ragbench/arxiv/pdf/50/benchmark_data.json"
     optimization_metric: "faithfulness"
-    embeddings_models:
+    embedding_models:
       - "vllm-embedding/bge-m3"
 ```
 
 **SlideVQA example:**
 ```yaml
 datasets:
-  - id: slidevqa-validation-50
+  - id: slidevqa-val-50
     name: "SlideVQA Validation (50 samples)"
-    input_data_key: "datasets/rag/slidevqa/validation/png/50/knowledge_base"
-    test_data_key: "datasets/rag/slidevqa/validation/png/50/benchmark_data.json"
+    input_data_key: "datasets/rag/slidevqa/val/png/50/knowledge_base"
+    test_data_key: "datasets/rag/slidevqa/val/png/50/benchmark_data.json"
     optimization_metric: "faithfulness"
-    embeddings_models:
+    embedding_models:
       - "vllm-embedding/clip"  # For multimodal image+text
 ```
 
@@ -322,7 +323,7 @@ datasets:
     input_data_key: "datasets/rag/example/knowledge_base"
     test_data_key: "datasets/rag/example/benchmark_data.json"
     optimization_metric: "faithfulness"
-    embeddings_models:
+    embedding_models:
       - "vllm-embedding/bge-m3"
 ```
 
