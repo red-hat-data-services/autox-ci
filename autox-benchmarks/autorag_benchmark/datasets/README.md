@@ -1,6 +1,6 @@
 # RAG Dataset Generation
 
-This module provides dataset generation for AutoRAG benchmarking, supporting BEIR and OpenRAGBench datasets.
+This module provides dataset generation for AutoRAG benchmarking, supporting BEIR, OpenRAGBench, and SlideVQA datasets.
 
 ## S3 Storage Structure
 
@@ -23,22 +23,41 @@ s3://ai-eng-cracow/datasets/rag/
 │   │   └── 50/
 │   └── nq/
 │       └── 100/
-└── open_ragbench/
-    └── arxiv/
-        ├── 50/
-        │   ├── knowledge_base/
-        │   │   ├── open_ragbench_2401.11899v3.txt
-        │   │   └── open_ragbench_2404.00822v2.txt
-        │   └── benchmark_data.json
-        ├── 100/
-        └── 200/
+├── open_ragbench/
+│   └── arxiv/
+│       ├── 50/
+│       │   ├── knowledge_base/
+│       │   │   ├── open_ragbench_2401.11899v3.txt
+│       │   │   └── open_ragbench_2404.00822v2.txt
+│       │   └── benchmark_data.json
+│       ├── 100/
+│       └── 200/
+└── slidevqa/
+    ├── val/
+    │   ├── png/
+    │   │   ├── 50/
+    │   │   │   ├── knowledge_base/
+    │   │   │   │   ├── slidevqa_deck123_page_1.png
+    │   │   │   │   └── slidevqa_deck123_page_2.png
+    │   │   │   └── benchmark_data.json
+    │   │   ├── 100/
+    │   │   └── 200/
+    │   └── jpg/
+    │       └── 50/
+    ├── train/
+    │   └── png/
+    │       └── 50/
+    └── test/
+        └── png/
+            └── 50/
 ```
 
 **Granulation levels:**
-1. **Dataset type**: `beir` or `open_ragbench`
+1. **Dataset type**: `beir`, `open_ragbench`, or `slidevqa`
 2. **Dataset variant**: 
    - For BEIR: dataset name (`scifact`, `nfcorpus`, `nq`, etc.)
    - For OpenRAGBench: `arxiv` (corpus type)
+   - For SlideVQA: split (`train`, `val`, `test`) and format (`png`, `jpg`)
 3. **Number of samples**: `50`, `100`, `200`, etc.
 
 ## Quick Start
@@ -112,6 +131,21 @@ python scripts/generate_rag_datasets.py \
 # Result: s3://ai-eng-cracow/datasets/rag/beir/nfcorpus/50/
 ```
 
+#### SlideVQA Validation (50 samples)
+
+```bash
+python scripts/generate_rag_datasets.py \
+  --dataset slidevqa \
+  --slidevqa-split val \
+  --num-samples 50 \
+  --output-format png \
+  --upload-to-s3
+
+# Result: s3://ai-eng-cracow/datasets/rag/slidevqa/val/png/50/
+```
+
+> **Note:** SlideVQA requires accepting the dataset license at [HuggingFace](https://huggingface.co/datasets/NTT-hil-insight/SlideVQA) and authenticating with `huggingface-cli login`.
+
 ### Generate Locally (without S3 upload)
 
 ```bash
@@ -144,6 +178,15 @@ datasets:
     optimization_metric: "faithfulness"
     embeddings_models:
       - "vllm-embedding/bge-m3"
+
+  # SlideVQA Validation - 50 samples
+  - id: slidevqa-val-50
+    name: "SlideVQA Validation (50 samples)"
+    input_data_key: "datasets/rag/slidevqa/val/png/50/knowledge_base"
+    test_data_key: "datasets/rag/slidevqa/val/png/50/benchmark_data.json"
+    optimization_metric: "faithfulness"
+    embeddings_models:
+      - "vllm-embedding/bge-m3"
 ```
 
 The script automatically prints the correct YAML snippet after generation/upload.
@@ -164,6 +207,26 @@ Common BEIR datasets you can use with `--beir-dataset`:
 - `scidocs` - Scientific document retrieval
 
 See [BEIR documentation](https://github.com/beir-cellar/beir) for the full list.
+
+## SlideVQA Dataset
+
+SlideVQA is a Visual Question Answering dataset for presentation slides from the AAAI 2023 paper.
+
+**Dataset**: https://huggingface.co/datasets/NTT-hil-insight/SlideVQA  
+**Paper**: https://arxiv.org/abs/2301.04883
+
+**Available splits**:
+- `train` - Training set
+- `val` - Validation set (default)
+- `test` - Test set
+
+**Output formats**:
+- `png` - PNG images (default)
+- `jpg` - JPEG images
+
+**Requirements**:
+1. Accept the dataset license at the HuggingFace link above
+2. Authenticate with HuggingFace: `huggingface-cli login`
 
 ## Advanced Usage
 
@@ -223,8 +286,29 @@ python scripts/generate_rag_datasets.py \
   --upload-to-s3
 ```
 
+### SlideVQA with Different Splits and Formats
+
+```bash
+# Training set with JPEG format
+python scripts/generate_rag_datasets.py \
+  --dataset slidevqa \
+  --slidevqa-split train \
+  --output-format jpg \
+  --num-samples 100 \
+  --upload-to-s3
+
+# Test set with PNG format
+python scripts/generate_rag_datasets.py \
+  --dataset slidevqa \
+  --slidevqa-split test \
+  --output-format png \
+  --num-samples 50 \
+  --upload-to-s3
+```
+
 ## Programmatic Usage
 
+**OpenRAGBench example:**
 ```python
 from pathlib import Path
 from autorag_benchmark.datasets import get
@@ -244,13 +328,36 @@ num_docs, num_entries = prepare_fn(
 print(f"Generated {num_docs} documents and {num_entries} benchmark entries")
 ```
 
+**SlideVQA example:**
+```python
+from pathlib import Path
+from autorag_benchmark.datasets import get
+
+# Get dataset provider
+prepare_fn, default_options = get("slidevqa")
+
+# Generate dataset with PNG format
+kb_dir = Path("./slidevqa_kb")
+bench_path = Path("./slidevqa_benchmark.json")
+num_docs, num_entries = prepare_fn(
+    kb_dir,
+    bench_path,
+    num_samples=50,
+    split="val",
+    output_format="png",
+)
+
+print(f"Generated {num_docs} slide images and {num_entries} benchmark entries")
+```
+
 ## Output Formats
 
-The dataset generation supports three output formats:
+The dataset generation supports multiple output formats:
 
 ### Text Format (`.txt`) - Default
 
-Plain text files compatible with most RAG pipelines.
+Plain text files compatible with most RAG pipelines.  
+**Supported datasets**: BEIR, OpenRAGBench
 
 ### Markdown Format (`.md`)
 
@@ -266,11 +373,19 @@ title: "Open RAGBench Document 2404.00822v2"
 Document content...
 ```
 
+**Supported datasets**: BEIR, OpenRAGBench
+
 ### PDF Format (`.pdf`)
 
-Formatted PDF files (requires `reportlab`).
+Formatted PDF files (requires `reportlab`).  
+**Supported datasets**: BEIR, OpenRAGBench
 
-Use `--output-format {txt,md,pdf}` when running the generation script.
+### Image Formats (`.png`, `.jpg`)
+
+Slide deck images for visual question answering.  
+**Supported datasets**: SlideVQA only
+
+Use `--output-format {txt,md,pdf,png,jpg}` when running the generation script. Note that SlideVQA only supports image formats (png, jpg).
 
 ## Dataset Formats
 
@@ -280,13 +395,17 @@ Each dataset generates individual files with format-specific extensions:
 
 - **BEIR**: `beir_{dataset}_{doc_id}.{ext}`
 - **OpenRAGBench**: `open_ragbench_{doc_id}.{ext}`
+- **SlideVQA**: `slidevqa_{deck_id}_page_{page_num}.{ext}`
 
-Where `{ext}` is `txt`, `md`, or `pdf`.
+Where `{ext}` is:
+- `txt`, `md`, or `pdf` for BEIR and OpenRAGBench
+- `png` or `jpg` for SlideVQA
 
 ### Benchmark Data JSON
 
 Standard format used by all datasets:
 
+**BEIR / OpenRAGBench example:**
 ```json
 [
     {
@@ -296,6 +415,22 @@ Standard format used by all datasets:
         ],
         "correct_answer_document_ids": [
             "open_ragbench_2404.00822v2.txt"
+        ]
+    }
+]
+```
+
+**SlideVQA example:**
+```json
+[
+    {
+        "question": "What is shown in the slide?",
+        "correct_answers": [
+            "The slide shows a comparison chart..."
+        ],
+        "correct_answer_document_ids": [
+            "slidevqa_deck123_page_1.png",
+            "slidevqa_deck123_page_2.png"
         ]
     }
 ]
