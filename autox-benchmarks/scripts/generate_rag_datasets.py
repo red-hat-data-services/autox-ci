@@ -1,0 +1,325 @@
+#!/usr/bin/env python3
+"""
+Generate RAG benchmark datasets (BEIR, OpenRAGBench) and optionally upload to S3.
+
+This script generates knowledge base documents and benchmark Q&A pairs for use with
+the AutoRAG benchmark pipeline. Generated datasets can be stored locally or uploaded
+to S3 for use in the benchmarking workflow.
+
+Usage:
+  # Generate OpenRAGBench locally
+  python scripts/generate_rag_datasets.py --dataset open_ragbench --num-samples 10 \
+    --output-dir ./generated_datasets/open_ragbench
+
+  # Generate BEIR scifact locally
+  python scripts/generate_rag_datasets.py --dataset beir --beir-dataset scifact \
+    --num-samples 50 --output-dir ./generated_datasets/beir_scifact
+
+  # Generate and upload to S3 using credentials.ini (recommended)
+  # First, create config/credentials.ini with [s3] section:
+  #   [s3]
+  #   endpoint = https://s3.amazonaws.com
+  #   aws_access_key_id = YOUR_KEY
+  #   aws_secret_access_key = YOUR_SECRET
+  #   aws_default_region = us-east-1
+
+  # Upload to default structure: s3://ai-eng-cracow/datasets/rag/open_ragbench/arxiv/txt/50/
+  # Local output: ./generated_datasets/open_ragbench/txt/
+  python scripts/generate_rag_datasets.py --dataset open_ragbench --num-samples 50 \
+    --upload-to-s3
+
+  # Use custom credentials file
+  python scripts/generate_rag_datasets.py --dataset beir --beir-dataset scifact \
+    --num-samples 100 --upload-to-s3 --credentials /path/to/credentials.ini
+
+  # Or use environment variables (fallback)
+  export AWS_ACCESS_KEY_ID=...
+  export AWS_SECRET_ACCESS_KEY=...
+  python scripts/generate_rag_datasets.py --dataset open_ragbench --num-samples 50 \
+    --upload-to-s3
+
+Requirements:
+  pip install -r autox-benchmarks/requirements-dataset-gen.txt
+"""
+
+from __future__ import annotations
+
+import argparse
+import sys
+from pathlib import Path
+
+# Add parent to path so we can import autorag_benchmark
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Generate RAG benchmark datasets and optionally upload to S3",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=__doc__,
+    )
+
+    # Required arguments
+    parser.add_argument(
+        "--dataset",
+        required=True,
+        choices=["beir", "open_ragbench", "slidevqa"],
+        help="Dataset to generate",
+    )
+
+    # Output configuration
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        help="Local output directory (default: ./generated_datasets/{dataset_name}/{format})",
+    )
+    parser.add_argument(
+        "--num-samples",
+        type=int,
+        default=50,
+        help="Number of samples to generate (default: 50)",
+    )
+    parser.add_argument(
+        "--output-format",
+        choices=["txt", "md", "pdf", "png", "jpg"],
+        default="txt",
+        help="Output format for knowledge base documents (default: txt)",
+    )
+
+    # BEIR-specific options
+    parser.add_argument(
+        "--beir-dataset",
+        default="scifact",
+        help="BEIR dataset name (e.g., scifact, nfcorpus, nq) - only for --dataset beir (default: scifact)",
+    )
+    parser.add_argument(
+        "--beir-split",
+        default="test",
+        help="BEIR dataset split (e.g., train, test, dev) - only for --dataset beir (default: test)",
+    )
+
+    # SlideVQA-specific options
+    parser.add_argument(
+        "--slidevqa-split",
+        default="val",
+        help="SlideVQA dataset split (train, val, test) - only for --dataset slidevqa (default: val)",
+    )
+
+    # S3 upload options
+    parser.add_argument(
+        "--upload-to-s3",
+        action="store_true",
+        help="Upload generated dataset to S3 after generation",
+    )
+    parser.add_argument(
+        "--credentials",
+        type=Path,
+        help="Path to credentials.ini file (default: config/credentials.ini)",
+    )
+    parser.add_argument(
+        "--s3-bucket",
+        default="ai-eng-cracow",
+        help="S3 bucket name (default: ai-eng-cracow)",
+    )
+    parser.add_argument(
+        "--s3-prefix",
+        help="S3 key prefix (default: datasets/rag/{dataset_type}/{variant}/{num_samples})",
+    )
+
+    args = parser.parse_args()
+
+    # Import dataset registry
+    from autorag_benchmark.datasets import get, list_datasets
+
+    try:
+        prepare_fn, default_options = get(args.dataset)
+    except KeyError:
+        print(f"Error: Unknown dataset '{args.dataset}'", file=sys.stderr)
+        print(f"Available datasets: {', '.join(list_datasets())}", file=sys.stderr)
+        sys.exit(1)
+
+    # Determine output directory (include format to prevent conflicts)
+    if args.output_dir is None:
+        dataset_name = args.dataset
+        if args.dataset == "beir":
+            dataset_name = f"beir_{args.beir_dataset}"
+        elif args.dataset == "slidevqa":
+            dataset_name = f"slidevqa_{args.slidevqa_split}"
+        args.output_dir = Path("./generated_datasets") / dataset_name / args.output_format
+
+    kb_dir = args.output_dir / "knowledge_base"
+    bench_path = args.output_dir / "benchmark_data.json"
+
+    # Build options for prepare function
+    options = dict(default_options)
+    options["num_samples"] = args.num_samples
+    options["output_format"] = args.output_format
+
+    if args.dataset == "beir":
+        options["beir_dataset"] = args.beir_dataset
+        options["split"] = args.beir_split
+    elif args.dataset == "slidevqa":
+        options["split"] = args.slidevqa_split
+
+    # Generate dataset
+    print(f"\n{'='*60}")
+    print(f"Generating {args.dataset} dataset")
+    print(f"{'='*60}")
+    print(f"Output directory: {args.output_dir}")
+    print(f"Number of samples: {args.num_samples}")
+    print(f"Output format: {args.output_format}")
+    if args.dataset == "beir":
+        print(f"BEIR dataset: {args.beir_dataset}")
+        print(f"BEIR split: {args.beir_split}")
+    elif args.dataset == "slidevqa":
+        print(f"SlideVQA split: {args.slidevqa_split}")
+    print()
+
+    try:
+        num_docs, num_entries = prepare_fn(kb_dir, bench_path, **options)
+    except Exception as e:
+        print(f"\nError generating dataset: {e}", file=sys.stderr)
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
+
+    print(f"\n{'='*60}")
+    print(f"Generation complete!")
+    print(f"{'='*60}")
+    print(f"Documents: {num_docs}")
+    print(f"Benchmark entries: {num_entries}")
+    print(f"Knowledge base: {kb_dir}")
+    print(f"Benchmark data: {bench_path}")
+    print()
+
+    # Upload to S3 if requested
+    input_data_key = None
+    test_data_key = None
+
+    if args.upload_to_s3:
+        # Import S3 utilities
+        from autorag_benchmark.s3_dataset_upload import (
+            upload_dataset_to_s3,
+            ensure_s3_bucket_exists,
+            get_s3_boto_config,
+        )
+
+        # Get S3 config from credentials.ini or environment
+        s3_config = get_s3_boto_config(args.credentials)
+        if not s3_config:
+            print("\nError: S3 credentials not found", file=sys.stderr)
+            print("\nOption 1 - Credentials file (recommended):", file=sys.stderr)
+            if args.credentials:
+                print(f"  File not found or missing [s3] section: {args.credentials}", file=sys.stderr)
+            else:
+                print("  Create config/credentials.ini with [s3] section:", file=sys.stderr)
+                print("    endpoint = https://s3.amazonaws.com", file=sys.stderr)
+                print("    aws_access_key_id = YOUR_KEY", file=sys.stderr)
+                print("    aws_secret_access_key = YOUR_SECRET", file=sys.stderr)
+                print("    aws_default_region = us-east-1", file=sys.stderr)
+                print("  Or use --credentials path/to/credentials.ini", file=sys.stderr)
+            print("\nOption 2 - Environment variables:", file=sys.stderr)
+            print("  export AWS_ACCESS_KEY_ID=...", file=sys.stderr)
+            print("  export AWS_SECRET_ACCESS_KEY=...", file=sys.stderr)
+            print("  export AWS_DEFAULT_REGION=us-east-1", file=sys.stderr)
+            print("  export AWS_S3_ENDPOINT=https://s3.amazonaws.com  # optional", file=sys.stderr)
+            sys.exit(1)
+
+        # Create S3 client
+        import boto3
+
+        s3_client = boto3.client("s3", **s3_config)
+
+        # Ensure bucket exists
+        region = s3_config.get("region_name", "us-east-1")
+        try:
+            ensure_s3_bucket_exists(s3_client, args.s3_bucket, region=region)
+        except Exception as e:
+            print(f"\nError ensuring S3 bucket exists: {e}", file=sys.stderr)
+            sys.exit(1)
+
+        # Determine S3 prefix with proper granulation including format
+        if args.s3_prefix is None:
+            if args.dataset == "beir":
+                # Structure: datasets/rag/beir/{beir_dataset}/{format}/{num_samples}
+                args.s3_prefix = f"datasets/rag/beir/{args.beir_dataset}/{args.output_format}/{args.num_samples}"
+            elif args.dataset == "open_ragbench":
+                # Structure: datasets/rag/open_ragbench/arxiv/{format}/{num_samples}
+                args.s3_prefix = f"datasets/rag/open_ragbench/arxiv/{args.output_format}/{args.num_samples}"
+            elif args.dataset == "slidevqa":
+                # Structure: datasets/rag/slidevqa/{split}/{format}/{num_samples}
+                args.s3_prefix = f"datasets/rag/slidevqa/{args.slidevqa_split}/{args.output_format}/{args.num_samples}"
+            else:
+                # Fallback for other datasets
+                args.s3_prefix = f"datasets/rag/{args.dataset}/{args.output_format}/{args.num_samples}"
+
+        # Upload
+        print(f"\n{'='*60}")
+        print(f"Uploading to S3")
+        print(f"{'='*60}")
+        print(f"Bucket: {args.s3_bucket}")
+        print(f"Prefix: {args.s3_prefix}")
+        print()
+
+        try:
+            input_data_key, test_data_key = upload_dataset_to_s3(
+                s3_client,
+                local_kb_dir=kb_dir,
+                local_bench_path=bench_path,
+                bucket=args.s3_bucket,
+                prefix=args.s3_prefix,
+            )
+        except Exception as e:
+            print(f"\nError uploading to S3: {e}", file=sys.stderr)
+            import traceback
+            traceback.print_exc()
+            sys.exit(1)
+
+    # Print manifest YAML snippet
+    print(f"\n{'='*60}")
+    print(f"Add to dataset_manifest.yaml:")
+    print(f"{'='*60}")
+
+    # Generate dataset ID
+    dataset_id = args.dataset
+    dataset_name = args.dataset.replace("_", " ").title()
+
+    if args.dataset == "beir":
+        dataset_id = f"beir-{args.beir_dataset}-{args.num_samples}"
+        dataset_name = f"BEIR {args.beir_dataset.title()} ({args.num_samples} samples)"
+    elif args.dataset == "open_ragbench":
+        dataset_id = f"open-ragbench-arxiv-{args.num_samples}"
+        dataset_name = f"Open RAGBench ArXiv ({args.num_samples} samples)"
+    elif args.dataset == "slidevqa":
+        dataset_id = f"slidevqa-{args.slidevqa_split}-{args.num_samples}"
+        dataset_name = f"SlideVQA {args.slidevqa_split.title()} ({args.num_samples} samples)"
+
+    if args.upload_to_s3:
+        print(f"""
+- id: {dataset_id}
+  name: "{dataset_name}"
+  input_data_key: "{input_data_key}"
+  test_data_key: "{test_data_key}"
+  optimization_metric: "faithfulness"
+  embeddings_models:
+    - "vllm-embedding/bge-m3"
+""")
+    else:
+        print(f"""
+# Dataset generated locally at: {args.output_dir}
+# Upload to S3 first using --upload-to-s3 flag, then add entry like:
+#
+# - id: {dataset_id}
+#   name: "{dataset_name}"
+#   input_data_key: "your-s3-prefix/knowledge_base"
+#   test_data_key: "your-s3-prefix/benchmark_data.json"
+#   optimization_metric: "faithfulness"
+#   embeddings_models:
+#     - "vllm-embedding/bge-m3"
+""")
+
+    print(f"{'='*60}\n")
+
+
+if __name__ == "__main__":
+    main()

@@ -65,11 +65,21 @@ def load_credentials_ini(path: Path) -> dict[str, Any]:
             "timeseries_package_path",
             "input_data_secret_name",
             "test_data_secret_name",
+            "ogx_secret_name",
+            "vector_io_provider_id",
+            # Legacy names for backwards compatibility
             "llama_stack_secret_name",
             "llama_stack_vector_io_provider_id",
         ):
             if raw.get(key):
                 pl[key] = raw[key]
+
+        # Map legacy names to new names if new names not present
+        if "llama_stack_secret_name" in pl and "ogx_secret_name" not in pl:
+            pl["ogx_secret_name"] = pl["llama_stack_secret_name"]
+        if "llama_stack_vector_io_provider_id" in pl and "vector_io_provider_id" not in pl:
+            pl["vector_io_provider_id"] = pl["llama_stack_vector_io_provider_id"]
+
         if pl:
             out["pipeline"] = pl
 

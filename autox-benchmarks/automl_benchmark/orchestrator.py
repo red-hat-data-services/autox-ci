@@ -37,7 +37,7 @@ from automl_benchmark.s3_benchmark_upload import (
     upload_batch_aggregated,
     upload_single_dataset_results,
 )
-from automl_benchmark.s3_client import s3_cfg_usable
+from benchmark_common.s3_client import s3_cfg_usable
 from automl_benchmark.s3_experiment_dedupe import try_load_cached_result_row
 
 logger = logging.getLogger(__name__)

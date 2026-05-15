@@ -22,8 +22,8 @@ def build_pipeline_arguments(
         "test_data_bucket_name": settings.test_data_bucket_name,
         "test_data_secret_name": settings.test_data_secret_name,
         "test_data_key": str(dataset["test_data_key"]),
-        "llama_stack_secret_name": settings.llama_stack_secret_name,
-        "llama_stack_vector_io_provider_id": settings.llama_stack_vector_io_provider_id,
+        "ogx_secret_name": settings.ogx_secret_name,
+        "vector_io_provider_id": settings.vector_io_provider_id,
     }
 
     if "input_data_key" in dataset and dataset["input_data_key"]:
@@ -39,7 +39,8 @@ def build_pipeline_arguments(
     else:
         args["optimization_max_rag_patterns"] = settings.optimization_max_rag_patterns
 
-    for model_type in ("embedding_models", "retrieval_models", "generation_models"):
+    # Handle model lists (embedding_models and generation_models)
+    for model_type in ("embedding_models", "generation_models"):
         if model_type in dataset and isinstance(dataset[model_type], list):
             args[model_type] = dataset[model_type]
 
