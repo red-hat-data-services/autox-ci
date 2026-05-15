@@ -19,6 +19,7 @@ from autorag_benchmark.result_rows import (
 from autorag_benchmark.settings import BenchmarkSettings, benchmark_settings_from_config
 from benchmark_common.kfp_client import create_kfp_client
 from benchmark_common.manifest import load_dataset_entries
+from benchmark_common.pipeline_package_resolve import resolve_autorag_pipeline_package_path
 from benchmark_common.pipeline_run import extract_run_id, submit_pipeline_package, wait_for_terminal_run
 from benchmark_common.results_csv import write_results_csv
 from benchmark_common.run_state import is_success_state
@@ -43,8 +44,13 @@ class BenchmarkOrchestrator:
         self.config_path = config_path.resolve()
         self.credentials_ini_path = credentials_ini_path
 
-    def load_config_and_datasets(self) -> tuple[dict[str, Any], BenchmarkSettings, list[dict[str, Any]]]:
+    def load_config_and_datasets(
+        self,
+        *,
+        package_path_cli: str | None = None,
+    ) -> tuple[dict[str, Any], BenchmarkSettings, list[dict[str, Any]]]:
         cfg, config_dir = load_merged_benchmark_config(self.config_path, self.credentials_ini_path)
+        resolve_autorag_pipeline_package_path(cfg, config_dir, cli_package=package_path_cli)
         settings = benchmark_settings_from_config(cfg, config_dir)
         datasets = load_dataset_entries(cfg, config_dir)
         return cfg, settings, datasets
@@ -56,9 +62,10 @@ class BenchmarkOrchestrator:
         dry_run: bool = False,
         fail_fast: bool = False,
         dataset_filter: str = "all",
+        package_path_cli: str | None = None,
     ) -> int:
         try:
-            _cfg, settings, datasets = self.load_config_and_datasets()
+            cfg, settings, datasets = self.load_config_and_datasets(package_path_cli=package_path_cli)
         except Exception as e:
             logger.error("%s", e)
             return 1

@@ -39,6 +39,7 @@ from automl_benchmark.s3_benchmark_upload import (
 )
 from automl_benchmark.s3_client import s3_cfg_usable
 from automl_benchmark.s3_experiment_dedupe import try_load_cached_result_row
+from benchmark_common.pipeline_package_resolve import resolve_automl_pipeline_package_paths
 
 logger = logging.getLogger(__name__)
 
@@ -135,10 +136,33 @@ class BenchmarkOrchestrator:
 
     def load_config_and_datasets(
         self,
+        *,
+        dataset_filter: str = "all",
+        tabular_package_path_cli: str | None = None,
+        timeseries_package_path_cli: str | None = None,
     ) -> tuple[dict[str, Any], BenchmarkSettings, list[dict[str, Any]], Path]:
         cfg, config_dir = load_merged_benchmark_config(self.config_path, self.credentials_ini_path)
-        settings = benchmark_settings_from_config(cfg, config_dir)
         datasets = load_dataset_entries(cfg, config_dir)
+
+        needs_tabular = False
+        needs_ts = False
+        for ds in datasets:
+            if not _dataset_matches_filter(ds, dataset_filter):
+                continue
+            if is_timeseries_dataset(ds):
+                needs_ts = True
+            else:
+                needs_tabular = True
+
+        resolve_automl_pipeline_package_paths(
+            cfg,
+            config_dir,
+            cli_tabular=tabular_package_path_cli,
+            cli_timeseries=timeseries_package_path_cli,
+            needs_tabular=needs_tabular,
+            needs_timeseries=needs_ts,
+        )
+        settings = benchmark_settings_from_config(cfg, config_dir)
         return cfg, settings, datasets, config_dir
 
     def execute(
@@ -149,9 +173,15 @@ class BenchmarkOrchestrator:
         fail_fast: bool = False,
         dataset_filter: str = "all",
         skip_identical_runs: bool = True,
+        tabular_package_path_cli: str | None = None,
+        timeseries_package_path_cli: str | None = None,
     ) -> int:
         try:
-            cfg, settings, datasets, _ = self.load_config_and_datasets()
+            cfg, settings, datasets, _ = self.load_config_and_datasets(
+                dataset_filter=dataset_filter,
+                tabular_package_path_cli=tabular_package_path_cli,
+                timeseries_package_path_cli=timeseries_package_path_cli,
+            )
         except Exception as e:
             logger.error("%s", e)
             return 1

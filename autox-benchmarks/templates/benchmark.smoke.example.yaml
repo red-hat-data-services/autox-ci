@@ -1,4 +1,5 @@
 # Smoke test layout (non-secret). Set kfp / storage / pipeline secret name in credentials.ini only.
+# Uses checked-in pipeline YAML for fast offline runs (override with compile: {} like benchmark.example.yaml).
 
 pipeline:
   package_path: "../pipelines/autogluon-tabular-training-pipeline.yaml"

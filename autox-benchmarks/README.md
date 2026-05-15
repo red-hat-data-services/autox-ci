@@ -12,7 +12,9 @@ Install from the repo root: `pip install -e .` (see [pyproject.toml](pyproject.t
 
 ## AutoRAG benchmarks
 
-Use a separate YAML + manifest shaped for RAG (`test_data_key` per dataset; optional `input_data_key`). Copy [templates/benchmark.autorag.example.yaml](templates/benchmark.autorag.example.yaml) and [templates/dataset_manifest.autorag.example.yaml](templates/dataset_manifest.autorag.example.yaml). In `credentials.ini`, set **`input_data_bucket_name`**, **`test_data_bucket_name`**, **`input_data_secret_name`**, **`test_data_secret_name`**, **`llama_stack_secret_name`**, and **`llama_stack_vector_io_provider_id`** (see commented blocks in [templates/credentials.example.ini](templates/credentials.example.ini)).
+Use a separate YAML + manifest shaped for RAG (`test_data_key` per dataset; optional `input_data_key`). Copy [templates/benchmark.autorag.example.yaml](templates/benchmark.autorag.example.yaml) and [templates/dataset_manifest.autorag.example.yaml](templates/dataset_manifest.autorag.example.yaml). By default the orchestrator **compiles** the RAG `pipeline.py` from [opendatahub-io/pipelines-components](https://github.com/opendatahub-io/pipelines-components) (same requirements as AutoML: `git`, network, Python 3.11+ for the compile venv). Set `pipeline.package_path` to an existing YAML to skip compile, or pass **`--package-path`**.
+
+In `credentials.ini`, set **`input_data_bucket_name`**, **`test_data_bucket_name`**, **`input_data_secret_name`**, **`test_data_secret_name`**, **`llama_stack_secret_name`**, and **`llama_stack_vector_io_provider_id`** (see commented blocks in [templates/credentials.example.ini](templates/credentials.example.ini)).
 
 ```bash
 python scripts/autorag_benchmark_orchestrator.py --config config/benchmark.yaml --credentials config/credentials.ini --output results/rag_benchmark_runs.csv
@@ -32,8 +34,8 @@ Complete the checklist below; placeholders in the template commands section mirr
    - **Skip duplicate experiments** (default **on**): If `[s3]` can read `benchmarks/experiment_index/v1/{fingerprint}.json`, the orchestrator reuses the stored `results.csv` row instead of submitting KFP again. Pass **`--rerun-identical-experiments`** to force new pipeline runs.
 
 2. **`config/benchmark.yaml`** (copy from `templates/benchmark.example.yaml`)
-   - **`pipeline.package_path`**: compiled **tabular** AutoGluon pipeline IR (default: `../pipelines/autogluon-tabular-training-pipeline.yaml` relative to this file’s directory).
-   - **`pipeline.timeseries_package_path`**: compiled **time series** pipeline IR (default: `../pipelines/autogluon-timeseries-training-pipeline.yaml`). Override in `credentials.ini` `[pipeline]` if needed.
+   - **`pipeline.compile`** (default): shallow-clone [opendatahub-io/pipelines-components](https://github.com/opendatahub-io/pipelines-components), install it in an **isolated venv** (Python **3.11+** required for compile; orchestrator may run on 3.10), and run each training `pipeline.py` to emit the same IR as checked-in `../pipelines/*.yaml`. Optional keys: `git_url`, `git_ref`, `tabular_entrypoint`, `timeseries_entrypoint`. Cache directory: `$XDG_CACHE_HOME/autox-benchmarks/pipeline-compile` or `~/.cache/autox-benchmarks/pipeline-compile`.
+   - **Static IR**: set **`pipeline.package_path`** and/or **`pipeline.timeseries_package_path`** to existing YAML files (paths relative to this YAML’s directory) to **skip** Git compile for that slot. You can also set those keys in `credentials.ini` `[pipeline]` (merged on top of YAML).
    - **`dataset_manifest_path`**: manifest of datasets (path relative to this YAML’s directory).
    - **`run`**: optional tuning (`top_n`, timeouts, caching, run name prefix).
 
@@ -43,7 +45,7 @@ Complete the checklist below; placeholders in the template commands section mirr
 
    Start from `templates/dataset_manifest.example.yaml` or generate tabular/regression manifests (see below). Ensure objects exist in the bucket at the keys you declare.
 
-4. **Pipeline packages**: the compiled YAML files referenced by `pipeline.package_path` and `pipeline.timeseries_package_path` must exist. The orchestrator uses the tabular package for non-`timeseries` rows and the time series package when `task_type` is `timeseries`.
+4. **Pipeline packages**: either rely on **compile-from-Git** (default in the template) or provide local YAML via `pipeline.package_path` / `pipeline.timeseries_package_path`. The orchestrator picks the tabular package for non-`timeseries` rows and the time series package when `task_type` is `timeseries`. CLI overrides: **`--tabular-package-path`**, **`--timeseries-package-path`**.
 
 ## Template commands
 
@@ -81,6 +83,9 @@ python scripts/benchmark_orchestrator.py --dataset-filter timeseries --dry-run
 
 # Ignore S3 experiment cache and always submit pipelines (same fingerprint as a prior run)
 python scripts/benchmark_orchestrator.py --rerun-identical-experiments --output results/benchmark_runs.csv
+
+# Force static compiled pipeline YAML (skip Git compile for that slot)
+python scripts/benchmark_orchestrator.py --tabular-package-path ../pipelines/autogluon-tabular-training-pipeline.yaml --dry-run
 ```
 
 Optional: build a long-form summary from the runs CSV (see `scripts/summarize_benchmark_results.py --help`).

@@ -56,6 +56,13 @@ def main(argv: list[str] | None = None) -> int:
         help="Dataset filter (only 'all' supported for RAG benchmarks)",
     )
     parser.add_argument("-v", "--verbose", action="store_true")
+    parser.add_argument(
+        "--package-path",
+        type=str,
+        default=None,
+        metavar="PATH",
+        help="Use this compiled RAG pipeline YAML (skips Git compile)",
+    )
     args = parser.parse_args(argv)
 
     logging.basicConfig(
@@ -77,6 +84,7 @@ def main(argv: list[str] | None = None) -> int:
         dry_run=args.dry_run,
         fail_fast=args.fail_fast,
         dataset_filter=args.dataset_filter,
+        package_path_cli=args.package_path,
     )
 
 

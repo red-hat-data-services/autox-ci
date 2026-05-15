@@ -3,7 +3,11 @@
 # Run with: python scripts/autorag_benchmark_orchestrator.py --config config/benchmark.yaml
 
 pipeline:
-  package_path: "../pipelines/documents-rag-optimization-pipeline.yaml"
+  compile: {}
+  # Optional: same keys as AutoML (git_url, git_ref) plus:
+  # autorag_entrypoint: "pipelines/training/autorag/documents_rag_optimization_pipeline/pipeline.py"
+  # Static IR (optional). If set and the file exists, Git compile is skipped.
+  # package_path: "../pipelines/documents-rag-optimization-pipeline.yaml"
 
 run:
   optimization_metric: faithfulness

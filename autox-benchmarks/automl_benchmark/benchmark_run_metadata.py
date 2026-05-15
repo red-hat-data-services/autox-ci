@@ -221,8 +221,10 @@ def build_batch_metadata(
     row_count: int,
     output_csv_relative: str,
     repo_root: Path | None,
+    aggregated_pipeline_ir: list[dict[str, Any]] | None = None,
+    joined_results_s3_key: str | None = None,
 ) -> dict[str, Any]:
-    return {
+    out: dict[str, Any] = {
         "schema_version": SCHEMA_VERSION,
         "batch_id": batch_id,
         "started_at": started_at,
@@ -235,6 +237,11 @@ def build_batch_metadata(
         "benchmark_row_count": row_count,
         "local_output_csv": output_csv_relative,
     }
+    if aggregated_pipeline_ir:
+        out["aggregated_pipeline_ir"] = aggregated_pipeline_ir
+    if joined_results_s3_key:
+        out["joined_results_s3_key"] = joined_results_s3_key
+    return out
 
 
 def sanitize_path_segment(s: str) -> str:
