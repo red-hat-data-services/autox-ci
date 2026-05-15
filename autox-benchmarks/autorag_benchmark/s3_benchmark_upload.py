@@ -2,67 +2,22 @@
 
 from __future__ import annotations
 
-import csv
-import io
 import json
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from benchmark_common.s3_client import s3_cfg_usable
+from benchmark_common.s3_upload import (
+    build_batch_id,
+    join_s3_key,
+    put_s3_bytes,
+    row_to_csv_bytes,
+)
 from autorag_benchmark.settings import BenchmarkSettings
 
 logger = logging.getLogger(__name__)
-
-
-def build_batch_id() -> str:
-    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-
-
-def _join_key(*parts: str) -> str:
-    return "/".join(p.strip().strip("/") for p in parts if p and str(p).strip())
-
-
-def _row_to_csv_bytes(row: dict[str, Any]) -> bytes:
-    keys = sorted(row.keys())
-    buf = io.StringIO()
-    w = csv.DictWriter(buf, fieldnames=keys, extrasaction="ignore")
-    w.writeheader()
-    w.writerow({k: "" if row.get(k) is None else row.get(k) for k in keys})
-    return buf.getvalue().encode("utf-8")
-
-
-def _s3_cfg_usable(s3_cfg: dict[str, Any]) -> bool:
-    """Check if S3 config has required keys."""
-    return bool(
-        s3_cfg.get("endpoint_url")
-        and s3_cfg.get("aws_access_key_id")
-        and s3_cfg.get("aws_secret_access_key")
-    )
-
-
-def _make_s3_client(s3_cfg: dict[str, Any]) -> Any:
-    """Create boto3 S3 client from config dict."""
-    import boto3
-
-    return boto3.client("s3", **s3_cfg)
-
-
-def _put_s3_bytes(
-    *,
-    s3_cfg: dict[str, Any],
-    bucket: str,
-    key: str,
-    body: bytes,
-    content_type: str,
-) -> None:
-    client = _make_s3_client(s3_cfg)
-    client.put_object(
-        Bucket=bucket,
-        Key=key,
-        Body=body,
-        ContentType=content_type,
-    )
 
 
 def _dataset_results_subpath(dataset: dict[str, Any]) -> str:
@@ -166,11 +121,11 @@ def upload_single_dataset_results(
     repo_root: Path | None,
 ) -> None:
     """Upload results and metadata for a single dataset run to S3."""
-    if not settings.upload_benchmark_results or not _s3_cfg_usable(s3_cfg):
+    if not settings.upload_benchmark_results or not s3_cfg_usable(s3_cfg):
         return
 
     sub = _dataset_results_subpath(dataset)
-    prefix = _join_key(settings.benchmark_s3_prefix, batch_id, "datasets", sub)
+    prefix = join_s3_key(settings.benchmark_s3_prefix, batch_id, "datasets", sub)
 
     meta = _build_run_metadata(
         row=row,
@@ -187,20 +142,20 @@ def upload_single_dataset_results(
     )
 
     meta_body = json.dumps(meta, indent=2, default=str).encode("utf-8")
-    results_body = _row_to_csv_bytes(row)
+    results_body = row_to_csv_bytes(row)
 
     try:
-        _put_s3_bytes(
+        put_s3_bytes(
             s3_cfg=s3_cfg,
             bucket=bucket,
-            key=_join_key(prefix, "metadata.json"),
+            key=join_s3_key(prefix, "metadata.json"),
             body=meta_body,
             content_type="application/json; charset=utf-8",
         )
-        _put_s3_bytes(
+        put_s3_bytes(
             s3_cfg=s3_cfg,
             bucket=bucket,
-            key=_join_key(prefix, "results.csv"),
+            key=join_s3_key(prefix, "results.csv"),
             body=results_body,
             content_type="text/csv; charset=utf-8",
         )
@@ -223,10 +178,10 @@ def upload_batch_aggregated(
     repo_root: Path | None,
 ) -> None:
     """Upload aggregated batch results and metadata to S3."""
-    if not settings.upload_benchmark_results or not _s3_cfg_usable(s3_cfg):
+    if not settings.upload_benchmark_results or not s3_cfg_usable(s3_cfg):
         return
 
-    agg_prefix = _join_key(settings.benchmark_s3_prefix, batch_id, "aggregated")
+    agg_prefix = join_s3_key(settings.benchmark_s3_prefix, batch_id, "aggregated")
     finished_at = datetime.now(timezone.utc).isoformat()
     manifest_rel = str(cfg.get("dataset_manifest_path") or "")
 
@@ -252,19 +207,19 @@ def upload_batch_aggregated(
     batch_meta["cli_dataset_filter"] = dataset_filter
 
     try:
-        _put_s3_bytes(
+        put_s3_bytes(
             s3_cfg=s3_cfg,
             bucket=bucket,
-            key=_join_key(agg_prefix, "batch_metadata.json"),
+            key=join_s3_key(agg_prefix, "batch_metadata.json"),
             body=json.dumps(batch_meta, indent=2, default=str).encode("utf-8"),
             content_type="application/json; charset=utf-8",
         )
 
         if output_csv.is_file():
-            _put_s3_bytes(
+            put_s3_bytes(
                 s3_cfg=s3_cfg,
                 bucket=bucket,
-                key=_join_key(agg_prefix, "benchmark_runs.csv"),
+                key=join_s3_key(agg_prefix, "benchmark_runs.csv"),
                 body=output_csv.read_bytes(),
                 content_type="text/csv; charset=utf-8",
             )

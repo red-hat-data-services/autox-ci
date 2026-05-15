@@ -1,7 +1,7 @@
 """Document format handlers for dataset generation.
 
-Supports saving documents in native formats: txt, md.
-Note: PDF support is only for native PDFs (OpenRAGBench), not text-to-PDF conversion.
+Supports saving documents in native formats: txt, md, pptx, and images (png, jpg).
+Note: PDF/PPTX support is only for native files, not text conversion.
 """
 
 from __future__ import annotations
@@ -9,7 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Literal
 
-DocumentFormat = Literal["txt", "md", "pdf"]
+DocumentFormat = Literal["txt", "md", "pdf", "pptx", "png", "jpg"]
 
 
 def save_document(
@@ -18,7 +18,7 @@ def save_document(
     format: DocumentFormat = "txt",
     metadata: dict | None = None,
 ) -> Path:
-    """Save document content in the specified format.
+    """Save document text content in the specified format.
 
     Args:
         content: Document text content
@@ -30,18 +30,17 @@ def save_document(
         Path to the created file
 
     Note:
-        PDF format is not supported for text conversion.
-        Use format="pdf" only with native PDF downloads (OpenRAGBench).
+        This function is for text content only. For binary formats (PDF, PPTX, images),
+        use save_binary_document() instead.
     """
     if format == "txt":
         return _save_txt(content, output_path)
     elif format == "md":
         return _save_markdown(content, output_path, metadata)
-    elif format == "pdf":
+    elif format in ("pdf", "pptx", "png", "jpg"):
         raise ValueError(
-            "PDF text conversion is not supported. "
-            "Use format='txt' or 'md'. "
-            "For OpenRAGBench, native PDFs are downloaded directly from ArXiv."
+            f"Format '{format}' requires binary data. "
+            f"Use save_binary_document() for {format} files, or use format='txt'/'md' for text content."
         )
     else:
         raise ValueError(f"Unsupported format: {format}. Use 'txt' or 'md'")
@@ -73,6 +72,35 @@ def _save_markdown(content: str, output_path: Path, metadata: dict | None = None
     return md_path
 
 
+def save_binary_document(
+    binary_data: bytes,
+    output_path: Path,
+    format: DocumentFormat,
+) -> Path:
+    """Save binary document data (PDF, PPTX, images).
+
+    Args:
+        binary_data: Binary file content
+        output_path: Output path (extension will be replaced based on format)
+        format: Output format - "pdf", "pptx", "png", or "jpg"
+
+    Returns:
+        Path to the created file
+
+    Raises:
+        ValueError: If format is not a binary format
+    """
+    if format not in ("pdf", "pptx", "png", "jpg"):
+        raise ValueError(
+            f"Format '{format}' is not a binary format. "
+            f"Use save_document() for text formats like 'txt' or 'md'."
+        )
+
+    output_file = output_path.with_suffix(f".{format}")
+    output_file.write_bytes(binary_data)
+    return output_file
+
+
 def get_file_extension(format: DocumentFormat) -> str:
     """Get file extension for a given format.
 
@@ -88,5 +116,6 @@ def get_file_extension(format: DocumentFormat) -> str:
 __all__ = [
     "DocumentFormat",
     "save_document",
+    "save_binary_document",
     "get_file_extension",
 ]

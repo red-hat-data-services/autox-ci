@@ -36,8 +36,9 @@ def list_datasets() -> list[str]:
 
 
 # Register built-in datasets (import triggers registration)
-from autorag_benchmark.datasets import open_ragbench  # noqa: E402, F401
 from autorag_benchmark.datasets import beir  # noqa: E402, F401
+from autorag_benchmark.datasets import open_ragbench  # noqa: E402, F401
+from autorag_benchmark.datasets import slidevqa  # noqa: E402, F401
 
 __all__ = [
     "REGISTRY",

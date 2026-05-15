@@ -63,7 +63,7 @@ def main():
     parser.add_argument(
         "--dataset",
         required=True,
-        choices=["beir", "open_ragbench"],
+        choices=["beir", "open_ragbench", "slidevqa"],
         help="Dataset to generate",
     )
 
@@ -81,7 +81,7 @@ def main():
     )
     parser.add_argument(
         "--output-format",
-        choices=["txt", "md", "pdf"],
+        choices=["txt", "md", "pdf", "png", "jpg"],
         default="txt",
         help="Output format for knowledge base documents (default: txt)",
     )
@@ -96,6 +96,13 @@ def main():
         "--beir-split",
         default="test",
         help="BEIR dataset split (e.g., train, test, dev) - only for --dataset beir (default: test)",
+    )
+
+    # SlideVQA-specific options
+    parser.add_argument(
+        "--slidevqa-split",
+        default="validation",
+        help="SlideVQA dataset split (train, validation, test) - only for --dataset slidevqa (default: validation)",
     )
 
     # S3 upload options
@@ -136,6 +143,8 @@ def main():
         dataset_name = args.dataset
         if args.dataset == "beir":
             dataset_name = f"beir_{args.beir_dataset}"
+        elif args.dataset == "slidevqa":
+            dataset_name = f"slidevqa_{args.slidevqa_split}"
         args.output_dir = Path("./generated_datasets") / dataset_name / args.output_format
 
     kb_dir = args.output_dir / "knowledge_base"
@@ -149,6 +158,8 @@ def main():
     if args.dataset == "beir":
         options["beir_dataset"] = args.beir_dataset
         options["split"] = args.beir_split
+    elif args.dataset == "slidevqa":
+        options["split"] = args.slidevqa_split
 
     # Generate dataset
     print(f"\n{'='*60}")
@@ -160,6 +171,8 @@ def main():
     if args.dataset == "beir":
         print(f"BEIR dataset: {args.beir_dataset}")
         print(f"BEIR split: {args.beir_split}")
+    elif args.dataset == "slidevqa":
+        print(f"SlideVQA split: {args.slidevqa_split}")
     print()
 
     try:
@@ -233,6 +246,9 @@ def main():
             elif args.dataset == "open_ragbench":
                 # Structure: datasets/rag/open_ragbench/arxiv/{format}/{num_samples}
                 args.s3_prefix = f"datasets/rag/open_ragbench/arxiv/{args.output_format}/{args.num_samples}"
+            elif args.dataset == "slidevqa":
+                # Structure: datasets/rag/slidevqa/{split}/{format}/{num_samples}
+                args.s3_prefix = f"datasets/rag/slidevqa/{args.slidevqa_split}/{args.output_format}/{args.num_samples}"
             else:
                 # Fallback for other datasets
                 args.s3_prefix = f"datasets/rag/{args.dataset}/{args.output_format}/{args.num_samples}"
@@ -274,6 +290,9 @@ def main():
     elif args.dataset == "open_ragbench":
         dataset_id = f"open-ragbench-arxiv-{args.num_samples}"
         dataset_name = f"Open RAGBench ArXiv ({args.num_samples} samples)"
+    elif args.dataset == "slidevqa":
+        dataset_id = f"slidevqa-{args.slidevqa_split}-{args.num_samples}"
+        dataset_name = f"SlideVQA {args.slidevqa_split.title()} ({args.num_samples} samples)"
 
     if args.upload_to_s3:
         print(f"""

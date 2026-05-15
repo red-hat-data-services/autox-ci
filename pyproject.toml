@@ -21,6 +21,16 @@ dependencies = [
 # Same runtime stack as `dependencies`; kept so `pip install -e ".[test_rhoai]"` / `test_automl` match docs.
 test_rhoai = []
 test_automl = []
+# AutoML and AutoRAG benchmarking orchestration + dataset generation
+benchmarks = [
+  "pandas>=2.0",
+  "lxml>=5.0,<6",
+  "huggingface-hub>=0.20.0",
+  "beir>=2.0.0",
+  "datasets>=2.0.0",
+  "Pillow>=10.0.0",
+  "requests>=2.31.0",
+]
 
 [tool.setuptools]
 package-dir = { tests = "e2e-tests" }

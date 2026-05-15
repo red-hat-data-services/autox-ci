@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import csv
 import io
 import json
 import logging
@@ -17,45 +16,17 @@ from automl_benchmark.benchmark_run_metadata import (
 )
 from automl_benchmark.experiment_fingerprint import compute_experiment_fingerprint
 from benchmark_common.run_state import is_success_state
-from automl_benchmark.s3_client import make_s3_client, s3_cfg_usable
+from benchmark_common.s3_client import s3_cfg_usable
+from benchmark_common.s3_upload import (
+    build_batch_id,
+    join_s3_key,
+    put_s3_bytes,
+    row_to_csv_bytes,
+)
 from automl_benchmark.s3_experiment_dedupe import write_experiment_index
 from automl_benchmark.settings import BenchmarkSettings
 
 logger = logging.getLogger(__name__)
-
-
-def build_batch_id() -> str:
-    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-
-
-def _join_key(*parts: str) -> str:
-    return "/".join(p.strip().strip("/") for p in parts if p and str(p).strip())
-
-
-def put_s3_bytes(
-    *,
-    s3_cfg: dict[str, Any],
-    bucket: str,
-    key: str,
-    body: bytes,
-    content_type: str,
-) -> None:
-    client = make_s3_client(s3_cfg)
-    client.put_object(
-        Bucket=bucket,
-        Key=key,
-        Body=body,
-        ContentType=content_type,
-    )
-
-
-def _row_to_csv_bytes(row: dict[str, Any]) -> bytes:
-    keys = sorted(row.keys())
-    buf = io.StringIO()
-    w = csv.DictWriter(buf, fieldnames=keys, extrasaction="ignore")
-    w.writeheader()
-    w.writerow({k: "" if row.get(k) is None else row.get(k) for k in keys})
-    return buf.getvalue().encode("utf-8")
 
 
 def upload_single_dataset_results(
@@ -79,7 +50,7 @@ def upload_single_dataset_results(
     if not settings.upload_benchmark_results or not s3_cfg_usable(s3_cfg):
         return
     sub = dataset_results_subpath(dataset)
-    prefix = _join_key(settings.benchmark_s3_prefix, batch_id, "datasets", sub)
+    prefix = join_s3_key(settings.benchmark_s3_prefix, batch_id, "datasets", sub)
     fp = experiment_fingerprint or compute_experiment_fingerprint(
         pipeline_ir_path=pipeline_ir_path.resolve(),
         pipeline_arguments=dict(arguments or {}),
@@ -105,19 +76,19 @@ def upload_single_dataset_results(
         experiment_fingerprint=fp,
     )
     meta_body = json.dumps(meta, indent=2, default=str).encode("utf-8")
-    results_body = _row_to_csv_bytes(row)
+    results_body = row_to_csv_bytes(row)
     try:
         put_s3_bytes(
             s3_cfg=s3_cfg,
             bucket=bucket,
-            key=_join_key(prefix, "metadata.json"),
+            key=join_s3_key(prefix, "metadata.json"),
             body=meta_body,
             content_type="application/json; charset=utf-8",
         )
         put_s3_bytes(
             s3_cfg=s3_cfg,
             bucket=bucket,
-            key=_join_key(prefix, "results.csv"),
+            key=join_s3_key(prefix, "results.csv"),
             body=results_body,
             content_type="text/csv; charset=utf-8",
         )
@@ -128,13 +99,13 @@ def upload_single_dataset_results(
                 put_s3_bytes(
                     s3_cfg=s3_cfg,
                     bucket=bucket,
-                    key=_join_key(prefix, "leaderboard.html"),
+                    key=join_s3_key(prefix, "leaderboard.html"),
                     body=local_html.read_bytes(),
                     content_type="text/html; charset=utf-8",
                 )
         logger.info("Uploaded benchmark artifacts to s3://%s/%s/", bucket, prefix)
         if is_success_state(str(row.get("state", ""))):
-            agg_merged_key = _join_key(
+            agg_merged_key = join_s3_key(
                 settings.benchmark_s3_prefix, batch_id, "aggregated", "merged_leaderboards.csv"
             )
             write_experiment_index(
@@ -144,8 +115,8 @@ def upload_single_dataset_results(
                 fingerprint=fp,
                 batch_id=batch_id,
                 prior_run_id=str(row.get("run_id") or ""),
-                results_csv_key=_join_key(prefix, "results.csv"),
-                metadata_json_key=_join_key(prefix, "metadata.json"),
+                results_csv_key=join_s3_key(prefix, "results.csv"),
+                metadata_json_key=join_s3_key(prefix, "metadata.json"),
                 aggregated_merged_csv_key=agg_merged_key,
                 dataset_results_subpath=sub,
             )
@@ -168,7 +139,7 @@ def upload_batch_aggregated(
 ) -> None:
     if not settings.upload_benchmark_results or not s3_cfg_usable(s3_cfg):
         return
-    agg_prefix = _join_key(settings.benchmark_s3_prefix, batch_id, "aggregated")
+    agg_prefix = join_s3_key(settings.benchmark_s3_prefix, batch_id, "aggregated")
     finished_at = datetime.now(timezone.utc).isoformat()
     manifest_rel = str(cfg.get("dataset_manifest_path") or "")
     try:
@@ -196,7 +167,7 @@ def upload_batch_aggregated(
         put_s3_bytes(
             s3_cfg=s3_cfg,
             bucket=bucket,
-            key=_join_key(agg_prefix, "batch_metadata.json"),
+            key=join_s3_key(agg_prefix, "batch_metadata.json"),
             body=json.dumps(batch_meta, indent=2, default=str).encode("utf-8"),
             content_type="application/json; charset=utf-8",
         )
@@ -205,7 +176,7 @@ def upload_batch_aggregated(
             put_s3_bytes(
                 s3_cfg=s3_cfg,
                 bucket=bucket,
-                key=_join_key(agg_prefix, "benchmark_runs.csv"),
+                key=join_s3_key(agg_prefix, "benchmark_runs.csv"),
                 body=output_csv.read_bytes(),
                 content_type="text/csv; charset=utf-8",
             )
@@ -229,7 +200,7 @@ def upload_batch_aggregated(
             put_s3_bytes(
                 s3_cfg=s3_cfg,
                 bucket=bucket,
-                key=_join_key(agg_prefix, "merged_leaderboards.csv"),
+                key=join_s3_key(agg_prefix, "merged_leaderboards.csv"),
                 body=merged_bytes,
                 content_type="text/csv; charset=utf-8",
             )

@@ -9,7 +9,7 @@ import logging
 from typing import Any
 
 from benchmark_common.run_state import is_success_state
-from automl_benchmark.s3_client import make_s3_client, s3_cfg_usable
+from benchmark_common.s3_client import make_s3_client, s3_cfg_usable
 
 logger = logging.getLogger(__name__)
 

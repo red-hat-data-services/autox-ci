@@ -1,106 +1,546 @@
-# AutoML benchmarks (KFP orchestrator)
+# AutoX Benchmarks
 
-This repository helps to run benchmark suites on **Kubeflow Pipelines** (KFP): **AutoML** (AutoGluon tabular and time series) and **AutoRAG** (RAG optimization). Each suite polls runs to completion and writes a **CSV** of results. Configuration splits **non-secret layout** (YAML) from **cluster and storage identity** (INI).
+End-to-end benchmarking framework for AutoML and AutoRAG pipelines on OpenShift AI / Kubeflow Pipelines.
 
-Python packages:
+## Overview
 
-- **`automl_benchmark`** — AutoGluon benchmarks (dedupe, leaderboard discovery, S3 uploads).
-- **`autorag_benchmark`** — RAG optimization pipeline orchestration.
-- **`benchmark_common`** — shared loading, KFP client, polling, CSV writer (used by both).
+This framework provides automated benchmarking for two pipeline families:
 
-Install from the repo root: `pip install -e .` (see [pyproject.toml](pyproject.toml)) or use `requirements-benchmark.txt`.
+- **AutoML** - Tabular and time-series training with AutoGluon
+- **AutoRAG** - Retrieval-Augmented Generation optimization with pattern search
 
-## AutoRAG benchmarks
+Both benchmark types:
+- Submit pipelines to Kubeflow Pipelines (KFP)
+- Wait for completion and extract metrics
+- Generate CSV results with performance data
+- Upload results to S3 for tracking and analysis
 
-Use a separate YAML + manifest shaped for RAG (`test_data_key` per dataset; optional `input_data_key`). Copy [templates/benchmark.autorag.example.yaml](templates/benchmark.autorag.example.yaml) and [templates/dataset_manifest.autorag.example.yaml](templates/dataset_manifest.autorag.example.yaml). In `credentials.ini`, set **`input_data_bucket_name`**, **`test_data_bucket_name`**, **`input_data_secret_name`**, **`test_data_secret_name`**, **`llama_stack_secret_name`**, and **`llama_stack_vector_io_provider_id`** (see commented blocks in [templates/credentials.example.ini](templates/credentials.example.ini)).
+## Directory Structure
 
-```bash
-python scripts/autorag_benchmark_orchestrator.py --config config/benchmark.yaml --credentials config/credentials.ini --output results/rag_benchmark_runs.csv
-python scripts/autorag_benchmark_orchestrator.py --dry-run -v
+```
+autox-benchmarks/
+├── automl_benchmark/          # AutoML-specific orchestration
+├── autorag_benchmark/         # AutoRAG-specific orchestration
+│   └── datasets/              # Dataset generation providers (BEIR, OpenRAGBench)
+├── benchmark_common/          # Shared utilities (KFP client, S3, CSV)
+├── config/                    # Configuration files
+│   ├── benchmark.yaml         # AutoRAG benchmark config
+│   ├── credentials.ini        # Secrets (not in git)
+│   └── dataset_manifest.yaml  # AutoRAG dataset registry
+├── scripts/                   # Entry point scripts
+│   ├── automl_benchmark_orchestrator.py
+│   ├── autorag_benchmark_orchestrator.py
+│   └── generate_rag_datasets.py
+├── templates/                 # Example configurations
+│   └── credentials.example.ini
+└── results/                   # Generated benchmark CSVs
 ```
 
-## Before running experiments (AutoML)
+## Installation
 
-Complete the checklist below; placeholders in the template commands section mirror these items.
+**Option 1: Install with optional benchmark dependencies (recommended):**
 
-1. **`config/credentials.ini`** (copy from `templates/credentials.example.ini`)
-   - **`[kfp]`**: `host` (Data Science Pipelines API URL), `namespace`, and authentication (`token`, or `token_file`, or `KFP_API_TOKEN` / `token_env`).
-   - **`[storage]`**: `train_data_bucket_name` where training CSVs live (object keys must match your manifest). Optional: `benchmark_s3_prefix` (default `benchmarks`), `upload_benchmark_results` (default on when not set), and KFP artifact prefix keys—see [docs/s3-storage-schema.md](docs/s3-storage-schema.md).
-   - **`[pipeline]`**: `train_data_secret_name` — Kubernetes secret in the project that pipeline pods use for S3 (or equivalent) access.
-   - **`[s3]`**: Endpoint and keys for your own records / secret creation; values are not sent to the cluster by this tool. When `upload_benchmark_results` is enabled (see `[storage]`), these credentials also **upload** per-run and batch results to S3 (`s3:PutObject` required on the benchmark prefix).
-   - **S3 layout & metadata**: See [docs/s3-storage-schema.md](docs/s3-storage-schema.md) for `benchmarks/{batch_id}/` keys, `metadata.json`, and aggregated `merged_leaderboards.csv`.
-   - **Skip duplicate experiments** (default **on**): If `[s3]` can read `benchmarks/experiment_index/v1/{fingerprint}.json`, the orchestrator reuses the stored `results.csv` row instead of submitting KFP again. Pass **`--rerun-identical-experiments`** to force new pipeline runs.
-
-2. **`config/benchmark.yaml`** (copy from `templates/benchmark.example.yaml`)
-   - **`pipeline.package_path`**: compiled **tabular** AutoGluon pipeline IR (default: `../pipelines/autogluon-tabular-training-pipeline.yaml` relative to this file’s directory).
-   - **`pipeline.timeseries_package_path`**: compiled **time series** pipeline IR (default: `../pipelines/autogluon-timeseries-training-pipeline.yaml`). Override in `credentials.ini` `[pipeline]` if needed.
-   - **`dataset_manifest_path`**: manifest of datasets (path relative to this YAML’s directory).
-   - **`run`**: optional tuning (`top_n`, timeouts, caching, run name prefix).
-
-3. **Dataset manifest** — each row needs `train_data_file_key` and fields that match the task:
-   - **Tabular** (`task_type`: `binary`, `multiclass`, or `regression`): `label_column`, `task_type`.
-   - **Time series** (`task_type`: `timeseries`): `id_column` (item id), `timestamp_column`, and `target` **or** `label_column` for the forecast target. Optional: `known_covariates_names` (list of strings), `prediction_length` (integer).
-
-   Start from `templates/dataset_manifest.example.yaml` or generate tabular/regression manifests (see below). Ensure objects exist in the bucket at the keys you declare.
-
-4. **Pipeline packages**: the compiled YAML files referenced by `pipeline.package_path` and `pipeline.timeseries_package_path` must exist. The orchestrator uses the tabular package for non-`timeseries` rows and the time series package when `task_type` is `timeseries`.
-
-## Template commands
-
-Replace `FILL_*` values with your environment. Run from the repository root.
+From the repository root:
 
 ```bash
-# One-time config from templates
-cp templates/benchmark.example.yaml config/benchmark.yaml
+pip install -e ".[benchmarks]"
+```
+
+This installs the package plus all benchmark orchestration and dataset generation dependencies.
+
+**Option 2: Install from requirements file:**
+
+```bash
+pip install -r autox-benchmarks/requirements.txt
+```
+
+## Quick Start
+
+### 1. Configure Credentials
+
+Copy the example credentials file:
+
+```bash
 cp templates/credentials.example.ini config/credentials.ini
-cp templates/dataset_manifest.example.yaml config/dataset_manifest.example.yaml
-# Edit benchmark.yaml and credentials.ini; adjust manifest paths or contents as needed.
+```
 
-# Optional: verbose logging, custom paths
-export BENCHMARK_CONFIG_PATH="FILL_PATH_TO/benchmark.yaml"
-export BENCHMARK_CREDENTIALS_PATH="FILL_PATH_TO/credentials.ini"
+Edit `config/credentials.ini` with your cluster and S3 details:
 
-# Validate config wiring without calling KFP
-python scripts/benchmark_orchestrator.py --dry-run -v
+```ini
+[kfp]
+host = https://ds-pipeline-dspa-PROJECT.apps.CLUSTER.example.com
+namespace = YOUR_PROJECT
+token = sha256~...  # or use token_file or KFP_API_TOKEN env var
+experiment_name = rag-optimization-benchmark
 
-# Run the benchmark suite; write aggregated CSV
-python scripts/benchmark_orchestrator.py --output results/benchmark_runs.csv
+[storage]
+# AutoML
+train_data_bucket_name = your-bucket
+# AutoRAG
+input_data_bucket_name = your-bucket
+test_data_bucket_name = your-bucket
+# Benchmark result uploads (both AutoML and AutoRAG)
+benchmark_s3_prefix = benchmarks
+upload_benchmark_results = true
 
-# Same entry point with explicit files
-python scripts/benchmark_orchestrator.py \
+[pipeline]
+# AutoML
+train_data_secret_name = automl-s3-credentials
+# AutoRAG
+input_data_secret_name = rag-input-s3-credentials
+test_data_secret_name = rag-test-s3-credentials
+llama_stack_secret_name = llama-stack-credentials
+llama_stack_vector_io_provider_id = milvus-lite
+
+[s3]
+endpoint = https://s3.amazonaws.com
+aws_access_key_id = YOUR_KEY
+aws_secret_access_key = YOUR_SECRET
+aws_default_region = us-east-1
+```
+
+### 2. Run AutoRAG Benchmark
+
+```bash
+python scripts/autorag_benchmark_orchestrator.py \
   --config config/benchmark.yaml \
   --credentials config/credentials.ini \
-  --output results/benchmark_runs.csv
-
-# Stop on first pipeline failure
-python scripts/benchmark_orchestrator.py --fail-fast --output results/benchmark_runs.csv
-
-# Only tabular or only time-series rows (by task_type)
-python scripts/benchmark_orchestrator.py --dataset-filter tabular --dry-run
-python scripts/benchmark_orchestrator.py --dataset-filter timeseries --dry-run
-
-# Ignore S3 experiment cache and always submit pipelines (same fingerprint as a prior run)
-python scripts/benchmark_orchestrator.py --rerun-identical-experiments --output results/benchmark_runs.csv
+  --output results/rag_benchmark_runs.csv
 ```
 
-Optional: build a long-form summary from the runs CSV (see `scripts/summarize_benchmark_results.py --help`).
+**Options:**
+- `--dry-run` - Validate configuration without submitting pipelines
+- `--fail-fast` - Stop on first pipeline failure
+
+### 3. Run AutoML Benchmark
 
 ```bash
-python scripts/summarize_benchmark_results.py results/benchmark_runs.csv \
-  -o results/benchmark_summary.csv
+python scripts/automl_benchmark_orchestrator.py \
+  --config config/benchmark.yaml \
+  --credentials config/credentials.ini \
+  --output results/automl_benchmark_runs.csv \
+  --dataset-filter all
 ```
 
-## Optional: local datasets and manifest generation
+**Options:**
+- `--dataset-filter PATTERN` - Run only matching datasets: `all`, `tabular`, `timeseries`
+- `--dry-run` - Validate configuration without submitting pipelines
+- `--fail-fast` - Stop on first pipeline failure
+- `--rerun-identical-experiments` - Force new runs even if identical fingerprint exists
 
-Not required if you already upload CSVs and maintain a manifest.
+## AutoRAG Dataset Generation
+
+Generate benchmark datasets (BEIR, OpenRAGBench) and upload to S3.
+
+### Prerequisites
 
 ```bash
-pip install scikit-learn openml
-python scripts/download_initial_datasets.py --out downloaded_datasets
-
-pip install pandas pyyaml
-python scripts/generate_dataset_manifest.py --root downloaded_datasets \
-  --s3-key-prefix FILL_S3_PREFIX > config/dataset_manifest.generated.yaml
+pip install -r autox-benchmarks/requirements.txt
 ```
 
-Then point `dataset_manifest_path` in `config/benchmark.yaml` at the generated file (or merge entries into your main manifest) and ensure the same keys exist in your training data bucket.
+> **Note:** Dataset generation requires additional dependencies (`beir`, `requests`) which are included in `requirements.txt`.
+
+### Generate and Upload
+
+**OpenRAGBench (ArXiv PDFs):**
+
+```bash
+python scripts/generate_rag_datasets.py \
+  --dataset open_ragbench \
+  --num-samples 50 \
+  --output-format pdf \
+  --upload-to-s3
+```
+
+**BEIR (SciFact):**
+
+```bash
+python scripts/generate_rag_datasets.py \
+  --dataset beir \
+  --beir-dataset scifact \
+  --num-samples 100 \
+  --output-format txt \
+  --upload-to-s3
+```
+
+**SlideVQA (Slide Images):**
+
+```bash
+python scripts/generate_rag_datasets.py \
+  --dataset slidevqa \
+  --num-samples 50 \
+  --output-format png \
+  --slidevqa-split validation \
+  --upload-to-s3
+```
+
+> **Note:** SlideVQA requires accepting the dataset license at [HuggingFace](https://huggingface.co/datasets/NTT-hil-insight/SlideVQA) and authenticating with `huggingface-cli login`.
+
+### Supported Datasets
+
+- **BEIR**: `scifact`, `nfcorpus`, `nq`, `fiqa`, `trec-covid`
+- **OpenRAGBench**: ArXiv subset (native PDF download)
+- **SlideVQA**: Presentation slide images for Visual Question Answering
+
+### Supported Formats
+
+- **txt** - Plain text (BEIR, OpenRAGBench)
+- **md** - Markdown (BEIR, OpenRAGBench)
+- **pdf** - Native PDFs (OpenRAGBench only - downloads from ArXiv)
+- **png** - PNG images (SlideVQA only - slide deck images)
+- **jpg** - JPEG images (SlideVQA only - slide deck images)
+
+### S3 Structure
+
+Generated datasets follow this structure:
+
+```
+s3://bucket/datasets/rag/
+├── beir/
+│   └── {dataset_name}/      # e.g., scifact, nfcorpus
+│       └── {format}/        # txt, md
+│           └── {num_samples}/
+│               ├── knowledge_base/
+│               └── benchmark_data.json
+├── open_ragbench/
+│   └── arxiv/
+│       └── {format}/        # txt, md, pdf
+│           └── {num_samples}/
+│               ├── knowledge_base/
+│               └── benchmark_data.json
+└── slidevqa/
+    └── {split}/             # train, validation, test
+        └── {format}/        # png, jpg
+            └── {num_samples}/
+                ├── knowledge_base/
+                └── benchmark_data.json
+```
+
+### Add to Manifest
+
+After generation, the script prints a YAML snippet. Add it to `config/dataset_manifest.yaml`:
+
+**OpenRAGBench example:**
+```yaml
+datasets:
+  - id: open-ragbench-arxiv-50
+    name: "Open RAGBench ArXiv (50 samples)"
+    input_data_key: "datasets/rag/open_ragbench/arxiv/pdf/50/knowledge_base"
+    test_data_key: "datasets/rag/open_ragbench/arxiv/pdf/50/benchmark_data.json"
+    optimization_metric: "faithfulness"
+    embeddings_models:
+      - "vllm-embedding/bge-m3"
+```
+
+**SlideVQA example:**
+```yaml
+datasets:
+  - id: slidevqa-validation-50
+    name: "SlideVQA Validation (50 samples)"
+    input_data_key: "datasets/rag/slidevqa/validation/png/50/knowledge_base"
+    test_data_key: "datasets/rag/slidevqa/validation/png/50/benchmark_data.json"
+    optimization_metric: "faithfulness"
+    embeddings_models:
+      - "vllm-embedding/clip"  # For multimodal image+text
+```
+
+## Benchmark Results Upload
+
+Both AutoML and AutoRAG benchmarks upload results to S3 automatically when `upload_benchmark_results = true` (default).
+
+### S3 Result Structure
+
+```
+s3://bucket/benchmarks/{batch_id}/
+├── datasets/
+│   ├── {dataset_id_1}/
+│   │   ├── metadata.json       # Run details, arguments, timing
+│   │   └── results.csv         # Single-row CSV for this run
+│   └── {dataset_id_2}/
+│       ├── metadata.json
+│       └── results.csv
+└── aggregated/
+    ├── batch_metadata.json     # Batch summary (all datasets, settings)
+    └── benchmark_runs.csv      # Full multi-row CSV
+```
+
+**Batch ID format:** `YYYYMMDDTHHMMSSZ` (e.g., `20260514T143527Z`)
+
+### Disabling Upload
+
+Set in `config/credentials.ini`:
+
+```ini
+[storage]
+upload_benchmark_results = false
+```
+
+## Configuration Reference
+
+### AutoRAG Config (`config/benchmark.yaml`)
+
+```yaml
+pipeline:
+  package_path: "../pipelines/autorag-pipeline.yaml"
+
+run:
+  optimization_metric: "faithfulness"
+  optimization_max_rag_patterns: 8
+  poll_interval_seconds: 30
+  timeout_seconds: 86400
+  enable_caching: false
+  run_name_prefix: "rag-benchmark"
+
+dataset_manifest_path: "dataset_manifest.yaml"
+```
+
+### AutoML Config (`config/benchmark.yaml`)
+
+```yaml
+pipeline:
+  package_path: "../pipelines/autogluon-tabular-training-pipeline.yaml"
+  timeseries_package_path: "../pipelines/autogluon-timeseries-training-pipeline.yaml"
+
+run:
+  top_n: 3
+  poll_interval_seconds: 30
+  timeout_seconds: 86400
+  enable_caching: false
+  run_name_prefix: "benchmark"
+
+dataset_manifest_path: "dataset_manifest.yaml"
+```
+
+### Dataset Manifest Examples
+
+**AutoRAG:**
+
+```yaml
+datasets:
+  - id: example-rag-use-case
+    name: "Example RAG Dataset"
+    input_data_key: "datasets/rag/example/knowledge_base"
+    test_data_key: "datasets/rag/example/benchmark_data.json"
+    optimization_metric: "faithfulness"
+    embeddings_models:
+      - "vllm-embedding/bge-m3"
+```
+
+**AutoML Tabular:**
+
+```yaml
+datasets:
+  - id: titanic
+    name: "Titanic Survival"
+    train_data_file_key: "datasets/tabular/titanic.csv"
+    task_type: "binary"
+    label_column: "Survived"
+```
+
+**AutoML Time Series:**
+
+```yaml
+datasets:
+  - id: m4-daily
+    name: "M4 Daily Forecasts"
+    train_data_file_key: "datasets/timeseries/m4_daily.csv"
+    task_type: "timeseries"
+    id_column: "item_id"
+    timestamp_column: "timestamp"
+    target: "value"
+    prediction_length: 14
+```
+
+## Development
+
+### Project Structure
+
+- `benchmark_common/` - Shared utilities
+  - `s3_client.py` - S3 client creation and config validation
+  - `s3_upload.py` - Common S3 upload functions (batch_id, CSV conversion)
+  - `kfp_client.py` - KFP client creation
+  - `pipeline_run.py` - Pipeline submission and waiting
+  - `run_state.py` - Pipeline state checking
+  - `results_csv.py` - CSV output generation
+
+- `automl_benchmark/` - AutoML-specific code
+  - `orchestrator.py` - Main orchestration logic
+  - `s3_benchmark_upload.py` - AutoML result upload
+  - `settings.py` - Settings dataclass
+  - `experiment_fingerprint.py` - Deduplication fingerprints
+
+- `autorag_benchmark/` - AutoRAG-specific code
+  - `orchestrator.py` - Main orchestration logic
+  - `s3_benchmark_upload.py` - AutoRAG result upload
+  - `settings.py` - Settings dataclass
+  - `pattern_scores.py` - Extract pattern optimization results
+  - `datasets/` - Dataset generation providers
+
+### Adding a New RAG Dataset Provider
+
+1. Create `autorag_benchmark/datasets/my_dataset.py`:
+
+```python
+from autorag_benchmark.datasets import register
+from autorag_benchmark.datasets.document_formats import save_document
+
+def prepare(kb_dir, bench_path, *, num_samples=50, output_format="txt", **_):
+    """Generate dataset.
+    
+    Args:
+        kb_dir: Directory to write knowledge base documents
+        bench_path: Path to write benchmark JSON file
+        num_samples: Number of samples to generate
+        output_format: "txt", "md", or "pdf"
+        
+    Returns:
+        (number of documents written, number of benchmark entries)
+    """
+    kb_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Download/generate documents
+    for i in range(num_samples):
+        content = f"Document {i} content..."
+        save_document(
+            content=content,
+            output_path=kb_dir / f"doc_{i}",
+            format=output_format,
+            metadata={"source": "my_dataset", "doc_id": str(i)}
+        )
+    
+    # Write benchmark JSON
+    benchmark_data = [
+        {
+            "question": "What is X?",
+            "correct_answers": ["Answer to X"],
+            "correct_answer_document_ids": ["doc_0.txt"],
+        }
+    ]
+    
+    import json
+    with open(bench_path, "w") as f:
+        json.dump(benchmark_data, f, indent=4)
+    
+    return (num_samples, len(benchmark_data))
+
+register("my_dataset", prepare, {"num_samples": 50})
+```
+
+2. Import in `autorag_benchmark/datasets/__init__.py`:
+
+```python
+from autorag_benchmark.datasets import beir, open_ragbench, my_dataset
+```
+
+3. Use with generation script:
+
+```bash
+python scripts/generate_rag_datasets.py \
+  --dataset my_dataset \
+  --num-samples 100 \
+  --upload-to-s3
+```
+
+## Troubleshooting
+
+### S3 Upload Not Working
+
+**Symptom:** No logs about S3 uploads, or warnings about S3 failures.
+
+**Check:**
+
+1. Credentials are set in `config/credentials.ini`:
+   ```ini
+   [s3]
+   endpoint = https://s3.amazonaws.com
+   aws_access_key_id = ...
+   aws_secret_access_key = ...
+   ```
+
+2. Upload is enabled (default is `true`):
+   ```ini
+   [storage]
+   upload_benchmark_results = true
+   ```
+
+3. Look for these logs:
+   ```
+   INFO Benchmark batch_id=20260514T143527Z (results will upload to s3://bucket/benchmarks/)
+   INFO Uploaded benchmark artifacts to s3://bucket/benchmarks/.../
+   ```
+
+### Pipeline Submission Fails
+
+**Symptom:** Error creating KFP client or submitting pipeline.
+
+**Check:**
+
+1. KFP credentials in `config/credentials.ini`:
+   ```ini
+   [kfp]
+   host = https://ds-pipeline-dspa-PROJECT.apps.CLUSTER.com
+   namespace = YOUR_PROJECT
+   token = sha256~...
+   ```
+
+2. Test KFP connection:
+   ```bash
+   export KFP_API_TOKEN="sha256~..."
+   curl -H "Authorization: Bearer $KFP_API_TOKEN" \
+     https://ds-pipeline-dspa-PROJECT.apps.CLUSTER.com/apis/v2beta1/experiments
+   ```
+
+3. Run with `--dry-run` to validate config without submitting:
+   ```bash
+   python scripts/autorag_benchmark_orchestrator.py --dry-run -v
+   ```
+
+### Dataset Generation SSL Errors
+
+**Symptom:** `SSL: CERTIFICATE_VERIFY_FAILED` when downloading PDFs from ArXiv.
+
+**Fix:** Install `requests` library for better SSL handling:
+
+```bash
+pip install requests>=2.31.0
+```
+
+The dataset providers will automatically use `requests` if available, which handles SSL certificates properly on macOS.
+
+### BEIR Dataset Generation Fails
+
+**Symptom:** `ModuleNotFoundError: No module named 'beir'`
+
+**Fix:** Install all dependencies (includes dataset generation):
+
+```bash
+pip install -r autox-benchmarks/requirements.txt
+```
+
+### SlideVQA Access Denied
+
+**Symptom:** Error loading SlideVQA dataset or "dataset requires authentication"
+
+**Fix:** Accept the dataset license and authenticate:
+
+1. Visit [https://huggingface.co/datasets/NTT-hil-insight/SlideVQA](https://huggingface.co/datasets/NTT-hil-insight/SlideVQA)
+2. Accept the dataset license agreement
+3. Authenticate with HuggingFace CLI:
+   ```bash
+   pip install huggingface-hub
+   huggingface-cli login
+   ```
+
+## References
+
+- [S3 Storage Schema](docs/s3-storage-schema.md) - Detailed S3 key layout
+- [Kubeflow Pipelines Documentation](https://www.kubeflow.org/docs/components/pipelines/)
+- [AutoGluon Documentation](https://auto.gluon.ai/)
+- [BEIR Benchmark](https://github.com/beir-cellar/beir)
+- [OpenRAGBench Dataset](https://huggingface.co/datasets/vectara/open_ragbench)
+- [SlideVQA Dataset](https://huggingface.co/datasets/NTT-hil-insight/SlideVQA)
+- [SlideVQA Paper (AAAI 2023)](https://arxiv.org/abs/2301.04883)
+
+## License
+
+See parent repository for license information.
