@@ -65,7 +65,7 @@ s3://ai-eng-cracow/datasets/rag/
 ### Install Dependencies
 
 ```bash
-pip install -r autox_benchmarks/requirements-dataset-gen.txt
+pip install -r autox_benchmarks/requirements.txt
 ```
 
 Or with optional dependencies:

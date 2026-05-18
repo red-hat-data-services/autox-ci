@@ -12,7 +12,7 @@ Configuration:
     llama-stack credentials. Use config/credentials.ini, $BENCHMARK_CREDENTIALS_PATH, or ``--credentials PATH``.
 
 Usage:
-  pip install -r requirements-benchmark.txt
+  pip install -r requirements.txt
   cp templates/benchmark.autorag.example.yaml config/benchmark.yaml
   cp templates/credentials.example.ini config/credentials.ini
   python scripts/autorag_benchmark_orchestrator.py --output results/rag_benchmark_runs.csv
