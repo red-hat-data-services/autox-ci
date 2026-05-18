@@ -95,6 +95,17 @@ python scripts/summarize_benchmark_results.py results/benchmark_runs.csv \
   -o results/benchmark_summary.csv
 ```
 
+## Compare benchmark results (local UI)
+
+Interactive **Streamlit** app to compare benchmark CSVs from S3 or local files. Choose baseline as **`joined_results.csv`** (optionally collapsed to latest run per `dataset_name`) or any **batch** `merged_leaderboards.csv`. Compare against other batches; side-by-side **score heatmaps** (datasets × models) plus delta tables. Matching is on **`dataset_name` + model**.
+
+```bash
+pip install -e ".[compare]"
+streamlit run scripts/benchmark_compare_app.py
+```
+
+Uses the same `config/credentials.ini` as the orchestrator for S3 listing and download (cached under `~/.cache/autox-benchmarks/compare/`). See [docs/s3-storage-schema.md](docs/s3-storage-schema.md).
+
 ## Optional: local datasets and manifest generation
 
 Not required if you already upload CSVs and maintain a manifest.

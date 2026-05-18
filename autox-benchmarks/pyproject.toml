@@ -19,6 +19,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = []
+compare = ["streamlit>=1.30", "plotly>=5.18"]
 
 [tool.setuptools.packages.find]
 where = ["."]
