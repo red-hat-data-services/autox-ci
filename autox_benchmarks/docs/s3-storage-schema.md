@@ -12,7 +12,7 @@ This document describes how benchmark **inputs**, **KFP pipeline outputs**, and 
 
 Set `upload_benchmark_results = false` in `[storage]` to disable S3 uploads while keeping leaderboard discovery/download behavior.
 
-**IAM**: the same principal as `[s3]` needs `s3:PutObject` (and typically `s3:ListBucket` for debugging) on keys under `{benchmark_s3_prefix}/**` and read access to existing training keys. Experiment dedupe also requires **`s3:GetObject`** on `{benchmark_s3_prefix}/experiment_index/**` and on historical `datasets/**/results.csv` paths referenced by the index.
+**IAM**: the same principal as `[s3]` needs `s3:PutObject` (and typically `s3:ListBucket` for debugging) on keys under `{benchmark_s3_prefix}/**` and read access to existing training keys. Experiment dedupe and rolling joined results also require **`s3:GetObject`** on `{benchmark_s3_prefix}/experiment_index/**`, on historical `datasets/**/results.csv` paths referenced by the index, and on `{benchmark_s3_prefix}/joined_results.csv` when present.
 
 ## Experiment dedupe (skip identical runs)
 
@@ -52,9 +52,12 @@ For each orchestrator invocation, a **`batch_id`** is generated (UTC compact tim
 
 ```text
 {benchmark_s3_prefix}/experiment_index/v1/{sha256}.json   # Dedupe index → prior results.csv (+ aggregated merged key)
+{benchmark_s3_prefix}/joined_results.csv                   # Rolling long-form join across batches (deduped on write)
 {benchmark_s3_prefix}/{batch_id}/
   aggregated/
-    merged_leaderboards.csv   # Long-form table: benchmark columns + parsed leaderboard HTML (same as merge_benchmark_leaderboards.py)
+    merged_leaderboards.csv   # Long-form table: benchmark columns + parsed leaderboard HTML (this batch only)
+    autogluon-tabular-training-pipeline.yaml   # Compiled IR used for tabular runs (same path as settings when shared)
+    autogluon-timeseries-training-pipeline.yaml # Compiled IR for time series runs (omitted if identical to tabular file)
     benchmark_runs.csv        # Copy of local results CSV
     batch_metadata.json       # Batch summary (see below)
   datasets/
@@ -65,6 +68,10 @@ For each orchestrator invocation, a **`batch_id`** is generated (UTC compact tim
 ```
 
 **Dataset folder path**: Derived from `train_data_file_key` by stripping a leading `datasets/` segment and the file extension, then sanitizing segments. Example: `datasets/classification/breast-w.csv` → `classification/breast-w`.
+
+## `joined_results.csv` (rolling, cross-batch)
+
+After each batch upload, if the merged leaderboard DataFrame is non-empty, the orchestrator reads the existing `{benchmark_s3_prefix}/joined_results.csv` when present, appends this batch’s rows, and applies **`drop_duplicates(keep="first")` on the full row** so lines identical to data already stored are not appended again. The object is rewritten in full. If the existing CSV cannot be parsed, a warning is logged and the file may be replaced starting from this batch’s rows.
 
 ## `metadata.json` (per dataset run)
 
@@ -97,6 +104,8 @@ For each orchestrator invocation, a **`batch_id`** is generated (UTC compact tim
 | `benchmark_row_count` | Number of rows in `benchmark_runs.csv`. |
 | `local_output_csv` | Output filename or path hint for the written CSV. |
 | `cli_dataset_filter` | e.g. `all`, `tabular`, `timeseries`. |
+| `aggregated_pipeline_ir` | Optional list of `{ relative_s3_key, compiled_ir_sha256, local_source_path }` for IR files stored under `aggregated/*.yaml`. |
+| `joined_results_s3_key` | Object key for `{benchmark_s3_prefix}/joined_results.csv` (rolling merge across batches). |
 
 ## Example `metadata.json` (truncated)
 

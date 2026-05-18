@@ -127,6 +127,20 @@ python scripts/automl_benchmark_orchestrator.py \
 - `--dataset-filter PATTERN` - Run only matching datasets: `all`, `tabular`, `timeseries`
 - `--dry-run` - Validate configuration without submitting pipelines
 - `--fail-fast` - Stop on first pipeline failure
+- `--tabular-package-path` / `--timeseries-package-path` - Use pre-compiled pipeline YAML (skip Git compile for that slot)
+- `--rerun-identical-experiments` - Force new KFP runs even when S3 experiment dedupe would reuse a prior result
+
+### 4. Compare benchmark results (local UI)
+
+Interactive **Streamlit** app to compare baseline vs batch **`merged_leaderboards.csv`** from S3 or local CSVs. Choose baseline as rolling **`joined_results.csv`** or a specific batch; side-by-side score heatmaps (datasets × models) plus delta tables. Matching is on **`dataset_name` + model**.
+
+```bash
+cd autox_benchmarks
+pip install -e ".[compare]"
+streamlit run scripts/benchmark_compare_app.py
+```
+
+Uses `config/credentials.ini` for S3 access (cache: `~/.cache/autox_benchmarks/compare/`). See [docs/s3-storage-schema.md](docs/s3-storage-schema.md).
 - `--rerun-identical-experiments` - Force new runs even if identical fingerprint exists
 
 ## AutoRAG Dataset Generation

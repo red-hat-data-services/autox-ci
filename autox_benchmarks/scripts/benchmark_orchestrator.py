@@ -8,8 +8,10 @@ object is found.
 Implementation lives in the ``automl_benchmark`` package; this file is a thin CLI wrapper.
 
 Configuration:
-  - YAML ($BENCHMARK_CONFIG_PATH / config/benchmark.yaml): ``pipeline.package_path`` (tabular IR),
-    ``pipeline.timeseries_package_path`` (``task_type: timeseries`` rows), run tuning, manifest.
+  - YAML ($BENCHMARK_CONFIG_PATH / config/benchmark.yaml): ``pipeline.compile`` (default: clone
+    opendatahub-io/pipelines-components and compile tabular/time-series ``pipeline.py``), or optional
+    static ``pipeline.package_path`` / ``timeseries_package_path`` when those files exist; run tuning;
+    manifest. CLI: ``--tabular-package-path``, ``--timeseries-package-path`` to force static IR.
   - credentials.ini (required): kfp host/namespace/token, bucket, pipeline secret name, [s3] for
     leaderboard discovery, uploads, and experiment dedupe (skip identical runs by default;
     use ``--rerun-identical-experiments`` to force new pipelines).

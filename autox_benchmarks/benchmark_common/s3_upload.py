@@ -46,3 +46,32 @@ def put_s3_bytes(
         Body=body,
         ContentType=content_type,
     )
+
+
+def _s3_object_not_found(exc: BaseException) -> bool:
+    from botocore.exceptions import ClientError
+
+    if not isinstance(exc, ClientError):
+        return False
+    err = exc.response.get("Error") or {}
+    return err.get("Code", "") in ("404", "NoSuchKey", "NotFound")
+
+
+def try_get_s3_object_bytes(
+    *,
+    s3_cfg: dict[str, Any],
+    bucket: str,
+    key: str,
+) -> bytes | None:
+    """Return object body or ``None`` if the key is missing."""
+    from benchmark_common.s3_client import s3_cfg_usable
+
+    if not s3_cfg_usable(s3_cfg):
+        return None
+    client = make_s3_client(s3_cfg)
+    try:
+        return client.get_object(Bucket=bucket, Key=key)["Body"].read()
+    except Exception as e:
+        if _s3_object_not_found(e):
+            return None
+        raise

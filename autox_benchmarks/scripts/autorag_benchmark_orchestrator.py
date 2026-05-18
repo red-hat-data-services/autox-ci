@@ -6,8 +6,9 @@ wait for completion, and write a single CSV summary.
 Implementation lives in the ``autorag_benchmark`` package; this file is a thin CLI wrapper.
 
 Configuration:
-  - YAML ($BENCHMARK_CONFIG_PATH / config/benchmark.yaml): ``pipeline.package_path`` (RAG optimization IR),
-    optimization settings (metric, max patterns), run tuning, manifest.
+  - YAML ($BENCHMARK_CONFIG_PATH / config/benchmark.yaml): ``pipeline.compile`` (default: compile RAG
+    ``pipeline.py`` from Git) or static ``pipeline.package_path``; CLI ``--package-path`` overrides.
+    Also: optimization settings (metric, max patterns), run tuning, manifest.
   - credentials.ini (required): kfp host/namespace/token, buckets (input/test), pipeline secrets,
     llama-stack credentials. Use config/credentials.ini, $BENCHMARK_CREDENTIALS_PATH, or ``--credentials PATH``.
 

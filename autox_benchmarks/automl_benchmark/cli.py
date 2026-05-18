@@ -66,6 +66,20 @@ def main(argv: list[str] | None = None) -> int:
             "pipeline, dataset, parameters, and environment (dedupe is on by default)"
         ),
     )
+    parser.add_argument(
+        "--tabular-package-path",
+        type=str,
+        default=None,
+        metavar="PATH",
+        help="Use this compiled tabular pipeline YAML (skips Git compile for tabular runs)",
+    )
+    parser.add_argument(
+        "--timeseries-package-path",
+        type=str,
+        default=None,
+        metavar="PATH",
+        help="Use this compiled time series pipeline YAML (skips Git compile for time series runs)",
+    )
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args(argv)
 
@@ -89,6 +103,8 @@ def main(argv: list[str] | None = None) -> int:
         fail_fast=args.fail_fast,
         dataset_filter=args.dataset_filter,
         skip_identical_runs=not args.rerun_identical_experiments,
+        tabular_package_path_cli=args.tabular_package_path,
+        timeseries_package_path_cli=args.timeseries_package_path,
     )
 
 
