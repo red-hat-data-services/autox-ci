@@ -39,7 +39,7 @@ Usage:
     --upload-to-s3
 
 Requirements:
-  pip install -r autox-benchmarks/requirements-dataset-gen.txt
+  pip install -r autox_benchmarks/requirements.txt
 """
 
 from __future__ import annotations

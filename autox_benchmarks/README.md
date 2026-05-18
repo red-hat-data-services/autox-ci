@@ -18,7 +18,7 @@ Both benchmark types:
 ## Directory Structure
 
 ```
-autox-benchmarks/
+autox_benchmarks/
 ├── automl_benchmark/          # AutoML-specific orchestration
 ├── autorag_benchmark/         # AutoRAG-specific orchestration
 │   └── datasets/              # Dataset generation providers (BEIR, OpenRAGBench)
@@ -51,7 +51,7 @@ This installs the package plus all benchmark orchestration and dataset generatio
 **Option 2: Install from requirements file:**
 
 ```bash
-pip install -r autox-benchmarks/requirements.txt
+pip install -r autox_benchmarks/requirements.txt
 ```
 
 ## Quick Start
@@ -136,7 +136,7 @@ Generate benchmark datasets (BEIR, OpenRAGBench) and upload to S3.
 ### Prerequisites
 
 ```bash
-pip install -r autox-benchmarks/requirements.txt
+pip install -r autox_benchmarks/requirements.txt
 ```
 
 > **Note:** Dataset generation requires additional dependencies (`beir`, `requests`) which are included in `requirements.txt`.
@@ -515,7 +515,7 @@ The dataset providers will automatically use `requests` if available, which hand
 **Fix:** Install all dependencies (includes dataset generation):
 
 ```bash
-pip install -r autox-benchmarks/requirements.txt
+pip install -r autox_benchmarks/requirements.txt
 ```
 
 ### SlideVQA Access Denied

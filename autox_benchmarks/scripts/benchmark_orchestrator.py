@@ -16,7 +16,7 @@ Configuration:
     Use config/credentials.ini, $BENCHMARK_CREDENTIALS_PATH, or ``--credentials PATH``.
 
 Usage:
-  pip install -r requirements-benchmark.txt
+  pip install -r requirements.txt
   cp templates/benchmark.example.yaml config/benchmark.yaml
   cp templates/credentials.example.ini config/credentials.ini   # all cluster + storage identity here
   python scripts/benchmark_orchestrator.py --output results/benchmark_runs.csv

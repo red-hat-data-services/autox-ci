@@ -1,7 +1,7 @@
 """BEIR benchmark → knowledge base + project benchmark JSON.
 
 Uses the official BEIR zip layout and ``GenericDataLoader``. Install with
-``pip install beir`` or ``pip install -r requirements-dataset-gen.txt``.
+``pip install beir`` or ``pip install -r requirements.txt``.
 
 See https://github.com/beir-cellar/beir for datasets and splits.
 

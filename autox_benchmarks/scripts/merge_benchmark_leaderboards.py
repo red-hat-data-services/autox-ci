@@ -6,7 +6,7 @@ For each row with a non-empty ``leaderboard_html_path`` (relative to the CSV dir
 parses the HTML table and emits one CSV row per leaderboard row, prefixed with benchmark
 metadata (dataset_id, run_id, state, etc.).
 
-Requires ``lxml`` (``pip install -r requirements-benchmark.txt``).
+Requires ``lxml`` (``pip install -r requirements.txt``).
 
 Examples:
   python scripts/merge_benchmark_leaderboards.py results/benchmark_runs.csv \\
