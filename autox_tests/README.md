@@ -83,7 +83,7 @@ cp autox_tests/.env.ml.example autox_tests/.env.ml
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `AUTOML_FUNCTIONAL_TESTS_TAGS` | — | Comma-separated tags — only matching scenarios run. Unset = run all. |
+| `AUTOML_FUNCTIONAL_TESTS_TAGS` | — | Comma-separated tags — only scenarios that have **all** requested tags run. Unset = run all. |
 | `RHOAI_PIPELINE_RUN_TIMEOUT` | `3600` | Max seconds to wait for a pipeline run |
 | `KFP_DISABLE_EXECUTION_CACHING_BY_DEFAULT` | `true` | Disable KFP step caching |
 | `AUTOML_FUNCTIONAL_TEST_KEEP_ARTIFACTS` | `false` | Skip S3 artifact cleanup after the session |
@@ -99,7 +99,7 @@ Set `RHOAI_DEPLOY_AFTER_TRAINING=true` to deploy the top trained model via KServ
 | `RHOAI_SERVING_IMAGE` | — | Container image for the AutoGluon ServingRuntime |
 | `RHOAI_SERVING_RUNTIME_NAME` | — | Existing ServingRuntime to reuse (skips creation) |
 | `RHOAI_CREATE_SERVING_RUNTIME` | `false` | Create the ServingRuntime if missing (requires `RHOAI_SERVING_IMAGE`) |
-| `RHOAI_INFERENCE_TIMEOUT` | `600` | Seconds to wait for InferenceService to become Ready |
+| `RHOAI_INFERENCE_TIMEOUT` | `300` | Seconds to wait for InferenceService to become Ready |
 | `RHOAI_KSERVE_STORAGE_KEY` | — | Existing Data Connection secret for KServe storage; a temporary one is created when unset |
 | `RHOAI_HARDWARE_PROFILE_NAME` | `default-profile` | HardwareProfile CR name for the predictor pod |
 | `RHOAI_HARDWARE_PROFILE_NAMESPACE` | `redhat-ods-applications` | Namespace of the HardwareProfile CR |
@@ -185,6 +185,10 @@ Positive scenarios include an `inference_sample` sent as the `instances` payload
 ```
 
 When `RHOAI_DEPLOY_AFTER_TRAINING=true` and `inference_sample` is present, the test scores the deployed model and asserts non-empty predictions are returned.
+
+#### `expected_outcome` (negative scenarios)
+
+Negative scenario entries include an `expected_outcome` field: a human-readable description of the expected failure mode (e.g. `"Fail fast with clear validation message"`). This field is informational only — it is not evaluated by the test runner. It exists to document design intent and aid debugging when a scenario passes unexpectedly.
 
 ### Pass criteria
 

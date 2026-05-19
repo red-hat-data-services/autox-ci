@@ -13,6 +13,8 @@ import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
+from autox_tests.lib.clients import make_kfp_client, make_s3_client  # noqa: F401
+
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -40,52 +42,16 @@ TASK_PRIMARY_METRICS_TABULAR: dict[str, str] = {
 TS_PRIMARY_METRIC = "MASE"
 
 
-def make_kfp_client(config):
-    """Create a KFP client from a config dict; returns None if config is None."""
-    if config is None:
-        return None
-    import kfp
-
-    host = config["rhoai_kfp_url"]
-    if not host.endswith("/"):
-        host = host + "/"
-    verify_ssl = os.environ.get("KFP_VERIFY_SSL", "true").strip().lower()
-    verify_ssl = verify_ssl not in ("0", "false", "no")
-    return kfp.Client(
-        host=host,
-        namespace=config["rhoai_project"],
-        existing_token=config.get("rhoai_token"),
-        verify_ssl=verify_ssl,
-    )
-
-
-def make_s3_client(config):
-    """Create a boto3 S3 client from a config dict; returns None if not configured."""
-    if config is None or not config.get("s3_endpoint"):
-        return None
-    try:
-        import boto3
-    except ImportError:
-        return None
-    return boto3.client(
-        "s3",
-        endpoint_url=config["s3_endpoint"],
-        aws_access_key_id=config["s3_access_key"],
-        aws_secret_access_key=config["s3_secret_key"],
-        region_name=config["s3_region"],
-    )
-
-
-def make_run_name(prefix: str) -> str:
+def _make_run_name(prefix: str) -> str:
     """Return a unique run name: ``<prefix>-<6 hex chars>-<YYYYMMDD-HHMMSS>``."""
     hex_part = secrets.token_hex(3)
     time_part = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     return f"{prefix}-{hex_part}-{time_part}"
 
 
-def run_pipeline_and_wait(client, compiled_path, arguments, timeout):
+def _run_pipeline_and_wait(client, compiled_path, arguments, timeout):
     """Submit a pipeline run and block until completion; return ``(run_id, detail)``."""
-    run_name = make_run_name("automl-func")
+    run_name = _make_run_name("automl-func")
     run = client.create_run_from_pipeline_package(
         compiled_path,
         arguments=arguments,
@@ -97,64 +63,33 @@ def run_pipeline_and_wait(client, compiled_path, arguments, timeout):
     return run_id, detail
 
 
-def normalize_state(state):
+def _normalize_state(state):
     """Normalize a state value (str or enum) to an uppercase string."""
     if state is None:
         return None
     return str(getattr(state, "name", state)).upper()
 
 
-def get_run_state(detail):
+def _get_run_state(detail):
     """Extract the run state string from a KFP run detail object."""
     run = getattr(detail, "run", detail)
     state = getattr(run, "state", None)
     if state is None and hasattr(run, "status"):
         state = getattr(run.status, "state", None)
-    return normalize_state(state)
+    return _normalize_state(state)
 
 
-def run_succeeded(detail):
+def _run_succeeded(detail):
     """Return True if the run finished with SUCCEEDED state."""
-    return get_run_state(detail) == "SUCCEEDED"
+    return _get_run_state(detail) == "SUCCEEDED"
 
 
-def run_failed(detail):
+def _run_failed(detail):
     """Return True if the run finished with FAILED state."""
-    return get_run_state(detail) == "FAILED"
+    return _get_run_state(detail) == "FAILED"
 
 
-def validate_artifacts_in_s3(s3_client, bucket, prefix):
-    """List and categorize S3 artifacts under prefix.
-
-    Returns dict with keys: model_keys, leaderboard_keys, notebook_keys, all_keys.
-    """
-    result = {
-        "model_keys": [],
-        "leaderboard_keys": [],
-        "notebook_keys": [],
-        "all_keys": [],
-    }
-    try:
-        paginator = s3_client.get_paginator("list_objects_v2")
-        for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
-            for obj in page.get("Contents") or []:
-                key = obj["Key"]
-                result["all_keys"].append(key)
-                lower_key = key.lower()
-                if key.endswith(".pkl") or "model" in lower_key:
-                    result["model_keys"].append(key)
-                if "leaderboard" in lower_key or key.endswith(".html"):
-                    result["leaderboard_keys"].append(key)
-                if key.endswith(".ipynb"):
-                    result["notebook_keys"].append(key)
-    except Exception as e:
-        raise AssertionError(
-            f"Failed to list S3 artifacts under s3://{bucket}/{prefix}: {e}"
-        ) from e
-    return result
-
-
-def collect_failure_details(client, run_id, config=None):
+def _collect_failure_details(client, run_id, config=None):
     """Collect failure details from a failed pipeline run."""
     lines = [f"\n{'=' * 80}", f"FAILURE DETAILS FOR RUN: {run_id}", "=" * 80]
 
@@ -176,7 +111,7 @@ def collect_failure_details(client, run_id, config=None):
                     task, "task_id", "?"
                 )
                 state = getattr(task, "state", None)
-                state_str = normalize_state(state) or "NOT_STARTED"
+                state_str = _normalize_state(state) or "NOT_STARTED"
 
                 if name in ("root", "executor") or name.endswith("-driver"):
                     continue
@@ -197,7 +132,7 @@ def collect_failure_details(client, run_id, config=None):
     return "\n".join(lines)
 
 
-def get_failed_task_names(client, run_id: str) -> list[str]:
+def _get_failed_task_names(client, run_id: str) -> list[str]:
     """Return display names of user-visible FAILED/ERROR tasks from a pipeline run."""
     try:
         run_detail = client.get_run(run_id)
@@ -210,7 +145,7 @@ def get_failed_task_names(client, run_id: str) -> list[str]:
         for task in task_list:
             name = getattr(task, "display_name", None) or getattr(task, "task_id", "?")
             state = getattr(task, "state", None)
-            state_str = normalize_state(state) or ""
+            state_str = _normalize_state(state) or ""
             if name in ("root", "executor") or name.endswith("-driver"):
                 continue
             if state_str in ("FAILED", "ERROR", "SYSTEM_ERROR"):
@@ -1112,6 +1047,279 @@ _SYSTEM_ENV_KEYS = frozenset(
         "SHELL",
     }
 )
+
+
+def run_deployment_test(
+    *,
+    scenario_id: str,
+    model_entries: list[dict],
+    s3_client,
+    artifacts_bucket: str,
+    run_prefix: str,
+    run_id: str,
+    automl_functional_config: dict,
+    temp_kubeconfig_path: str | None,
+    instances: list[dict] | None = None,
+    isvc_env_vars: dict[str, str] | None = None,
+) -> dict:
+    """Deploy the top-1 model via KServe and validate readiness + scoring.
+
+    ``instances`` — pre-computed scoring payload; pass None to skip scoring.
+    ``isvc_env_vars`` — extra env vars for the predictor container (e.g. timeseries column names).
+    """
+    try:
+        from kubernetes import client
+    except ImportError:
+        logger.warning("kubernetes package not installed; skipping deployment test")
+        return {"skipped": True, "reason": "kubernetes package not installed"}
+
+    namespace = automl_functional_config["rhoai_project"]
+    token = automl_functional_config.get("rhoai_token")
+    serving_image = os.environ.get("RHOAI_SERVING_IMAGE", "").strip()
+    create_runtime = os.environ.get(
+        "RHOAI_CREATE_SERVING_RUNTIME", ""
+    ).strip().lower() in ("1", "true", "yes")
+    hardware_profile_name = os.environ.get(
+        "RHOAI_HARDWARE_PROFILE_NAME", "default-profile"
+    ).strip()
+    hardware_profile_namespace = os.environ.get(
+        "RHOAI_HARDWARE_PROFILE_NAMESPACE", "redhat-ods-applications"
+    ).strip()
+    predictor_cpu = os.environ.get("RHOAI_PREDICTOR_CPU", "2").strip()
+    predictor_memory = os.environ.get("RHOAI_PREDICTOR_MEMORY", "4Gi").strip()
+
+    top_model = model_entries[0]
+    model_name = top_model["model_name"]
+    isvc_name = make_isvc_name(scenario_id, run_id)
+    existing_runtime_name = os.environ.get("RHOAI_SERVING_RUNTIME_NAME", "").strip()
+    serving_runtime_name = existing_runtime_name or isvc_name
+
+    result: dict = {
+        "model_name": model_name,
+        "serving_runtime": serving_runtime_name,
+        "storage_key": None,
+        "isvc_name": isvc_name,
+        "isvc_ready": False,
+        "isvc_url": None,
+        "scored": False,
+        "predictions": None,
+        "score_error": None,
+    }
+
+    predictor_prefix = find_top_model_predictor_prefix(
+        s3_client, artifacts_bucket, run_prefix, model_name
+    )
+    if predictor_prefix is None:
+        result["score_error"] = f"Predictor prefix not found for model {model_name!r}"
+        return result
+
+    predictor_objects = list_s3_objects(s3_client, artifacts_bucket, predictor_prefix)
+    predictor_keys = {obj["Key"].split("/")[-1] for obj in predictor_objects}
+    if "predictor.pkl" not in predictor_keys:
+        result["score_error"] = (
+            f"predictor.pkl not found under s3://{artifacts_bucket}/{predictor_prefix} "
+            f"(found: {sorted(predictor_keys) or 'nothing'})"
+        )
+        return result
+
+    storage_path = predictor_prefix
+    isvc_created = False
+    temp_secret_name: str | None = None
+    temp_sa_name: str | None = None
+    temp_rbac_name: str | None = None
+    temp_runtime_name: str | None = None
+
+    try:
+        load_k8s_config(temp_kubeconfig_path)
+        v1 = client.CoreV1Api()
+        rbac_v1 = client.RbacAuthorizationV1Api()
+        apps_v1 = client.AppsV1Api()
+        co = client.CustomObjectsApi()
+
+        existing_storage_key = os.environ.get("RHOAI_KSERVE_STORAGE_KEY", "").strip()
+        if existing_storage_key:
+            storage_key = existing_storage_key
+            result["storage_key"] = storage_key
+        else:
+            temp_secret_name = f"kserve-s3-{isvc_name[:40]}"
+            create_kserve_s3_secret(
+                v1,
+                namespace,
+                temp_secret_name,
+                artifacts_bucket,
+                automl_functional_config,
+            )
+            storage_key = temp_secret_name
+            result["storage_key"] = storage_key
+            temp_sa_name = create_connection_sa(v1, namespace, temp_secret_name)
+            temp_rbac_name = create_connection_rbac(
+                rbac_v1, namespace, temp_sa_name, temp_secret_name
+            )
+            logger.info("Waiting 15s for controller informer to index secret and SA...")
+            time.sleep(15)
+
+        if create_runtime:
+            if not serving_image:
+                logger.warning(
+                    "RHOAI_CREATE_SERVING_RUNTIME=true but RHOAI_SERVING_IMAGE not set"
+                )
+            else:
+                newly_created = ensure_serving_runtime(
+                    co, namespace, serving_runtime_name, serving_image
+                )
+                if newly_created and not existing_runtime_name:
+                    temp_runtime_name = serving_runtime_name
+                    logger.info(
+                        "Waiting 30s for KServe controller to index ServingRuntime..."
+                    )
+                    time.sleep(30)
+
+        hw_rv = os.environ.get("RHOAI_HARDWARE_PROFILE_RESOURCE_VERSION", "").strip()
+        if not hw_rv:
+            hw_rv = fetch_hardware_profile_resource_version(
+                co, hardware_profile_namespace, hardware_profile_name
+            )
+        if not hw_rv:
+            raise RuntimeError(
+                f"Could not resolve hardware-profile-resource-version for {hardware_profile_name!r} "
+                f"in {hardware_profile_namespace!r}. Set RHOAI_HARDWARE_PROFILE_RESOURCE_VERSION to override."
+            )
+
+        create_inference_service(
+            co,
+            namespace,
+            isvc_name,
+            serving_runtime_name,
+            storage_path,
+            storage_key,
+            hardware_profile_name=hardware_profile_name,
+            hardware_profile_namespace=hardware_profile_namespace,
+            hardware_profile_resource_version=hw_rv,
+            predictor_cpu=predictor_cpu,
+            predictor_memory=predictor_memory,
+            env_vars=isvc_env_vars,
+        )
+        isvc_created = True
+        logger.info("Created InferenceService %r in namespace %r", isvc_name, namespace)
+
+        ensure_deployment_storage_annotations(
+            apps_v1,
+            namespace,
+            isvc_name,
+            storage_key=storage_key,
+            artifacts_bucket=artifacts_bucket,
+            storage_path=storage_path,
+            wait_seconds=60,
+        )
+        log_isvc_events(v1, namespace, isvc_name)
+
+        inference_timeout = int(os.environ.get("RHOAI_INFERENCE_TIMEOUT", "300"))
+        isvc_ready, blocking_reason = wait_for_isvc_ready(
+            co, namespace, isvc_name, timeout_seconds=inference_timeout
+        )
+        result["isvc_ready"] = isvc_ready
+
+        if blocking_reason or not isvc_ready:
+            pod_logs = fetch_pod_logs_str(
+                v1, namespace, f"serving.kserve.io/inferenceservice={isvc_name}"
+            )
+            logger.error("Predictor pod logs for %r:\n%s", isvc_name, pod_logs)
+            if blocking_reason:
+                result["score_error"] = (
+                    f"ISVC {isvc_name!r} blocking condition: {blocking_reason}"
+                )
+                return result
+
+        external_url = resolve_isvc_external_url(co, namespace, isvc_name)
+        result["isvc_url"] = external_url
+
+        if not external_url:
+            result["score_error"] = (
+                f"No external Route found for ISVC {isvc_name!r} after {inference_timeout}s"
+            )
+            return result
+
+        if instances:
+            try:
+                response = score_inference_service(
+                    external_url, isvc_name, instances, token
+                )
+                result["scored"] = True
+                result["predictions"] = response.get("predictions")
+                logger.info(
+                    "Scoring succeeded for %r: %s",
+                    isvc_name,
+                    json.dumps(response, default=str),
+                )
+            except Exception as score_err:
+                pod_logs = fetch_pod_logs_str(
+                    v1, namespace, f"serving.kserve.io/inferenceservice={isvc_name}"
+                )
+                result["score_error"] = f"{score_err}\n{pod_logs}"
+        else:
+            logger.info("No inference_sample for %r — skipping scoring", scenario_id)
+
+    except Exception as deploy_err:
+        logger.error(
+            "Deployment test failed for %r: %s",
+            scenario_id,
+            deploy_err,
+            exc_info=True,
+        )
+        result["score_error"] = str(deploy_err)
+
+    finally:
+        if isvc_created:
+            try:
+                load_k8s_config(temp_kubeconfig_path)
+                delete_inference_service(
+                    client.CustomObjectsApi(), namespace, isvc_name
+                )
+                logger.info("Deleted InferenceService %r", isvc_name)
+            except Exception as e:
+                logger.warning("Failed to delete ISVC %r: %s", isvc_name, e)
+        if temp_runtime_name:
+            try:
+                client.CustomObjectsApi().delete_namespaced_custom_object(
+                    group=_KSERVE_GROUP,
+                    version=_KSERVE_SR_VERSION,
+                    namespace=namespace,
+                    plural=_KSERVE_SR_PLURAL,
+                    name=temp_runtime_name,
+                    _request_timeout=_K8S_CALL_TIMEOUT,
+                )
+                logger.info("Deleted temporary ServingRuntime %r", temp_runtime_name)
+            except Exception as e:
+                logger.warning(
+                    "Failed to delete ServingRuntime %r: %s", temp_runtime_name, e
+                )
+        if temp_secret_name:
+            try:
+                v1.delete_namespaced_secret(
+                    temp_secret_name, namespace, _request_timeout=_K8S_CALL_TIMEOUT
+                )
+                logger.info("Deleted temporary S3 secret %r", temp_secret_name)
+            except Exception as e:
+                logger.warning("Failed to delete secret %r: %s", temp_secret_name, e)
+        if temp_rbac_name:
+            try:
+                rbac_v1.delete_namespaced_role_binding(
+                    temp_rbac_name, namespace, _request_timeout=_K8S_CALL_TIMEOUT
+                )
+                rbac_v1.delete_namespaced_role(
+                    temp_rbac_name, namespace, _request_timeout=_K8S_CALL_TIMEOUT
+                )
+            except Exception as e:
+                logger.warning("Failed to delete RBAC %r: %s", temp_rbac_name, e)
+        if temp_sa_name:
+            try:
+                v1.delete_namespaced_service_account(
+                    temp_sa_name, namespace, _request_timeout=_K8S_CALL_TIMEOUT
+                )
+            except Exception as e:
+                logger.warning("Failed to delete SA %r: %s", temp_sa_name, e)
+
+    return result
 
 
 def download_and_execute_automl_notebook(

@@ -7,7 +7,7 @@ Filter scenarios by tags with AUTOML_FUNCTIONAL_TESTS_TAGS (comma-separated).
 
 import json
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields as dc_fields
 from pathlib import Path
 from typing import Any
 
@@ -94,78 +94,55 @@ class AutoMLTimeseriesFunctionalConfig:
         }
 
 
+_TABULAR_FIELDS: set[str] | None = None
+_TIMESERIES_FIELDS: set[str] | None = None
+
+
 def _load_tabular_configs() -> list[AutoMLTabularFunctionalConfig]:
     """Parse tabular_test_configs.json into config dataclass instances."""
+    global _TABULAR_FIELDS
+    if _TABULAR_FIELDS is None:
+        _TABULAR_FIELDS = {f.name for f in dc_fields(AutoMLTabularFunctionalConfig)}
     data = json.loads(_TABULAR_JSON.read_text(encoding="utf-8"))
-    configs = []
-    for item in data:
-        raw_failing_task = item.get("expected_failing_task")
-        configs.append(
-            AutoMLTabularFunctionalConfig(
-                id=item["id"],
-                label_column=item["label_column"],
-                task_type=item["task_type"],
-                top_n=item["top_n"],
-                train_data_file_key=item["train_data_file_key"],
-                tags=item.get("tags", []),
-                inference_sample=item.get("inference_sample"),
-                fault_category=item.get("fault_category"),
-                injected_fault=item.get("injected_fault"),
-                expected_failing_stage=item.get("expected_failing_stage"),
-                expected_failing_task=raw_failing_task
-                if isinstance(raw_failing_task, list)
-                else None,
-                train_data_secret_name_override=item.get(
-                    "train_data_secret_name_override"
-                ),
-            )
+    return [
+        AutoMLTabularFunctionalConfig(
+            **{k: v for k, v in item.items() if k in _TABULAR_FIELDS}
         )
-    return configs
+        for item in data
+    ]
 
 
 def _load_timeseries_configs() -> list[AutoMLTimeseriesFunctionalConfig]:
     """Parse timeseries_test_configs.json into config dataclass instances."""
+    global _TIMESERIES_FIELDS
+    if _TIMESERIES_FIELDS is None:
+        _TIMESERIES_FIELDS = {
+            f.name for f in dc_fields(AutoMLTimeseriesFunctionalConfig)
+        }
     data = json.loads(_TIMESERIES_JSON.read_text(encoding="utf-8"))
-    configs = []
-    for item in data:
-        raw_failing_task = item.get("expected_failing_task")
-        configs.append(
-            AutoMLTimeseriesFunctionalConfig(
-                id=item["id"],
-                target=item["target"],
-                id_column=item["id_column"],
-                timestamp_column=item["timestamp_column"],
-                known_covariates_names=item.get("known_covariates_names", []),
-                prediction_length=int(item.get("prediction_length", 1)),
-                top_n=int(item.get("top_n", 1)),
-                train_data_file_key=item["train_data_file_key"],
-                tags=item.get("tags", []),
-                inference_sample=item.get("inference_sample"),
-                fault_category=item.get("fault_category"),
-                injected_fault=item.get("injected_fault"),
-                expected_failing_stage=item.get("expected_failing_stage"),
-                expected_failing_task=raw_failing_task
-                if isinstance(raw_failing_task, list)
-                else None,
-                train_data_secret_name_override=item.get(
-                    "train_data_secret_name_override"
-                ),
-            )
+    return [
+        AutoMLTimeseriesFunctionalConfig(
+            **{k: v for k, v in item.items() if k in _TIMESERIES_FIELDS}
         )
-    return configs
+        for item in data
+    ]
 
 
 def _filter_by_tags(
     configs: list, tags_env: str = "AUTOML_FUNCTIONAL_TESTS_TAGS"
 ) -> list:
-    """Return only configs whose tags overlap with the comma-separated env var, or all if unset."""
+    """Return only configs that have ALL requested tags (comma-separated env var), or all if unset."""
     raw = os.getenv(tags_env)
     if not raw or not raw.strip():
         return configs
-    allowed = {t.strip().lower() for t in raw.split(",") if t.strip()}
-    if not allowed:
+    requested = {t.strip().lower() for t in raw.split(",") if t.strip()}
+    if not requested:
         return configs
-    return [c for c in configs if any(t.lower() in allowed for t in c.tags)]
+    return [
+        c
+        for c in configs
+        if all(t in {tag.lower() for tag in c.tags} for t in requested)
+    ]
 
 
 def _split_by_pass_type(configs: list, pass_type: str | None) -> list:

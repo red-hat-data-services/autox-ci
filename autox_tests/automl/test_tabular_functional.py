@@ -15,7 +15,6 @@ Passing criteria for negative scenarios:
 - At least one of the expected_failing_task names appears in the run's failed tasks
 """
 
-import json
 import logging
 import os
 import random
@@ -24,44 +23,26 @@ import time
 import pytest
 
 from .configs.configs import AutoMLTabularFunctionalConfig, get_tabular_configs_for_run
-from .conftest import AUTOML_FUNCTIONAL_CONFIG
+from .conftest import get_automl_functional_config
 from .utils import (
     TASK_PRIMARY_METRICS_TABULAR,
-    _K8S_CALL_TIMEOUT,
-    _KSERVE_GROUP,
-    _KSERVE_SR_PLURAL,
-    _KSERVE_SR_VERSION,
-    collect_failure_details,
+    _collect_failure_details,
+    _get_failed_task_names,
+    _get_run_state,
+    _run_failed,
+    _run_pipeline_and_wait,
+    _run_succeeded,
     collect_model_metrics_and_sizes,
     column_sample_to_instances,
-    create_connection_rbac,
-    create_connection_sa,
-    create_inference_service,
-    create_kserve_s3_secret,
-    delete_inference_service,
     download_and_execute_automl_notebook,
-    ensure_deployment_storage_annotations,
-    ensure_serving_runtime,
-    fetch_hardware_profile_resource_version,
-    fetch_pod_logs_str,
     find_leaderboard_html,
     find_test_dataset_csv,
-    find_top_model_predictor_prefix,
-    get_failed_task_names,
-    get_run_state,
-    list_s3_objects,
-    load_k8s_config,
-    log_isvc_events,
-    make_isvc_name,
-    resolve_isvc_external_url,
-    run_failed,
-    run_pipeline_and_wait,
-    run_succeeded,
-    score_inference_service,
-    wait_for_isvc_ready,
+    run_deployment_test,
 )
 
 logger = logging.getLogger(__name__)
+
+AUTOML_FUNCTIONAL_CONFIG = get_automl_functional_config()
 
 TABULAR_POSITIVE_CONFIGS = get_tabular_configs_for_run(pass_type="positive")
 TABULAR_NEGATIVE_CONFIGS = get_tabular_configs_for_run(pass_type="negative")
@@ -106,7 +87,7 @@ class TestAutoMLTabularFunctional:
         arguments = test_config.get_pipeline_arguments(automl_functional_config)
 
         start = time.monotonic()
-        run_id, detail = run_pipeline_and_wait(
+        run_id, detail = _run_pipeline_and_wait(
             kfp_client_automl_functional,
             compiled_tabular_pipeline_path,
             arguments,
@@ -114,7 +95,7 @@ class TestAutoMLTabularFunctional:
         )
         elapsed = time.monotonic() - start
 
-        state = get_run_state(detail)
+        state = _get_run_state(detail)
         logger.info(
             "[%s] run_id=%s state=%s elapsed=%.1fs",
             test_config.id,
@@ -123,8 +104,8 @@ class TestAutoMLTabularFunctional:
             elapsed,
         )
 
-        if not run_succeeded(detail):
-            failure_info = collect_failure_details(
+        if not _run_succeeded(detail):
+            failure_info = _collect_failure_details(
                 kfp_client_automl_functional, run_id, config=automl_functional_config
             )
             pytest.fail(
@@ -205,8 +186,13 @@ class TestAutoMLTabularFunctional:
                 )
 
             if DEPLOY_AFTER_TRAINING and model_entries:
-                deployment_result = self._run_deployment_test(
-                    test_config=test_config,
+                instances = (
+                    column_sample_to_instances(test_config.inference_sample)
+                    if test_config.inference_sample
+                    else None
+                )
+                deployment_result = run_deployment_test(
+                    scenario_id=test_config.id,
                     model_entries=model_entries,
                     s3_client=s3_client_automl_functional,
                     artifacts_bucket=bucket,
@@ -214,6 +200,7 @@ class TestAutoMLTabularFunctional:
                     run_id=run_id,
                     automl_functional_config=automl_functional_config,
                     temp_kubeconfig_path=temp_kubeconfig_path,
+                    instances=instances,
                 )
                 logger.info(
                     "[%s] deployment: isvc=%s ready=%s url=%s scored=%s predictions_count=%d",
@@ -237,304 +224,6 @@ class TestAutoMLTabularFunctional:
             assert isinstance(predictions, list) and len(predictions) > 0, (
                 f"[{test_config.id}] Predictions must be a non-empty list, got: {predictions!r}"
             )
-
-    def _run_deployment_test(
-        self,
-        *,
-        test_config: "AutoMLTabularFunctionalConfig",
-        model_entries: list[dict],
-        s3_client,
-        artifacts_bucket: str,
-        run_prefix: str,
-        run_id: str,
-        automl_functional_config: dict,
-        temp_kubeconfig_path: str | None,
-    ) -> dict:
-        """Deploy the top-1 model via KServe and validate readiness + scoring.
-
-        Controlled by ``RHOAI_DEPLOY_AFTER_TRAINING=true``.
-        Optional env vars:
-          RHOAI_SERVING_IMAGE          — image for ServingRuntime (needed when creating one)
-          RHOAI_CREATE_SERVING_RUNTIME — create runtime if missing
-          RHOAI_SERVING_RUNTIME_NAME   — use an existing named runtime
-          RHOAI_KSERVE_STORAGE_KEY     — existing Data Connection secret name
-          RHOAI_INFERENCE_TIMEOUT      — seconds to wait for ISVC ready (default 300)
-          RHOAI_HARDWARE_PROFILE_NAME  — hardware profile (default: default-profile)
-          RHOAI_HARDWARE_PROFILE_NAMESPACE — namespace of profile (default: redhat-ods-applications)
-          RHOAI_HARDWARE_PROFILE_RESOURCE_VERSION — override to skip live fetch
-        """
-        try:
-            from kubernetes import client
-        except ImportError:
-            logger.warning("kubernetes package not installed; skipping deployment test")
-            return {"skipped": True, "reason": "kubernetes package not installed"}
-
-        namespace = automl_functional_config["rhoai_project"]
-        token = automl_functional_config.get("rhoai_token")
-        serving_image = os.environ.get("RHOAI_SERVING_IMAGE", "").strip()
-        create_runtime = os.environ.get(
-            "RHOAI_CREATE_SERVING_RUNTIME", ""
-        ).strip().lower() in ("1", "true", "yes")
-        hardware_profile_name = os.environ.get(
-            "RHOAI_HARDWARE_PROFILE_NAME", "default-profile"
-        ).strip()
-        hardware_profile_namespace = os.environ.get(
-            "RHOAI_HARDWARE_PROFILE_NAMESPACE", "redhat-ods-applications"
-        ).strip()
-        predictor_cpu = os.environ.get("RHOAI_PREDICTOR_CPU", "2").strip()
-        predictor_memory = os.environ.get("RHOAI_PREDICTOR_MEMORY", "4Gi").strip()
-
-        top_model = model_entries[0]
-        model_name = top_model["model_name"]
-        isvc_name = make_isvc_name(test_config.id, run_id)
-        existing_runtime_name = os.environ.get("RHOAI_SERVING_RUNTIME_NAME", "").strip()
-        serving_runtime_name = existing_runtime_name or isvc_name
-
-        result: dict = {
-            "model_name": model_name,
-            "serving_runtime": serving_runtime_name,
-            "storage_key": None,
-            "isvc_name": isvc_name,
-            "isvc_ready": False,
-            "isvc_url": None,
-            "scored": False,
-            "predictions": None,
-            "score_error": None,
-        }
-
-        predictor_prefix = find_top_model_predictor_prefix(
-            s3_client, artifacts_bucket, run_prefix, model_name
-        )
-        if predictor_prefix is None:
-            result["score_error"] = (
-                f"Predictor prefix not found for model {model_name!r}"
-            )
-            return result
-
-        predictor_objects = list_s3_objects(
-            s3_client, artifacts_bucket, predictor_prefix
-        )
-        predictor_keys = {obj["Key"].split("/")[-1] for obj in predictor_objects}
-        if "predictor.pkl" not in predictor_keys:
-            result["score_error"] = (
-                f"predictor.pkl not found under s3://{artifacts_bucket}/{predictor_prefix} "
-                f"(found: {sorted(predictor_keys) or 'nothing'})"
-            )
-            return result
-
-        storage_path = predictor_prefix
-        isvc_created = False
-        temp_secret_name: str | None = None
-        temp_sa_name: str | None = None
-        temp_rbac_name: str | None = None
-        temp_runtime_name: str | None = None
-
-        try:
-            load_k8s_config(temp_kubeconfig_path)
-            v1 = client.CoreV1Api()
-            rbac_v1 = client.RbacAuthorizationV1Api()
-            apps_v1 = client.AppsV1Api()
-            co = client.CustomObjectsApi()
-
-            existing_storage_key = os.environ.get(
-                "RHOAI_KSERVE_STORAGE_KEY", ""
-            ).strip()
-            if existing_storage_key:
-                storage_key = existing_storage_key
-                result["storage_key"] = storage_key
-            else:
-                temp_secret_name = f"kserve-s3-{isvc_name[:40]}"
-                create_kserve_s3_secret(
-                    v1,
-                    namespace,
-                    temp_secret_name,
-                    artifacts_bucket,
-                    automl_functional_config,
-                )
-                storage_key = temp_secret_name
-                result["storage_key"] = storage_key
-                temp_sa_name = create_connection_sa(v1, namespace, temp_secret_name)
-                temp_rbac_name = create_connection_rbac(
-                    rbac_v1, namespace, temp_sa_name, temp_secret_name
-                )
-                logger.info(
-                    "Waiting 15s for controller informer to index secret and SA..."
-                )
-                time.sleep(15)
-
-            if create_runtime:
-                if not serving_image:
-                    logger.warning(
-                        "RHOAI_CREATE_SERVING_RUNTIME=true but RHOAI_SERVING_IMAGE not set"
-                    )
-                else:
-                    newly_created = ensure_serving_runtime(
-                        co, namespace, serving_runtime_name, serving_image
-                    )
-                    if newly_created and not existing_runtime_name:
-                        temp_runtime_name = serving_runtime_name
-                        logger.info(
-                            "Waiting 30s for KServe controller to index ServingRuntime..."
-                        )
-                        time.sleep(30)
-
-            hw_rv = os.environ.get(
-                "RHOAI_HARDWARE_PROFILE_RESOURCE_VERSION", ""
-            ).strip()
-            if not hw_rv:
-                hw_rv = fetch_hardware_profile_resource_version(
-                    co, hardware_profile_namespace, hardware_profile_name
-                )
-            if not hw_rv:
-                raise RuntimeError(
-                    f"Could not resolve hardware-profile-resource-version for {hardware_profile_name!r} "
-                    f"in {hardware_profile_namespace!r}. Set RHOAI_HARDWARE_PROFILE_RESOURCE_VERSION to override."
-                )
-
-            create_inference_service(
-                co,
-                namespace,
-                isvc_name,
-                serving_runtime_name,
-                storage_path,
-                storage_key,
-                hardware_profile_name=hardware_profile_name,
-                hardware_profile_namespace=hardware_profile_namespace,
-                hardware_profile_resource_version=hw_rv,
-                predictor_cpu=predictor_cpu,
-                predictor_memory=predictor_memory,
-            )
-            isvc_created = True
-            logger.info(
-                "Created InferenceService %r in namespace %r", isvc_name, namespace
-            )
-
-            ensure_deployment_storage_annotations(
-                apps_v1,
-                namespace,
-                isvc_name,
-                storage_key=storage_key,
-                artifacts_bucket=artifacts_bucket,
-                storage_path=storage_path,
-                wait_seconds=60,
-            )
-            log_isvc_events(v1, namespace, isvc_name)
-
-            inference_timeout = int(os.environ.get("RHOAI_INFERENCE_TIMEOUT", "300"))
-            isvc_ready, blocking_reason = wait_for_isvc_ready(
-                co, namespace, isvc_name, timeout_seconds=inference_timeout
-            )
-            result["isvc_ready"] = isvc_ready
-
-            if blocking_reason or not isvc_ready:
-                pod_logs = fetch_pod_logs_str(
-                    v1, namespace, f"serving.kserve.io/inferenceservice={isvc_name}"
-                )
-                logger.error("Predictor pod logs for %r:\n%s", isvc_name, pod_logs)
-                if blocking_reason:
-                    result["score_error"] = (
-                        f"ISVC {isvc_name!r} blocking condition: {blocking_reason}"
-                    )
-                    return result
-
-            external_url = resolve_isvc_external_url(co, namespace, isvc_name)
-            result["isvc_url"] = external_url
-
-            if not external_url:
-                result["score_error"] = (
-                    f"No external Route found for ISVC {isvc_name!r} after {inference_timeout}s"
-                )
-                return result
-
-            if test_config.inference_sample:
-                instances = column_sample_to_instances(test_config.inference_sample)
-                try:
-                    response = score_inference_service(
-                        external_url, isvc_name, instances, token
-                    )
-                    result["scored"] = True
-                    result["predictions"] = response.get("predictions")
-                    logger.info(
-                        "Scoring succeeded for %r: %s",
-                        isvc_name,
-                        json.dumps(response, default=str),
-                    )
-                except Exception as score_err:
-                    pod_logs = fetch_pod_logs_str(
-                        v1, namespace, f"serving.kserve.io/inferenceservice={isvc_name}"
-                    )
-                    result["score_error"] = f"{score_err}\n{pod_logs}"
-            else:
-                logger.info(
-                    "No inference_sample in config %r — skipping scoring",
-                    test_config.id,
-                )
-
-        except Exception as deploy_err:
-            logger.error(
-                "Deployment test failed for %r: %s",
-                test_config.id,
-                deploy_err,
-                exc_info=True,
-            )
-            result["score_error"] = str(deploy_err)
-
-        finally:
-            if isvc_created:
-                try:
-                    load_k8s_config(temp_kubeconfig_path)
-                    delete_inference_service(
-                        client.CustomObjectsApi(), namespace, isvc_name
-                    )
-                    logger.info("Deleted InferenceService %r", isvc_name)
-                except Exception as e:
-                    logger.warning("Failed to delete ISVC %r: %s", isvc_name, e)
-            if temp_runtime_name:
-                try:
-                    client.CustomObjectsApi().delete_namespaced_custom_object(
-                        group=_KSERVE_GROUP,
-                        version=_KSERVE_SR_VERSION,
-                        namespace=namespace,
-                        plural=_KSERVE_SR_PLURAL,
-                        name=temp_runtime_name,
-                        _request_timeout=_K8S_CALL_TIMEOUT,
-                    )
-                    logger.info(
-                        "Deleted temporary ServingRuntime %r", temp_runtime_name
-                    )
-                except Exception as e:
-                    logger.warning(
-                        "Failed to delete ServingRuntime %r: %s", temp_runtime_name, e
-                    )
-            if temp_secret_name:
-                try:
-                    v1.delete_namespaced_secret(
-                        temp_secret_name, namespace, _request_timeout=_K8S_CALL_TIMEOUT
-                    )
-                    logger.info("Deleted temporary S3 secret %r", temp_secret_name)
-                except Exception as e:
-                    logger.warning(
-                        "Failed to delete secret %r: %s", temp_secret_name, e
-                    )
-            if temp_rbac_name:
-                try:
-                    rbac_v1.delete_namespaced_role_binding(
-                        temp_rbac_name, namespace, _request_timeout=_K8S_CALL_TIMEOUT
-                    )
-                    rbac_v1.delete_namespaced_role(
-                        temp_rbac_name, namespace, _request_timeout=_K8S_CALL_TIMEOUT
-                    )
-                except Exception as e:
-                    logger.warning("Failed to delete RBAC %r: %s", temp_rbac_name, e)
-            if temp_sa_name:
-                try:
-                    v1.delete_namespaced_service_account(
-                        temp_sa_name, namespace, _request_timeout=_K8S_CALL_TIMEOUT
-                    )
-                except Exception as e:
-                    logger.warning("Failed to delete SA %r: %s", temp_sa_name, e)
-
-        return result
 
 
 @pytest.mark.tabular
@@ -569,7 +258,7 @@ class TestAutoMLTabularFunctionalNegative:
         timeout = min(pipeline_run_timeout, _EXPECTED_FAIL_TIMEOUT_CAP)
 
         start = time.monotonic()
-        run_id, detail = run_pipeline_and_wait(
+        run_id, detail = _run_pipeline_and_wait(
             kfp_client_automl_functional,
             compiled_tabular_pipeline_path,
             arguments,
@@ -577,8 +266,8 @@ class TestAutoMLTabularFunctionalNegative:
         )
         elapsed = time.monotonic() - start
 
-        state = get_run_state(detail)
-        failed_task_names = get_failed_task_names(kfp_client_automl_functional, run_id)
+        state = _get_run_state(detail)
+        failed_task_names = _get_failed_task_names(kfp_client_automl_functional, run_id)
 
         logger.info(
             "[%s] run_id=%s state=%s elapsed=%.1fs fault=%r category=%r failed_tasks=%s expected=%s",
@@ -592,12 +281,12 @@ class TestAutoMLTabularFunctionalNegative:
             test_config.expected_failing_task,
         )
         logger.info(
-            collect_failure_details(
+            _collect_failure_details(
                 kfp_client_automl_functional, run_id, config=automl_functional_config
             )
         )
 
-        assert run_failed(detail), (
+        assert _run_failed(detail), (
             f"[{test_config.id}] Pipeline run {run_id} expected FAILED but got {state}. "
             f"Injected fault: {test_config.injected_fault}"
         )

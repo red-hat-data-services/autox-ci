@@ -67,13 +67,10 @@ def get_automl_functional_config():
     return base
 
 
-AUTOML_FUNCTIONAL_CONFIG = get_automl_functional_config()
-
-
 @pytest.fixture(scope="session")
 def automl_functional_config():
     """Session-scoped AutoML functional test config dict (None if env is incomplete)."""
-    return AUTOML_FUNCTIONAL_CONFIG
+    return get_automl_functional_config()
 
 
 @pytest.fixture(scope="session")
@@ -81,7 +78,7 @@ def kfp_client_automl_functional(automl_functional_config):
     """Session-scoped KFP client for AutoML functional tests."""
     if automl_functional_config is None:
         return None
-    from .utils import make_kfp_client
+    from autox_tests.lib.clients import make_kfp_client
 
     return make_kfp_client(automl_functional_config)
 
@@ -93,7 +90,7 @@ def s3_client_automl_functional(automl_functional_config):
         "s3_endpoint"
     ):
         return None
-    from .utils import make_s3_client
+    from autox_tests.lib.clients import make_s3_client
 
     return make_s3_client(automl_functional_config)
 
