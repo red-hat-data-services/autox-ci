@@ -1317,7 +1317,7 @@ def run_deployment_test(
                     temp_sa_name, namespace, _request_timeout=_K8S_CALL_TIMEOUT
                 )
             except Exception as e:
-                logger.warning("Failed to delete SA %r: %s", temp_sa_name, e)
+                logger.warning("Failed to delete temporary ServiceAccount: %s", e)
 
     return result
 
