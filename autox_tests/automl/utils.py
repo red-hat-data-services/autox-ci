@@ -377,10 +377,10 @@ def create_connection_sa(v1, namespace: str, secret_name: str) -> str:
         v1.create_namespaced_service_account(
             namespace, sa, _request_timeout=_K8S_CALL_TIMEOUT
         )
-        logger.info("Created ServiceAccount %r in namespace %r", sa_name, namespace)
+        logger.info("Created ServiceAccount in namespace %r", namespace)
     except ApiException as exc:
         if exc.status == 409:
-            logger.info("ServiceAccount %r already exists — reusing", sa_name)
+            logger.info("ServiceAccount already exists — reusing")
         else:
             raise
     return sa_name
