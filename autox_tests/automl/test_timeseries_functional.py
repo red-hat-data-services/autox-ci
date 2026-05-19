@@ -386,6 +386,8 @@ class TestAutoMLTimeseriesFunctional:
                     f"in {hardware_profile_namespace!r}. Set RHOAI_HARDWARE_PROFILE_RESOURCE_VERSION to override."
                 )
 
+            # In RHOAI 3.4, the ID and timestamp columns must be configured 
+            # via environment variables during deployment creation.
             ts_env_vars: dict[str, str] = {}
             if test_config.id_column != "item_id":
                 ts_env_vars["AUTOGLUON_TS_ID_COLUMN"] = test_config.id_column
