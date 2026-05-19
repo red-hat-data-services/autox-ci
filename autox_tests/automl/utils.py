@@ -1310,7 +1310,7 @@ def run_deployment_test(
                     temp_rbac_name, namespace, _request_timeout=_K8S_CALL_TIMEOUT
                 )
             except Exception as e:
-                logger.warning("Failed to delete RBAC %r: %s", temp_rbac_name, e)
+                logger.warning("Failed to delete temporary RBAC resource: %s", e)
         if temp_sa_name:
             try:
                 v1.delete_namespaced_service_account(
