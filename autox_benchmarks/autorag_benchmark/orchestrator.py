@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from autorag_benchmark.config_loader import load_merged_benchmark_config
-from autorag_benchmark.pattern_scores import extract_pattern_scores
+from autorag_benchmark.pattern_scores import extract_pattern_scores, extract_pattern_scores_tabular
 from autorag_benchmark.pipeline_params import build_pipeline_arguments, pipeline_file_for_dataset
 from autorag_benchmark.result_rows import (
     base_row_for_dataset,
@@ -166,45 +166,63 @@ class BenchmarkOrchestrator:
                 if detail is None:
                     detail = client.get_run(rid)
 
-                row = completed_row(base, rid, detail)
+                base_row = completed_row(base, rid, detail)
 
-                # Extract pattern scores for successful runs
-                state = row.get("state", "")
+                # Extract pattern scores for successful runs and create one row per pattern
+                state = base_row.get("state", "")
+                dataset_rows: list[dict[str, Any]] = []
+
                 if is_success_state(str(state)):
-                    logger.info("Extracting pattern scores from S3 for run %s", rid)
-                    try:
-                        pattern_scores = extract_pattern_scores(rid, cfg)
+                    logger.info("Extracting pattern scores from S3 for run %s (bucket: %s)", rid, bucket)
 
-                        # Merge pattern scores into metrics_blob
-                        existing_metrics = row.get("metrics_blob", "")
-                        if existing_metrics:
-                            try:
-                                metrics = json.loads(existing_metrics)
-                            except json.JSONDecodeError:
-                                metrics = {}
-                        else:
-                            metrics = {}
-
-                        metrics["pattern_scores"] = pattern_scores
-                        row["metrics_blob"] = json.dumps(metrics)
-
-                        # Log summary
-                        if "best_pattern" in pattern_scores:
-                            best = pattern_scores["best_pattern"]
-                            logger.info(
-                                "Best pattern: %s with final_score=%.4f",
-                                best.get("name"),
-                                best.get("final_score", 0),
+                    # Check if S3 credentials are configured
+                    s3_cfg = cfg.get("s3", {})
+                    if not s3_cfg.get("aws_access_key_id") or not s3_cfg.get("aws_secret_access_key"):
+                        logger.warning("S3 credentials not configured in config. Skipping pattern extraction.")
+                        logger.warning("To enable pattern extraction, configure [s3] section in credentials.ini")
+                        dataset_rows.append(base_row)
+                    else:
+                        try:
+                            optimization_metric = ds.get("optimization_metric", "faithfulness")
+                            pattern_rows = extract_pattern_scores_tabular(
+                                run_id=rid,
+                                config=cfg,
+                                bucket=bucket,
+                                optimization_metric=optimization_metric,
                             )
-                        elif "error" in pattern_scores:
-                            logger.warning("Pattern scores extraction failed: %s", pattern_scores["error"])
 
-                    except Exception as e:
-                        logger.error("Failed to extract pattern scores: %s", e)
+                            if pattern_rows:
+                                # Create one row per pattern
+                                for pattern_row in pattern_rows:
+                                    row = {**base_row, **pattern_row}
+                                    dataset_rows.append(row)
 
-                rows.append(row)
+                                logger.info(
+                                    "Extracted %d pattern rows for dataset %s (best score: %.4f)",
+                                    len(pattern_rows),
+                                    ds_id,
+                                    max((p.get("final_score") or 0) for p in pattern_rows),
+                                )
+                                logger.info("Pattern configuration columns: %s", list(pattern_rows[0].keys()))
+                            else:
+                                # No patterns extracted, keep base row only
+                                logger.warning("No patterns extracted for run %s, using base row only", rid)
+                                logger.warning("Check if pattern.json files exist in S3 at: s3://%s/documents-rag-optimization-pipeline/%s/rag-templates-optimization/*/rag_patterns/*/pattern.json", bucket, rid)
+                                dataset_rows.append(base_row)
 
-                # Upload single dataset results to S3
+                        except Exception as e:
+                            logger.error("Failed to extract pattern scores for run %s: %s", rid, e, exc_info=True)
+                            logger.error("Verify S3 credentials and pattern.json file locations")
+                            # Fall back to base row on error
+                            dataset_rows.append(base_row)
+                else:
+                    # Failed run, keep single base row
+                    dataset_rows.append(base_row)
+
+                rows.extend(dataset_rows)
+
+                # Upload dataset results to S3 (use first row for metadata, will contain all patterns)
+                upload_row = dataset_rows[0] if dataset_rows else base_row
                 upload_single_dataset_results(
                     s3_cfg=s3_cfg,
                     bucket=bucket,
@@ -212,7 +230,7 @@ class BenchmarkOrchestrator:
                     cfg=cfg,
                     batch_id=batch_id,
                     dataset=ds,
-                    row=row,
+                    row=upload_row,
                     pipeline_yaml_path=settings.pipeline_yaml,
                     arguments=arguments,
                     dataset_filter=dataset_filter,

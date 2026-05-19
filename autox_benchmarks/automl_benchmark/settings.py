@@ -67,7 +67,7 @@ def benchmark_settings_from_config(cfg: dict[str, Any], config_dir: Path) -> Ben
         "autogluon-timeseries-training-pipeline",
     )
 
-    bench_prefix = str(storage_cfg.get("benchmark_s3_prefix") or "benchmarks").strip().strip("/")
+    bench_prefix = str(storage_cfg.get("benchmark_s3_prefix") or "benchmarks/ml").strip().strip("/")
     upload_raw = storage_cfg.get("upload_benchmark_results")
     if upload_raw is None:
         upload_benchmark_results = True
