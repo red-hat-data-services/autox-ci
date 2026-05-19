@@ -1298,7 +1298,7 @@ def run_deployment_test(
                 v1.delete_namespaced_secret(
                     temp_secret_name, namespace, _request_timeout=_K8S_CALL_TIMEOUT
                 )
-                logger.info("Deleted temporary S3 secret %r", temp_secret_name)
+                logger.info("Deleted temporary S3 secret")
             except Exception as e:
                 logger.warning("Failed to delete temporary S3 secret: %s", e)
         if temp_rbac_name:
