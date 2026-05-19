@@ -1300,7 +1300,7 @@ def run_deployment_test(
                 )
                 logger.info("Deleted temporary S3 secret %r", temp_secret_name)
             except Exception as e:
-                logger.warning("Failed to delete secret %r: %s", temp_secret_name, e)
+                logger.warning("Failed to delete temporary S3 secret: %s", e)
         if temp_rbac_name:
             try:
                 rbac_v1.delete_namespaced_role_binding(
