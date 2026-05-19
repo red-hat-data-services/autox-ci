@@ -121,11 +121,9 @@ def extract_pattern_scores(
                             "pattern_id": pattern_data.get("pattern_name"),
                         }
 
-                        # Include indexing and rag params if available
-                        if "indexing_params" in pattern_data:
-                            pattern_info["indexing_params"] = pattern_data["indexing_params"]
-                        if "rag_params" in pattern_data:
-                            pattern_info["rag_params"] = pattern_data["rag_params"]
+                        # Include settings if available
+                        if "settings" in pattern_data:
+                            pattern_info["settings"] = pattern_data["settings"]
 
                         pattern_scores.append(pattern_info)
                         logger.info(
@@ -174,3 +172,127 @@ def extract_pattern_scores(
     except Exception as e:
         logger.exception("Unexpected error extracting patterns for run %s", run_id)
         return {"error": f"Unexpected error: {e}"}
+
+
+def extract_pattern_scores_tabular(
+    run_id: str,
+    config: dict[str, Any],
+    bucket: str = "ai-eng-cracow",
+    pipeline_name: str = "documents-rag-optimization-pipeline",
+    optimization_metric: str | None = None,
+) -> list[dict[str, Any]]:
+    """
+    Extract pattern scores in tabular format suitable for CSV rows.
+
+    Args:
+        run_id: KFP run ID
+        config: Config dict with [s3] credentials
+        bucket: S3 bucket name
+        pipeline_name: Pipeline name prefix in S3
+        optimization_metric: The metric used for optimization (for reference)
+
+    Returns:
+        List of flat dicts, one per pattern, with columns:
+        - pattern_name: Pattern identifier
+        - final_score: Overall score for the pattern
+        - Individual metric scores (faithfulness, answer_relevance, etc.)
+        - execution_time: Time taken to execute pattern
+        - error: Error message if pattern failed
+
+    Returns empty list if extraction fails.
+    """
+    result = extract_pattern_scores(
+        run_id=run_id,
+        config=config,
+        bucket=bucket,
+        pipeline_name=pipeline_name,
+    )
+
+    if "error" in result:
+        error_msg = result["error"]
+        logger.warning("Pattern extraction failed for run %s: %s", run_id, error_msg)
+        if "not found" in error_msg.lower() or "not exist" in error_msg.lower():
+            logger.info("Pattern files may not have been created yet. The pipeline needs to complete successfully and create pattern.json files in S3.")
+        return []
+
+    patterns = result.get("patterns", [])
+    if not patterns:
+        logger.warning("No patterns found for run %s", run_id)
+        logger.info("Expected S3 path: %s", result.get("rag_patterns_s3_uri", "unknown"))
+        return []
+
+    logger.info("Successfully found %d patterns for run %s", len(patterns), run_id)
+
+    # Convert nested pattern data to flat rows
+    rows = []
+    for pattern in patterns:
+        row = {
+            "pattern_name": pattern.get("pattern_name", ""),
+            "final_score": pattern.get("final_score"),
+            "execution_time": pattern.get("execution_time"),
+        }
+
+        # Add individual metric scores (mean values if dict with mean/ci_low/ci_high)
+        scores = pattern.get("scores", {})
+        if isinstance(scores, dict):
+            # Common RAG metrics
+            for metric in ["faithfulness", "answer_relevance", "answer_correctness", "context_precision", "context_recall", "context_correctness"]:
+                if metric in scores:
+                    score_val = scores[metric]
+                    # Handle dict format with mean/ci_low/ci_high
+                    if isinstance(score_val, dict) and "mean" in score_val:
+                        row[f"mean_{metric}"] = score_val["mean"]
+                    elif isinstance(score_val, (int, float)):
+                        row[f"mean_{metric}"] = score_val
+
+            # Include optimization metric explicitly if specified
+            if optimization_metric and optimization_metric in scores:
+                score_val = scores[optimization_metric]
+                if isinstance(score_val, dict) and "mean" in score_val:
+                    row[f"mean_{optimization_metric}"] = score_val["mean"]
+                elif isinstance(score_val, (int, float)):
+                    row[f"mean_{optimization_metric}"] = score_val
+
+        # Extract parameters from settings
+        settings = pattern.get("settings", {})
+        if isinstance(settings, dict):
+            # Chunking parameters
+            chunking = settings.get("chunking", {})
+            if isinstance(chunking, dict):
+                row["chunking_method"] = chunking.get("method", "")
+                row["chunking_chunk_size"] = chunking.get("chunk_size")
+                row["chunking_chunk_overlap"] = chunking.get("chunk_overlap")
+
+            # Embedding parameters (note: singular 'embedding', not 'embeddings')
+            embedding = settings.get("embedding", {})
+            if isinstance(embedding, dict):
+                row["embeddings_model_id"] = embedding.get("model_id", "")
+
+            # Retrieval parameters
+            retrieval = settings.get("retrieval", {})
+            if isinstance(retrieval, dict):
+                row["retrieval_method"] = retrieval.get("method", "")
+                row["retrieval_number_of_chunks"] = retrieval.get("number_of_chunks")
+                row["retrieval_search_mode"] = retrieval.get("search_mode", "")
+                # Derive ranker_strategy from ranker_k and ranker_alpha if needed
+                ranker_k = retrieval.get("ranker_k")
+                ranker_alpha = retrieval.get("ranker_alpha")
+                if ranker_k is not None and ranker_alpha is not None:
+                    row["retrieval_ranker_strategy"] = f"k={ranker_k},alpha={ranker_alpha}"
+
+            # Generation parameters
+            generation = settings.get("generation", {})
+            if isinstance(generation, dict):
+                row["generation_model_id"] = generation.get("model_id", "")
+        else:
+            logger.warning("Pattern %s has no settings field or settings is not a dict", pattern.get("pattern_name"))
+
+        # Include error if present
+        if "error" in pattern:
+            row["error"] = pattern["error"]
+            row["final_score"] = None  # No score if errored
+
+        rows.append(row)
+
+    logger.info("Extracted %d pattern rows for run %s", len(rows), run_id)
+    return rows

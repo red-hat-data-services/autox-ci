@@ -48,7 +48,13 @@ def save_document(
 
 def _save_txt(content: str, output_path: Path) -> Path:
     """Save as plain text file."""
-    txt_path = output_path.with_suffix(".txt")
+    # Don't use with_suffix() as it replaces everything after the last dot,
+    # which truncates filenames like "doc_2410.14077v2" to "doc_2410.txt"
+    # Instead, append .txt extension if not already present
+    if output_path.suffix.lower() == ".txt":
+        txt_path = output_path
+    else:
+        txt_path = Path(str(output_path) + ".txt")
     txt_path.write_text(content, encoding="utf-8")
     return txt_path
 
@@ -67,7 +73,13 @@ def _save_markdown(content: str, output_path: Path, metadata: dict | None = None
         frontmatter += "---\n\n"
         md_content = frontmatter + content
 
-    md_path = output_path.with_suffix(".md")
+    # Don't use with_suffix() as it replaces everything after the last dot,
+    # which truncates filenames like "doc_2410.14077v2" to "doc_2410.md"
+    # Instead, append .md extension if not already present
+    if output_path.suffix.lower() == ".md":
+        md_path = output_path
+    else:
+        md_path = Path(str(output_path) + ".md")
     md_path.write_text(md_content, encoding="utf-8")
     return md_path
 
@@ -81,7 +93,7 @@ def save_binary_document(
 
     Args:
         binary_data: Binary file content
-        output_path: Output path (extension will be replaced based on format)
+        output_path: Output path (extension will be appended based on format)
         format: Output format - "pdf", "pptx", "png", or "jpg"
 
     Returns:
@@ -96,7 +108,13 @@ def save_binary_document(
             f"Use save_document() for text formats like 'txt' or 'md'."
         )
 
-    output_file = output_path.with_suffix(f".{format}")
+    # Don't use with_suffix() as it replaces everything after the last dot
+    # Instead, append extension if not already present
+    expected_suffix = f".{format}"
+    if output_path.suffix.lower() == expected_suffix:
+        output_file = output_path
+    else:
+        output_file = Path(str(output_path) + expected_suffix)
     output_file.write_bytes(binary_data)
     return output_file
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import json
 import logging
 from datetime import datetime, timezone
@@ -14,10 +15,21 @@ from benchmark_common.s3_upload import (
     join_s3_key,
     put_s3_bytes,
     row_to_csv_bytes,
+    try_get_s3_object_bytes,
 )
 from autorag_benchmark.settings import BenchmarkSettings
 
 logger = logging.getLogger(__name__)
+
+
+def _merge_joined_results_dedupe(existing: Any, new: Any) -> Any:
+    """Append batch results; drop exact duplicate rows (same as prior S3 content)."""
+    import pandas as pd
+
+    if existing is None or getattr(existing, "empty", True):
+        return new.drop_duplicates(keep="first")
+    combined = pd.concat([existing, new], ignore_index=True, sort=False)
+    return combined.drop_duplicates(keep="first")
 
 
 def _dataset_results_subpath(dataset: dict[str, Any]) -> str:
@@ -182,6 +194,7 @@ def upload_batch_aggregated(
         return
 
     agg_prefix = join_s3_key(settings.benchmark_s3_prefix, batch_id, "aggregated")
+    joined_results_key = join_s3_key(settings.benchmark_s3_prefix, "joined_results.csv")
     finished_at = datetime.now(timezone.utc).isoformat()
     manifest_rel = str(cfg.get("dataset_manifest_path") or "")
 
@@ -216,6 +229,7 @@ def upload_batch_aggregated(
         )
 
         if output_csv.is_file():
+            # Upload batch CSV
             put_s3_bytes(
                 s3_cfg=s3_cfg,
                 bucket=bucket,
@@ -223,6 +237,39 @@ def upload_batch_aggregated(
                 body=output_csv.read_bytes(),
                 content_type="text/csv; charset=utf-8",
             )
+
+            # Update cumulative joined_results.csv
+            try:
+                import pandas as pd
+
+                # Load current batch results
+                new_df = pd.read_csv(output_csv)
+
+                # Load existing joined_results if it exists
+                old_raw = try_get_s3_object_bytes(s3_cfg=s3_cfg, bucket=bucket, key=joined_results_key)
+                old_df = None
+                if old_raw:
+                    try:
+                        old_df = pd.read_csv(io.BytesIO(old_raw))
+                    except Exception as e:
+                        logger.warning("Could not parse existing joined_results.csv; rewriting: %s", e)
+
+                # Merge and deduplicate
+                out_df = _merge_joined_results_dedupe(old_df, new_df)
+
+                # Upload updated joined_results.csv
+                jbuf = io.StringIO()
+                out_df.to_csv(jbuf, index=False)
+                put_s3_bytes(
+                    s3_cfg=s3_cfg,
+                    bucket=bucket,
+                    key=joined_results_key,
+                    body=jbuf.getvalue().encode("utf-8"),
+                    content_type="text/csv; charset=utf-8",
+                )
+                logger.info("Updated joined results s3://%s/%s (%d rows)", bucket, joined_results_key, len(out_df))
+            except Exception as e:
+                logger.warning("Could not update joined_results.csv: %s", e)
 
         logger.info("Uploaded batch aggregated artifacts to s3://%s/%s/", bucket, agg_prefix)
     except Exception as e:

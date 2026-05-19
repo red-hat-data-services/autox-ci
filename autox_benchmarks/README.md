@@ -265,29 +265,59 @@ Both AutoML and AutoRAG benchmarks upload results to S3 automatically when `uplo
 
 ### S3 Result Structure
 
+Results are organized by benchmark type for easy separation and management:
+
+**AutoML Results:**
 ```
-s3://bucket/benchmarks/{batch_id}/
+s3://bucket/benchmarks/ml/{batch_id}/
 ├── datasets/
 │   ├── {dataset_id_1}/
-│   │   ├── metadata.json       # Run details, arguments, timing
-│   │   └── results.csv         # Single-row CSV for this run
+│   │   ├── metadata.json         # Run details, arguments, timing
+│   │   ├── results.csv           # Single-row CSV for this run
+│   │   └── leaderboard.html      # AutoGluon leaderboard (if available)
+│   └── {dataset_id_2}/
+│       ├── metadata.json
+│       └── results.csv
+├── aggregated/
+│   ├── batch_metadata.json       # Batch summary (all datasets, settings)
+│   ├── benchmark_runs.csv        # Full multi-row CSV
+│   ├── merged_leaderboards.csv   # Merged with leaderboard details
+│   └── autogluon-*-pipeline.yaml # Pipeline definitions
+└── joined_results.csv            # Cumulative results across all ML batches
+```
+
+**AutoRAG Results:**
+```
+s3://bucket/benchmarks/rag/{batch_id}/
+├── datasets/
+│   ├── {dataset_id_1}/
+│   │   ├── metadata.json         # Run details, arguments, timing
+│   │   └── results.csv           # Single-row CSV for this run
 │   └── {dataset_id_2}/
 │       ├── metadata.json
 │       └── results.csv
 └── aggregated/
-    ├── batch_metadata.json     # Batch summary (all datasets, settings)
-    └── benchmark_runs.csv      # Full multi-row CSV
+    ├── batch_metadata.json       # Batch summary (all datasets, settings)
+    └── benchmark_runs.csv        # Full multi-row CSV
 ```
 
 **Batch ID format:** `YYYYMMDDTHHMMSSZ` (e.g., `20260514T143527Z`)
 
-### Disabling Upload
+> **Note:** The default structure separates ML and RAG results. You can customize the prefix in `credentials.ini` with `benchmark_s3_prefix`.
+
+### Customizing S3 Upload
 
 Set in `config/credentials.ini`:
 
 ```ini
 [storage]
+# Disable upload entirely
 upload_benchmark_results = false
+
+# Or customize the S3 prefix (defaults: benchmarks/ml for AutoML, benchmarks/rag for AutoRAG)
+benchmark_s3_prefix = benchmarks/ml
+# benchmark_s3_prefix = benchmarks/rag
+# benchmark_s3_prefix = my-custom-prefix
 ```
 
 ## Configuration Reference
