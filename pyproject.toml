@@ -20,12 +20,32 @@ dependencies = [
 [project.optional-dependencies]
 # Same runtime stack as `dependencies`; kept so `pip install -e ".[test_rhoai]"` / `test_automl` match docs.
 test_rhoai = []
-test_automl = []
+test_automl = [
+  "papermill",
+  "ipykernel",
+  "autogluon.common==1.5.0+rhaiv.2",
+  "autogluon.core==1.5.0+rhaiv.2",
+  "autogluon.features==1.5.0+rhaiv.2",
+  "autogluon.tabular[lightgbm,xgboost,tabm]==1.5.0+rhaiv.2",
+  "autogluon.timeseries==1.5.0+rhaiv.2",
+]
 test_autorag = [
   "nbformat",
   "notebook",
   "papermill",
 ]
+
+[[tool.uv.index]]
+name = "rhai"
+url = "https://console.redhat.com/api/pypi/public-rhai/rhoai/3.4/cpu-ubi9/simple/"
+explicit = true
+
+[tool.uv.sources]
+"autogluon-common" = { index = "rhai" }
+"autogluon-core" = { index = "rhai" }
+"autogluon-features" = { index = "rhai" }
+"autogluon-tabular" = { index = "rhai" }
+"autogluon-timeseries" = { index = "rhai" }
 
 [tool.setuptools]
 package-dir = { autox_tests = "autox_tests" }
