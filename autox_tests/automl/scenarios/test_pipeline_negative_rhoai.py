@@ -46,7 +46,7 @@ _TIMESERIES_INVALID_NON_DATA_PARAMS: list[tuple[str, Any]] = [
 _AUTORAG_INVALID_NON_DATA_PARAMS: list[tuple[str, Any]] = [
     ("optimization_metric", "not_a_supported_metric"),
     ("optimization_max_rag_patterns", 0),
-    ("embeddings_models", ["__rhoai_negative_invalid_embedding__"]),
+    ("embedding_models", ["__rhoai_negative_invalid_embedding__"]),
     ("generation_models", ["__rhoai_negative_invalid_generation__"]),
 ]
 

@@ -43,7 +43,7 @@ Canonical field descriptions and optional knobs are in **`tests/.env.example`**.
 | `RHOAI_TEST_S3_SECRET_NAME` | Kubernetes secret name in the project (default `s3-connection`). |
 | `RHOAI_TEST_ARTIFACTS_BUCKET` | Optional; used when creating DSPA with object storage wiring. |
 
-**HTTPS verification for S3 and KFP** (boto3 uploads, `kfp.Client`): By default TLS certificates are verified. For self-signed endpoints (common lab MinIO gateways), set **`RHOAI_HTTPS_VERIFY=false`** (or `0` / `no` / `off`). The legacy alias **`KFP_VERIFY_SSL`** is still honored when `RHOAI_HTTPS_VERIFY` is unset. This does not change how pipeline runs inside the cluster talk to Llama Stack; those use the component’s own retry logic.
+**HTTPS verification for S3 and KFP** (boto3 uploads, `kfp.Client`): By default TLS certificates are verified. For self-signed endpoints (common lab MinIO gateways), set **`RHOAI_HTTPS_VERIFY=false`** (or `0` / `no` / `off`). The legacy alias **`KFP_VERIFY_SSL`** is still honored when `RHOAI_HTTPS_VERIFY` is unset. This does not change how pipeline runs inside the cluster talk to OGX; those use the component’s own retry logic.
 
 **TLS for the Kubernetes client** (`RHOAI_URL`): By default the suite may skip TLS verify for typical lab clusters. For enterprise CA or stricter verification, use `RHOAI_OPENSHIFT_CA_BUNDLE_PATH` or `RHOAI_OPENSHIFT_CA_DATA`, and read the comments in `tests/.env.example` for `RHOAI_OPENSHIFT_API_INSECURE_TLS`.
 
@@ -64,12 +64,12 @@ JSON scenarios: `tests/config/automl_tabular_test_configs.json`, `tests/config/a
 
 ### AutoRAG (documents RAG optimization)
 
-Requires the **shared** block (token, S3 secret in cluster, KFP URL or DSPA) plus **Llama Stack**:
+Requires the **shared** block (token, S3 secret in cluster, KFP URL or DSPA) plus **OGX**:
 
 | Variable | Purpose |
 | -------- | ------- |
-| `LLAMA_STACK_SECRET_NAME` | Secret with Llama Stack client settings (e.g. API key, base URL). |
-| `LLAMA_STACK_VECTOR_IO_PROVIDER_ID` | Registered vector I/O provider id in Llama Stack. |
+| `OGX_SECRET_NAME` | Secret with OGX client settings (e.g. API key, base URL). |
+| `VECTOR_IO_PROVIDER_ID` | Registered vector I/O provider id in OGX. |
 
 Optional fallbacks for `data_mode=existing_s3` when JSON omits buckets: `TEST_DATA_BUCKET_NAME`, `TEST_DATA_KEY`, `INPUT_DATA_BUCKET_NAME`, `INPUT_DATA_KEY`, or `TEST_DATA_SOURCE_BUCKET` / `TEST_DATA_SOURCE_PREFIX`.
 

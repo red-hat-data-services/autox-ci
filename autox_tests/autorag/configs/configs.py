@@ -40,9 +40,9 @@ class AutoRAGTestConfig:
     description: str
     tags: list[str]
     expected_result: str
-    llama_stack_vector_io_provider_type: str | None = None
-    llama_stack_vector_io_provider_id: str | None = None
-    embeddings_models: str | list[str] | None = None
+    vector_io_provider_type: str | None = None
+    vector_io_provider_id: str | None = None
+    embedding_models: str | list[str] | None = None
     generation_models: str | list[str] | None = None
     optimization_max_rag_patterns: int | None = None
     input_data_key: str | None = None
@@ -50,9 +50,9 @@ class AutoRAGTestConfig:
     optimization_metric: str | None = None
 
     def __post_init__(self):
-        if self.embeddings_models == "env":
-            self.embeddings_models = os.getenv("AUTORAG_EMBEDDING_MODELS")
-            if self.embeddings_models is None:
+        if self.embedding_models == "env":
+            self.embedding_models = os.getenv("AUTORAG_EMBEDDING_MODELS")
+            if self.embedding_models is None:
                 raise EnvironmentError("AUTORAG_EMBEDDING_MODELS env variable must be set.")
 
         if self.generation_models == "env":
@@ -74,18 +74,18 @@ class AutoRAGTestConfig:
             "test_data_bucket_name": base_config["test_data_bucket_name"],
             "input_data_secret_name": base_config["input_data_secret_name"],
             "input_data_bucket_name": base_config["input_data_bucket_name"],
-            "llama_stack_secret_name": base_config["llama_stack_secret_name"],
+            "ogx_secret_name": base_config["ogx_secret_name"],
             "test_data_key": self.test_data_key or "",
             "input_data_key": self.input_data_key or "",
             "optimization_metric": self.optimization_metric or "",
         }
 
-        if self.llama_stack_vector_io_provider_id:
-            arguments["llama_stack_vector_io_provider_id"] = self.llama_stack_vector_io_provider_id
+        if self.vector_io_provider_id:
+            arguments["vector_io_provider_id"] = self.vector_io_provider_id
         if self.optimization_max_rag_patterns is not None:
             arguments["optimization_max_rag_patterns"] = self.optimization_max_rag_patterns
-        if self.embeddings_models:
-            arguments["embeddings_models"] = self.embeddings_models
+        if self.embedding_models:
+            arguments["embedding_models"] = self.embedding_models
         if self.generation_models:
             arguments["generation_models"] = self.generation_models
 

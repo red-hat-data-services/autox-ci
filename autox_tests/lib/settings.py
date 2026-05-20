@@ -61,8 +61,8 @@ TEST_DATA_BUCKET_ENV = "TEST_DATA_BUCKET_NAME"
 TEST_DATA_KEY_ENV = "TEST_DATA_KEY"
 INPUT_DATA_BUCKET_ENV = "INPUT_DATA_BUCKET_NAME"
 INPUT_DATA_KEY_ENV = "INPUT_DATA_KEY"
-LLAMA_STACK_SECRET_ENV = "LLAMA_STACK_SECRET_NAME"
-LLAMA_STACK_VECTOR_IO_PROVIDER_ENV = "LLAMA_STACK_VECTOR_IO_PROVIDER_ID"
+OGX_SECRET_ENV = "OGX_SECRET_NAME"
+VECTOR_IO_PROVIDER_ENV = "VECTOR_IO_PROVIDER_ID"
 
 # Tag filter (shared with per-pipeline integration tests)
 TEST_CONFIG_TAGS_ENV = "RHOAI_TEST_CONFIG_TAGS"
@@ -276,7 +276,7 @@ def get_default_upload_bucket_name() -> str | None:
 
 
 def get_autorag_connection_config() -> dict[str, Any] | None:
-    """Return KFP + Llama + k8s S3 secret name + optional S3 creds.
+    """Return KFP + OGX + k8s S3 secret name + optional S3 creds.
 
     ``test_data_secret_name`` and ``input_data_secret_name`` both use ``RHOAI_TEST_S3_SECRET_NAME``
     (same as AutoML). Per-run bucket/object paths come from JSON (``upload`` or ``existing_s3``).
@@ -288,11 +288,11 @@ def get_autorag_connection_config() -> dict[str, Any] | None:
     project = os.environ.get(RHOAI_PROJECT_ENV) or os.environ.get(RHOAI_PROJECT_ENV_ALT)
     # Same k8s secret as AutoML (``RHOAI_TEST_S3_SECRET_NAME``): used for both pipeline S3 secret params.
     s3_secret = (os.environ.get(S3_SECRET_NAME_ENV) or "s3-connection").strip()
-    llama_secret = os.environ.get(LLAMA_STACK_SECRET_ENV)
-    llama_vector_io = os.environ.get(LLAMA_STACK_VECTOR_IO_PROVIDER_ENV)
+    ogx_secret = os.environ.get(OGX_SECRET_ENV)
+    vector_io = os.environ.get(VECTOR_IO_PROVIDER_ENV)
     dspa = get_dspa_config_from_env()
 
-    if not all([token, s3_secret, llama_secret, llama_vector_io]):
+    if not all([token, s3_secret, ogx_secret, vector_io]):
         return None
     if not kfp_url and not (dspa and dspa.get("create")):
         return None
@@ -318,8 +318,8 @@ def get_autorag_connection_config() -> dict[str, Any] | None:
         "input_data_secret_name": s3_secret,
         "input_data_bucket_name": i_bucket,
         "input_data_key": i_key,
-        "llama_stack_secret_name": llama_secret.strip(),
-        "llama_stack_vector_io_provider_id": llama_vector_io.strip(),
+        "ogx_secret_name": ogx_secret.strip(),
+        "vector_io_provider_id": vector_io.strip(),
         "s3_endpoint": endpoint.strip() if endpoint else None,
         "s3_access_key": access.strip() if access else None,
         "s3_secret_key": secret.strip() if secret else None,
@@ -393,17 +393,17 @@ def describe_autorag_connection_config_failure() -> str | None:
     load_tests_env()
     kfp_url = (os.environ.get(RHOAI_KFP_URL_ENV) or os.environ.get(RHOAI_KFP_URL_ENV_ALT) or "").strip()
     token = (os.environ.get(RHOAI_TOKEN_ENV) or os.environ.get(RHOAI_TOKEN_ENV_ALT) or "").strip()
-    llama_secret = (os.environ.get(LLAMA_STACK_SECRET_ENV) or "").strip()
-    llama_vector_io = (os.environ.get(LLAMA_STACK_VECTOR_IO_PROVIDER_ENV) or "").strip()
+    ogx_secret = (os.environ.get(OGX_SECRET_ENV) or "").strip()
+    vector_io = (os.environ.get(VECTOR_IO_PROVIDER_ENV) or "").strip()
     dspa = get_dspa_config_from_env()
 
     lines: list[str] = []
     if not token:
         lines.append(f"  - {RHOAI_TOKEN_ENV} or {RHOAI_TOKEN_ENV_ALT} (KFP / cluster token)")
-    if not llama_secret:
-        lines.append(f"  - {LLAMA_STACK_SECRET_ENV} (Kubernetes secret with Llama Stack client settings)")
-    if not llama_vector_io:
-        lines.append(f"  - {LLAMA_STACK_VECTOR_IO_PROVIDER_ENV} (registered vector I/O provider id)")
+    if not ogx_secret:
+        lines.append(f"  - {OGX_SECRET_ENV} (Kubernetes secret with OGX client settings)")
+    if not vector_io:
+        lines.append(f"  - {VECTOR_IO_PROVIDER_ENV} (registered vector I/O provider id)")
     if not kfp_url and not (dspa and dspa.get("create")):
         lines.append(
             f"  - {RHOAI_KFP_URL_ENV} or {RHOAI_KFP_URL_ENV_ALT} (pipeline API URL), "
@@ -487,6 +487,6 @@ def autorag_pipeline_arguments(cfg: dict[str, Any]) -> dict[str, Any]:
         "input_data_secret_name": cfg["input_data_secret_name"],
         "input_data_bucket_name": cfg["input_data_bucket_name"],
         "input_data_key": cfg["input_data_key"],
-        "llama_stack_secret_name": cfg["llama_stack_secret_name"],
-        "llama_stack_vector_io_provider_id": cfg["llama_stack_vector_io_provider_id"],
+        "ogx_secret_name": cfg["ogx_secret_name"],
+        "vector_io_provider_id": cfg["vector_io_provider_id"],
     }
