@@ -7,10 +7,7 @@ End-to-end test suite and CI tooling for AutoX components (AutoRAG, AutoML) runn
 ```
 autox_tests/
   autorag/              AutoRAG functional tests (pipeline submission, artifact + notebook validation)
-  automl/
-    functional/         AutoML functional tests (tabular, time series)
-    scenarios/          AutoML integration / scenario tests
-  scenarios/            Cross-component scenario tests
+  automl/               AutoML functional tests (tabular, time series)
   lib/                  Shared utilities (env loading, KFP helpers, S3, failure diagnostics)
   .env.rag.example      Env template for AutoRAG tests
   .env.ml.example       Env template for AutoML tests
@@ -28,11 +25,13 @@ pyproject.toml          Dependencies, extras, and pytest markers
 ## Quick start
 
 ```bash
-# 1. Copy and fill the appropriate env template
+# AutoRAG
 cp autox_tests/.env.rag.example autox_tests/.env.rag
-
-# 2. Run tests
 ./run_tests.sh --env-file autox_tests/.env.rag "autorag and positive"
+
+# AutoML
+cp autox_tests/.env.ml.example autox_tests/.env.ml
+./run_tests.sh --env-file autox_tests/.env.ml --extras test_automl "tabular or timeseries"
 ```
 
 ## Test runner (`run_tests.sh`)
