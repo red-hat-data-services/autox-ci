@@ -6,11 +6,8 @@ import os
 
 import pytest
 
+from autox_tests.lib.clients import make_kfp_client, make_s3_client
 from autox_tests.lib.env import load_tests_env
-from .utils import (
-    make_kfp_client,
-    make_s3_client,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -76,10 +73,6 @@ def get_functional_config():
         "s3_region": region.strip(),
         "s3_bucket_artifacts": bucket_artifacts.strip() if bucket_artifacts else None,
     }
-    if base is None:
-        logger.info("Missing required environmental variables. Functional config cannot be created.")
-        return None
-
     if not base["rhoai_project"]:
         logger.info("Missing RHOAI_PROJECT_NAME. Functional config cannot be created.")
         return None

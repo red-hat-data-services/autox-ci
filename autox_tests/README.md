@@ -1,70 +1,78 @@
-# Root `tests/` suite — OpenShift AI / Kubeflow Pipelines integration
+# autox_tests — functional test suites
 
-This directory contains **optional** end-to-end tests that submit real pipeline runs to **OpenShift AI** (Data Science Pipelines / KFP v2) using cluster credentials and object storage. They are separate from per-component tests under `components/` and `pipelines/`.
+End-to-end tests that submit real pipeline runs to **OpenShift AI** (Data Science Pipelines / KFP v2) and validate results against a running cluster.
 
-## Prerequisites
+Two independent suites live here, each with its own env file, config JSON, and pytest entry point:
 
-- Python 3.11+ and a project virtualenv (see repository `CONTRIBUTING.md`).
-- Install extras for these tests (KFP client, S3, Kubernetes client, `python-dotenv`):
+| Suite | Path | Env file |
+|---|---|---|
+| **AutoML** | `automl/` | `.env.ml` |
+| **AutoRAG** | `autorag/` | `.env.rag` |
 
-  ```bash
-  pip install -e ".[test_rhoai]"
-  ```
+---
 
-  (`test_automl` pulls the same stack; `test_rhoai` is the name aligned with this suite.)
+## AutoML functional tests
 
-- A reachable OpenShift/Kubernetes API (`RHOAI_URL`), bearer token, S3-compatible storage, and (for most flows) a KFP API URL or DSPA creation enabled — see [Environment variables](#environment-variables).
+End-to-end tests for the AutoGluon tabular and time series training pipelines. Validates pipeline runs, S3 artifacts, and optionally deploys trained models via KServe for inference scoring.
 
-## Environment variables
+### Directory layout
 
-### Loading order
-
-1. **`tests/.env`** — If present, it is loaded at pytest startup (`pytest_configure` in `tests/scenarios/conftest.py`) via `tests.lib.env.load_tests_env`. **Variables already set in the process environment are not overwritten** (exports and CI secrets win).
-2. **Shell / CI** — Export variables or inject them in your runner; they take precedence over `tests/.env`.
-
-Copy the template and edit:
-
-```bash
-cp tests/.env.example tests/.env
+```
+autox_tests/
+├── .env.ml.example                     # env template — copy to .env.ml and fill in
+└── automl/
+    ├── conftest.py                     # pytest fixtures (KFP client, S3 client, kubeconfig, cleanup)
+    ├── test_tabular_functional.py      # tabular positive + negative tests
+    ├── test_timeseries_functional.py   # time series positive + negative tests
+    ├── utils.py                        # shared helpers (KServe, S3, KFP, scoring)
+    └── configs/
+        ├── configs.py                  # dataclasses + config loaders
+        ├── tabular_test_configs.json   # tabular test scenarios
+        └── timeseries_test_configs.json
 ```
 
-Canonical field descriptions and optional knobs are in **`tests/.env.example`**. Below is a condensed map of what each test family needs.
+### Prerequisites
 
-### Shared (cluster + object storage)
+Python 3.11+ and `uv` (recommended) or `pip`. Install test dependencies (includes AutoGluon from the RHAI index):
+
+```bash
+uv sync --extra test_automl
+# or
+pip install -e ".[test_automl]"
+```
+
+You also need a running OpenShift AI cluster with Data Science Pipelines and an S3-compatible object store reachable from the cluster.
+
+### Environment setup
+
+```bash
+cp autox_tests/.env.ml.example autox_tests/.env.ml
+# edit .env.ml with your cluster details
+```
+
+`autox_tests/.env.ml` is loaded automatically at pytest startup. Shell and CI variables take precedence.
+
+#### Required
 
 | Variable | Purpose |
-| -------- | ------- |
-| `RHOAI_URL` | OpenShift/Kubernetes API URL (used to ensure project and apply the S3 secret). |
-| `RHOAI_TOKEN` | Bearer token for API and KFP. |
-| `RHOAI_PROJECT_NAME` | Namespace for runs and secrets (default in example: `kfp-integration-test`). |
-| `RHOAI_KFP_URL` | Data Science Pipelines HTTP API base URL (optional if DSPA is created — see below). |
-| `AWS_S3_ENDPOINT`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_DEFAULT_REGION` | S3 client and secret data for `RHOAI_TEST_S3_SECRET_NAME`. |
-| `RHOAI_TEST_DATA_BUCKET` | Bucket for uploaded fixtures (AutoML CSVs; AutoRAG docs + benchmark when `data_mode=upload`). |
-| `RHOAI_TEST_S3_SECRET_NAME` | Kubernetes secret name in the project (default `s3-connection`). |
-| `RHOAI_TEST_ARTIFACTS_BUCKET` | Optional; used when creating DSPA with object storage wiring. |
+|---|---|
+| `RHOAI_KFP_URL` | Data Science Pipelines HTTP API URL |
+| `RHOAI_TOKEN` | Bearer token for KFP and Kubernetes API |
+| `RHOAI_PROJECT_NAME` | OpenShift namespace for pipeline runs |
+| `AUTOML_TRAIN_DATA_BUCKET_NAME` | S3 bucket containing training CSVs |
+| `RHOAI_TEST_S3_SECRET_NAME` | Kubernetes secret with S3 credentials (default: `s3-connection`) |
 
-**HTTPS verification for S3 and KFP** (boto3 uploads, `kfp.Client`): By default TLS certificates are verified. For self-signed endpoints (common lab MinIO gateways), set **`RHOAI_HTTPS_VERIFY=false`** (or `0` / `no` / `off`). The legacy alias **`KFP_VERIFY_SSL`** is still honored when `RHOAI_HTTPS_VERIFY` is unset. This does not change how pipeline runs inside the cluster talk to OGX; those use the component’s own retry logic.
+#### S3 artifact validation
 
-**TLS for the Kubernetes client** (`RHOAI_URL`): By default the suite may skip TLS verify for typical lab clusters. For enterprise CA or stricter verification, use `RHOAI_OPENSHIFT_CA_BUNDLE_PATH` or `RHOAI_OPENSHIFT_CA_DATA`, and read the comments in `tests/.env.example` for `RHOAI_OPENSHIFT_API_INSECURE_TLS`.
+| Variable | Purpose |
+|---|---|
+| `AWS_S3_ENDPOINT` | S3 endpoint URL (e.g. MinIO) |
+| `AWS_ACCESS_KEY_ID` | S3 access key |
+| `AWS_SECRET_ACCESS_KEY` | S3 secret key |
+| `AWS_DEFAULT_REGION` | S3 region (default: `us-east-1`) |
+| `RHOAI_TEST_ARTIFACTS_BUCKET` | Bucket where pipeline outputs are written |
 
-**Aliases** (AutoRAG also accepts): `KFP_HOST` → KFP URL, `KFP_TOKEN` → token, `KFP_NAMESPACE` → project.
-
-### Optional: create a DataSciencePipelinesApplication (DSPA)
-
-If the operator is available and you set **`RHOAI_CREATE_DSPA=true`**, the suite can create a DSPA and discover the pipeline API from the `ds-pipeline` route, so **`RHOAI_KFP_URL` may be omitted**. Tunables: `RHOAI_DSPA_*` (API group/version, route prefix, wait timeouts, etc.) — see `tests/.env.example`.
-
-### AutoML (tabular + time series)
-
-Requires the **shared** block plus:
-
-- `RHOAI_TEST_DATA_BUCKET` (training data uploads / defaults).
-- Either `RHOAI_KFP_URL` **or** `RHOAI_CREATE_DSPA=true` with a working DSPA route.
-
-JSON scenarios: `tests/config/automl_tabular_test_configs.json`, `tests/config/automl_timeseries_test_configs.json`.
-
-### AutoRAG (documents RAG optimization)
-
-Requires the **shared** block (token, S3 secret in cluster, KFP URL or DSPA) plus **OGX**:
+#### Pipeline YAMLs
 
 | Variable | Purpose |
 | -------- | ------- |
@@ -93,105 +101,264 @@ pytest tests/scenarios/ -v
 ```
 
 If no variable is set, all scenarios from the JSON files are eligible (subject to other filters).
+|---|---|
+| `AUTOML_TABULAR_PIPELINE_PATH` | Local path or `https://` URL to the compiled tabular pipeline YAML |
+| `AUTOML_TIMESERIES_PIPELINE_PATH` | Local path or `https://` URL to the compiled time series pipeline YAML |
 
-**Negative pipeline tests** (`tests/scenarios/test_pipeline_negative_rhoai.py`) use the **same tag names** in `RHOAI_TEST_CONFIG_TAGS`: `tabular`, `timeseries`, and `autorag` (they also appear on JSON scenarios). If `RHOAI_TEST_CONFIG_TAGS` is unset or empty, all three negative suites run. If it is set, tests for a family are **deselected** (not collected) unless that tag is listed — for example `smoke` alone does not include `tabular` / `timeseries` / `autorag`, so no negative tests are collected unless you add them (e.g. `smoke,tabular`).
-
-**Positive** `test_automl_*_rhoai.py` / `test_autorag_rhoai.py` tests are also **deselected** when tag filtering yields **no** JSON scenarios for that pipeline (so you do not see empty parametrization or `NOTSET` ids). This uses `pytest_collection_modifyitems` in `tests/scenarios/conftest.py` together with `rhoai_negative_pipeline_family_allowed` and config loaders in `tests/lib/settings.py` / `tests/lib/config_loaders.py`.
-
-### Precompiled pipeline YAML (tabular, timeseries, AutoRAG)
-
-Each suite uses a **`pipeline.yaml`** package path from:
-
-- **`RHOAI_PIPELINE_YAML_TABULAR`**, **`RHOAI_PIPELINE_YAML_TIMESERIES`**, **`RHOAI_PIPELINE_YAML_AUTORAG`** — absolute or relative path to a local file when set; or
-- If unset, the file is **downloaded once per session** from
-  [pipelines-components](https://github.com/red-hat-data-services/pipelines-components/tree/rhoai-3.4/pipelines/training)
-  via **`RHOAI_PIPELINES_COMPONENTS_REPO`** (default `red-hat-data-services/pipelines-components`) and **`RHOAI_PIPELINES_COMPONENTS_REF`** (default `rhoai-3.4`), under `pipelines/training/.../pipeline.yaml`.
-
-### Run timing
+#### Test filtering, timeouts, caching
 
 | Variable | Default | Purpose |
-| -------- | ------- | ------- |
-| `RHOAI_PIPELINE_RUN_TIMEOUT` | `3600` | Max seconds to wait for a pipeline run. |
-| `RHOAI_PIPELINE_NEGATIVE_RUN_TIMEOUT` | (same as `RHOAI_PIPELINE_RUN_TIMEOUT`) | Max seconds to wait for **negative** pipeline tests (`tests/scenarios/test_pipeline_negative_rhoai.py`). |
-| `RHOAI_KFP_POLL_INTERVAL_SECONDS` | `25` | Seconds between KFP ``get_run`` polls. The same interval controls how often run/task status is printed (lines go to the controlling terminal, ``/dev/tty``, when available so pytest does not buffer them until the test ends). |
-| `RHOAI_KFP_PIPELINE_DISPLAY_NAME` | (unset) | Optional. Pipeline ``name=`` from ``@dsl.pipeline`` so progress output can hide the compiled root-DAG task (``{name}-<suffix>``). Scenario tests pass this per pipeline; set in env if you call ``wait_for_run_with_progress`` yourself. |
+|---|---|---|
+| `AUTOML_FUNCTIONAL_TESTS_TAGS` | — | Comma-separated tags — only scenarios that have **all** requested tags run. Unset = run all. |
+| `RHOAI_PIPELINE_RUN_TIMEOUT` | `3600` | Max seconds to wait for a pipeline run |
+| `KFP_DISABLE_EXECUTION_CACHING_BY_DEFAULT` | `true` | Disable KFP step caching |
+| `AUTOML_FUNCTIONAL_TEST_KEEP_ARTIFACTS` | `false` | Skip S3 artifact cleanup after the session |
 
-### Negative pipeline tests
+#### Model serving (optional)
 
-Tests in `tests/scenarios/test_pipeline_negative_rhoai.py` assert that invalid inputs do **not** produce a successful run: either run creation fails (API/client error) or the run ends in **FAILED**/**ERROR** (not **SUCCEEDED**). They are marked **`pipeline_negative`** in addition to **`integration`** and **`openshift_ai`**.
+Set `RHOAI_DEPLOY_AFTER_TRAINING=true` to deploy the top trained model via KServe and run inference after each positive-path pipeline run. Also requires `RHOAI_URL`.
 
-- **Unknown parameter names:** If your KFP backend ignores extra keys, a run could still **SUCCEEDED**; the test fails with an explicit message so you can treat that as an environment limitation.
-- **Invalid non-data parameters** (separate from S3 / `train_data_*` inputs) are covered per pipeline: tabular — `task_type`, `top_n`, `label_column`; time series — `target`, `id_column`, `timestamp_column`, `prediction_length`, `top_n`; AutoRAG — `optimization_metric`, `optimization_max_rag_patterns`, `embeddings_models`, `generation_models`.
-- **AutoRAG:** At least one scenario must be selected by `tests/config/autorag_test_configs.json` and `RHOAI_TEST_CONFIG_TAGS` (if set); otherwise AutoRAG negative tests **skip** (uploads are keyed by selected config ids).
+| Variable | Default | Purpose |
+|---|---|---|
+| `RHOAI_URL` | — | OpenShift API URL (required for KServe deployment) |
+| `RHOAI_DEPLOY_AFTER_TRAINING` | `false` | Enable post-training KServe deployment |
+| `RHOAI_SERVING_IMAGE` | — | Container image for the AutoGluon ServingRuntime |
+| `RHOAI_SERVING_RUNTIME_NAME` | — | Existing ServingRuntime to reuse (skips creation) |
+| `RHOAI_CREATE_SERVING_RUNTIME` | `false` | Create the ServingRuntime if missing (requires `RHOAI_SERVING_IMAGE`) |
+| `RHOAI_INFERENCE_TIMEOUT` | `300` | Seconds to wait for InferenceService to become Ready |
+| `RHOAI_KSERVE_STORAGE_KEY` | — | Existing Data Connection secret for KServe storage; a temporary one is created when unset |
+| `RHOAI_HARDWARE_PROFILE_NAME` | `default-profile` | HardwareProfile CR name for the predictor pod |
+| `RHOAI_HARDWARE_PROFILE_NAMESPACE` | `redhat-ods-applications` | Namespace of the HardwareProfile CR |
+| `RHOAI_HARDWARE_PROFILE_RESOURCE_VERSION` | — | Override `resourceVersion` fetch (useful in air-gapped envs) |
+| `RHOAI_PREDICTOR_CPU` | `2` | CPU request/limit for the predictor container |
+| `RHOAI_PREDICTOR_MEMORY` | `4Gi` | Memory request/limit for the predictor container |
+| `RHOAI_KSERVE_CA_BUNDLE_CONFIGMAP` | — | ConfigMap name for custom CA bundle (MinIO with self-signed TLS) |
 
-Run only negative tests:
+Time series deployments automatically set `AUTOGLUON_TS_ID_COLUMN` / `AUTOGLUON_TS_TIMESTAMP_COLUMN` on the predictor container when the test config's column names differ from AutoGluon defaults (`item_id` / `timestamp`).
 
-```bash
-pytest tests/scenarios/test_pipeline_negative_rhoai.py -m "pipeline_negative" -v
-```
-
-Run negative tests for one pipeline family using **pytest markers** `tabular`, `timeseries`, `autorag`:
-
-```bash
-pytest tests/scenarios/test_pipeline_negative_rhoai.py -m "pipeline_negative and tabular" -v
-pytest tests/scenarios/test_pipeline_negative_rhoai.py -m "pipeline_negative and timeseries" -v
-pytest tests/scenarios/test_pipeline_negative_rhoai.py -m "pipeline_negative and autorag" -v
-```
-
-The same scope can be driven by **`RHOAI_TEST_CONFIG_TAGS`** (no `-m` needed for family selection):
-
-```bash
-export RHOAI_TEST_CONFIG_TAGS=tabular
-pytest tests/scenarios/test_pipeline_negative_rhoai.py -v
-```
-
-### Pytest selection (markers and paths)
-
-Integration tests are marked **`integration`** and **`openshift_ai`**.
-
-Run **only** this suite (not `scripts/` tests):
+### Running the tests
 
 ```bash
-pytest tests/scenarios/ -v
+# All AutoML functional tests
+pytest autox_tests/automl/ -v
+
+# Tabular only
+pytest autox_tests/automl/test_tabular_functional.py -v
+
+# Time series only
+pytest autox_tests/automl/test_timeseries_functional.py -v
+
+# Smoke scenarios only
+AUTOML_FUNCTIONAL_TESTS_TAGS=smoke pytest autox_tests/automl/ -v
+
+# Negative scenarios only
+pytest autox_tests/automl/ -m negative -v
+
+# Single scenario
+pytest autox_tests/automl/ -k "TC-A-1_regression" -v
 ```
 
-Run by marker:
+### Test scenarios
+
+#### Tabular (`tabular_test_configs.json`)
+
+| ID | Task | Dataset | Tags |
+|---|---|---|---|
+| TC-A-1_regression | regression | housing pricing | smoke |
+| TC-A-2_binary_classification | binary | Titanic | smoke |
+| TC-A-3_multiclass | multiclass | car rental | — |
+| TC-NA-1_invalid_task_type | — | — | negative, validation |
+| TC-NA-2_invalid_top_n_zero | — | — | negative, validation |
+| TC-NA-3_label_column_absent | — | — | negative, data |
+| TC-NA-4_missing_s3_object | — | — | negative, storage |
+| TC-NA-5_task_data_mismatch | — | — | negative, data |
+| TC-NA-6_bad_credentials | — | — | negative, credentials |
+
+#### Time series (`timeseries_test_configs.json`)
+
+| ID | Frequency | Dataset | Tags |
+|---|---|---|---|
+| TC-B-1_timeseries_fruits_with_covariate | daily | fruits daily price (with covariate) | smoke, renamed_schema, covariate |
+| TC-B-2_timeseries_m4_hourly | hourly | M4 hourly subset | hourly, standard_schema |
+| TC-NB-1_invalid_target | — | — | negative, data |
+| TC-NB-2_invalid_prediction_length | — | — | negative, validation |
+| TC-NB-3_missing_s3_object | — | — | negative, storage |
+| TC-NB-4_bad_credentials | — | — | negative, credentials |
+| TC-NB-5_invalid_top_n_zero | — | — | negative, validation |
+
+#### `inference_sample` format
+
+Positive scenarios include an `inference_sample` sent as the `instances` payload to the KServe `/v1/models/<name>:predict` endpoint. The format differs by suite:
+
+**Time series** — row-oriented list of plain-scalar dicts, sent verbatim:
+
+```json
+"inference_sample": [
+  { "item_id": "H1", "timestamp": "1750-01-01 00:00:00", "target": 605.0 },
+  { "item_id": "H1", "timestamp": "1750-01-01 01:00:00", "target": 586.0 }
+]
+```
+
+**Tabular** — column-oriented: a single dict per sample where each value is a list; converted to per-row instances before scoring:
+
+```json
+"inference_sample": [
+  {
+    "area": [7420], "bedrooms": [4], "bathrooms": [2],
+    "mainroad": ["yes"], "furnishingstatus": ["furnished"]
+  }
+]
+```
+
+When `RHOAI_DEPLOY_AFTER_TRAINING=true` and `inference_sample` is present, the test scores the deployed model and asserts non-empty predictions are returned.
+
+#### `expected_outcome` (negative scenarios)
+
+Negative scenario entries include an `expected_outcome` field: a human-readable description of the expected failure mode (e.g. `"Fail fast with clear validation message"`). This field is informational only — it is not evaluated by the test runner. It exists to document design intent and aid debugging when a scenario passes unexpectedly.
+
+### Pass criteria
+
+**Positive scenarios:**
+- Pipeline run reaches `SUCCEEDED` within `RHOAI_PIPELINE_RUN_TIMEOUT`
+- At least one model with a metrics JSON exists in S3
+- Primary metric present (`r2` for regression, `accuracy` for classification, `MASE` for time series)
+- Leaderboard HTML artifact exists in S3
+- Sampled test dataset CSV exists in S3
+- *(when `RHOAI_DEPLOY_AFTER_TRAINING=true`)* InferenceService becomes Ready and returns non-empty predictions
+
+**Negative scenarios:**
+- Pipeline run reaches `FAILED` within 600 s
+- At least one of `expected_failing_task` names appears among the run's failed tasks
+
+### Troubleshooting
+
+- **Tests skip with "AutoML functional test env not set"** — one of the required variables is missing; check `.env.ml` against `.env.ml.example`.
+- **HardwareProfile 404** — `RHOAI_HARDWARE_PROFILE_NAME` does not exist on the cluster. Run `oc get hardwareprofile -n redhat-ods-applications` to find the correct name, or set `RHOAI_HARDWARE_PROFILE_RESOURCE_VERSION` to skip the live fetch.
+- **InferenceService OOMKilled** — increase `RHOAI_PREDICTOR_MEMORY` (default `4Gi`; AutoGluon models can be large).
+- **Scoring HTTP 500** — check pod logs; the test captures and prints them automatically on failure.
+- **ISVC creation HTTP 500 (`no endpoints available for service "kserve-webhook-server-service"`)** — the KServe webhook pod is down. Run `oc rollout restart deployment/kserve-controller-manager -n redhat-ods-applications` and wait for it to become ready before re-running the test.
+- **ISVC creation HTTP 500 (`no endpoints available for service "rhods-operator-service"`)** — the RHODS operator webhook pod is down. Run `oc rollout restart deployment/rhods-operator -n redhat-ods-operator` and wait for it to become ready before re-running the test.
+- **`boto3` / `kubernetes` import errors** — re-run `uv sync --extra test_automl`.
+
+---
+
+## AutoRAG functional tests
+
+End-to-end tests for the Documents RAG Optimization pipeline. Submits pipeline runs to KFP, validates S3 artifacts, and optionally executes generated notebooks via papermill.
+
+### Directory layout
+
+```
+autox_tests/
+├── .env.rag.example                       # env template — copy to .env.rag and fill in
+└── autorag/
+    ├── conftest.py                        # pytest fixtures (KFP client, S3 client, pipeline YAML)
+    ├── test_pipeline_functional.py        # parametrized positive + negative tests
+    ├── utils.py                           # run submission, diagnostics, artifact validation
+    └── configs/
+        ├── configs.py                     # AutoRAGTestConfig dataclass + config loader
+        └── test_configs.json             # scenario definitions
+```
+
+### Prerequisites
 
 ```bash
-pytest tests/scenarios/ -m "integration and openshift_ai" -v
+uv sync --extra test_autorag
+# or
+pip install -e ".[test_autorag]"
 ```
 
-Run a single module:
+You also need a running RHOAI cluster with Data Science Pipelines and a Llama Stack instance with a Milvus vector I/O provider.
+
+### Environment setup
 
 ```bash
-pytest tests/scenarios/test_automl_tabular_rhoai.py -v
-pytest tests/scenarios/test_automl_timeseries_rhoai.py -v
-pytest tests/scenarios/test_autorag_rhoai.py -v
-pytest tests/scenarios/test_pipeline_negative_rhoai.py -v
+cp autox_tests/.env.rag.example autox_tests/.env.rag
+# edit .env.rag with your cluster details
 ```
 
-Narrow by test name / parametrized id with `-k` (examples):
+#### Required
+
+| Variable | Purpose |
+|---|---|
+| `RHOAI_KFP_URL` | Data Science Pipelines HTTP API URL |
+| `RHOAI_TOKEN` | Bearer token for KFP |
+| `RHOAI_PROJECT_NAME` | OpenShift namespace for pipeline runs |
+| `AUTORAG_PIPELINE_PATH` | Local path or `https://` URL to the compiled AutoRAG pipeline YAML |
+| `TEST_DATA_SECRET_NAME` | Kubernetes secret with S3 credentials for test data |
+| `TEST_DATA_BUCKET_NAME` | S3 bucket for test data |
+| `INPUT_DATA_BUCKET_NAME` | S3 bucket for input documents |
+| `INPUT_DATA_SECRET_NAME` | Kubernetes secret for input data bucket |
+| `LLAMA_STACK_SECRET_NAME` | Kubernetes secret with Llama Stack client settings |
+
+#### S3 artifact validation (optional)
+
+| Variable | Purpose |
+|---|---|
+| `ARTIFACTS_AWS_ACCESS_KEY_ID` | S3 access key for artifact bucket |
+| `ARTIFACTS_AWS_SECRET_ACCESS_KEY` | S3 secret key for artifact bucket |
+| `ARTIFACTS_AWS_S3_ENDPOINT` | S3 endpoint for artifact bucket |
+| `ARTIFACTS_AWS_DEFAULT_REGION` | S3 region (default: `us-east-1`) |
+| `RHOAI_TEST_ARTIFACTS_BUCKET` | Bucket where pipeline outputs are written |
+
+#### Notebook execution (optional)
+
+| Variable | Purpose |
+|---|---|
+| `LLAMA_STACK_CLIENT_BASE_URL` | Llama Stack API base URL for notebook execution |
+| `LLAMA_STACK_CLIENT_API_KEY` | Llama Stack API key |
+| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_S3_ENDPOINT`, `AWS_DEFAULT_REGION`, `AWS_S3_BUCKET` | S3 credentials injected into notebook execution environment |
+
+#### Constrained model lists (optional)
+
+| Variable | Purpose |
+|---|---|
+| `FUNC_TEST_EMBEDDING_MODELS` | Override embeddings models used in tests |
+| `FUNC_TEST_GENERATION_MODELS` | Override generation models used in tests |
+
+#### Test filtering and timeouts
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `FUNCTIONAL_TESTS_TAGS` | — | Comma-separated tags — only matching scenarios run. Unset = run all. |
+| `RHOAI_PIPELINE_RUN_TIMEOUT` | `3600` | Max seconds to wait for a pipeline run |
+| `K8S_API_URL` | — | Kubernetes API URL for pod log fetching (derived from KFP URL when unset) |
+
+### Running the tests
 
 ```bash
-pytest tests/scenarios/test_automl_tabular_rhoai.py -k "smoke and compile" -v
+# All AutoRAG functional tests
+pytest autox_tests/autorag/ -v
+
+# Positive scenarios only
+pytest autox_tests/autorag/ -m positive -v
+
+# Smoke scenarios only
+FUNCTIONAL_TESTS_TAGS=smoke pytest autox_tests/autorag/ -v
+
+# Single scenario
+pytest autox_tests/autorag/ -k "TC-P-1" -v
 ```
 
-Note: Default pytest `testpaths` in `pyproject.toml` includes `scripts` and `tests`. From the repo root, `pytest` runs both; use `tests/scenarios/` (or `-m openshift_ai`) to focus on this integration suite.
+### Test scenarios
 
-## Configuration files
+Scenarios are defined in `configs/test_configs.json`. Each entry specifies `id`, `description`, `tags`, `expected_result` (`"pass"` or `"fail"`), `llama_stack_vector_io_provider_id`, and `pipeline_params_overrides`.
 
-| File | Role |
-| ---- | ---- |
-| `tests/config/automl_tabular_test_configs.json` | Tabular AutoML scenarios (`tags`, `data_mode`: `upload` / `existing_s3`). |
-| `tests/config/automl_timeseries_test_configs.json` | Time series AutoML scenarios. |
-| `tests/config/autorag_test_configs.json` | AutoRAG scenarios (`argument_overrides`, data modes). |
-| `tests/data/` | Local datasets and AutoRAG fixtures referenced from JSON. |
+### Pass criteria
 
-## Troubleshooting
+**Positive scenarios:**
+- Pipeline run reaches `SUCCEEDED`
+- At least one pattern artifact exists in S3
+- Indexing notebook, inference notebook, and `evaluation_results.json` exist in S3
+- A randomly selected indexing and inference notebook executes successfully via papermill
 
-- **`pytest.fail` with “OpenShift AI … integration is not configured”** — See the message body: it lists missing or invalid variables. Cross-check `tests/.env` against `tests/.env.example`.
-- **`RHOAI_KFP_URL` / route errors** — Confirm the Data Science Pipelines route is reachable, or enable `RHOAI_CREATE_DSPA=true` and wait settings if the operator creates the route asynchronously.
-- **`kubernetes` / `boto3` import errors** — Install `pip install -e ".[test_rhoai]"`.
-- **Empty selection** — If `RHOAI_TEST_CONFIG_TAGS` matches no scenario tags, parametrization may yield no tests for that file; adjust tags or unset the variable.
+**Negative scenarios:**
+- Pipeline run reaches `FAILED` within 600 s
+- Failure details are logged
 
-For deeper behavior (fixtures, DSPA creation, S3 uploads), see `tests/scenarios/conftest.py` and `tests/lib/settings.py`.
+### Troubleshooting
+
+- **Tests skip** — check that all required variables are set in `.env.rag`.
+- **Pod log fetch fails** — set `K8S_API_URL` explicitly if the automatic derivation from the KFP URL does not match your cluster pattern.
+- **Notebook execution fails** — ensure `LLAMA_STACK_CLIENT_BASE_URL`, `LLAMA_STACK_CLIENT_API_KEY`, and AWS vars are set; check the papermill output in the test log.
+- **`nbformat` / `papermill` import errors** — re-run `uv sync --extra test_autorag`.
