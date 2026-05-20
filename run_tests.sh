@@ -11,36 +11,73 @@ Run tests via uv + pytest with automatic dependency installation, optional
 .env sourcing, and marker-based test selection.
 
 Arguments:
-  MARKER_EXPR          Pytest marker expression (e.g. "autorag and positive").
-                       Omit to run all registered tests.
+  MARKER_EXPR              Pytest marker expression (e.g. "positive", "negative").
+                           Omit to run all tests in the selected suite.
 
 Options:
-  -t, --tags TAGS      Comma-separated tags for scenario filtering (matched
-                       against the 'tags' field in test config JSON files).
-  --env-file FILE      Source a .env file before running. Shell-exported vars
-                       take precedence (dotenv override=False semantics).
-  --extras NAME        uv extras to install (default: test_autorag).
-                       Comma-separated for multiple, e.g. "test_autorag,test_rhoai".
-  --dry-run            Print the pytest command without executing it.
-  -h, --help           Show this message and exit.
+  -s, --suite SUITE        Test suite to run: automl | autorag | all.
+                           Sets the default extras, tags env var, and test path.
+  -t, --tags TAGS          Comma-separated tags for scenario filtering (matched
+                           against the 'tags' field in test config JSON files).
+                           Exported as AUTOML_FUNCTIONAL_TESTS_TAGS for automl,
+                           FUNCTIONAL_TESTS_TAGS for autorag (both when --suite all).
+  --env-file FILE          Source a .env file before running. May be repeated to
+                           source multiple files in order. Shell-exported vars
+                           take precedence (dotenv override=False semantics).
+  --extras NAME            uv extras to install (overrides suite default).
+                           Comma-separated for multiple, e.g. "test_automl,other".
+  --tabular-pipeline PATH  Path to compiled tabular pipeline YAML
+                           (sets AUTOML_TABULAR_PIPELINE_PATH; AutoML only).
+  --timeseries-pipeline PATH
+                           Path to compiled timeseries pipeline YAML
+                           (sets AUTOML_TIMESERIES_PIPELINE_PATH; AutoML only).
+                           AutoRAG pipeline path is set via AUTORAG_PIPELINE_PATH
+                           in the env file.
+  --dry-run                Print the pytest command without executing it.
+  -h, --help               Show this message and exit.
 
 Everything after "--" is forwarded to pytest verbatim.
 
 Examples:
-  $(basename "$0") --env-file autox_tests/.env.rag "autorag and positive"
-  $(basename "$0") --env-file autox_tests/.env.rag -t smoke "autorag"
-  $(basename "$0") "autorag" -- -v -x --no-header
-  $(basename "$0") --dry-run "autorag and negative"
+  # AutoML — all tests
+  $(basename "$0") --suite automl --env-file autox_tests/.env.ml
+
+  # AutoML — smoke scenarios only, with local pipeline YAMLs
+  $(basename "$0") --suite automl --env-file autox_tests/.env.ml \\
+      --tabular-pipeline pipeline.yaml --timeseries-pipeline pipeline_ts.yaml \\
+      -t smoke
+
+  # AutoML — positive tabular tests only
+  $(basename "$0") --suite automl --env-file autox_tests/.env.ml positive -- \\
+      autox_tests/automl/test_tabular_functional.py -v
+
+  # AutoRAG — all tests
+  $(basename "$0") --suite autorag --env-file autox_tests/.env.rag
+
+  # AutoRAG — smoke scenarios only
+  $(basename "$0") --suite autorag --env-file autox_tests/.env.rag -t smoke
+
+  # Both suites in one run (--tabular/timeseries-pipeline for AutoML only;
+  # AutoRAG pipeline path is read from AUTORAG_PIPELINE_PATH in .env.rag)
+  $(basename "$0") --suite all \\
+      --env-file autox_tests/.env.ml --env-file autox_tests/.env.rag \\
+      --tabular-pipeline pipeline.yaml --timeseries-pipeline pipeline_ts.yaml
+
+  # Pass extra pytest flags
+  $(basename "$0") --suite automl --env-file autox_tests/.env.ml -- -v -x --no-header
 EOF
 }
 
 # ── Parse arguments ──────────────────────────────────────────────────────────
 
-ENV_FILE=""
-EXTRAS="test_autorag"
+SUITE=""
+ENV_FILES=()
+EXTRAS=""
 DRY_RUN=false
 MARKER_EXPR=""
 TESTS_TAGS=""
+TABULAR_PIPELINE=""
+TIMESERIES_PIPELINE=""
 PYTEST_EXTRA_ARGS=()
 
 while [[ $# -gt 0 ]]; do
@@ -49,16 +86,28 @@ while [[ $# -gt 0 ]]; do
             usage
             exit 0
             ;;
+        -s|--suite)
+            SUITE="$2"
+            shift 2
+            ;;
         -t|--tags)
             TESTS_TAGS="$2"
             shift 2
             ;;
         --env-file)
-            ENV_FILE="$2"
+            ENV_FILES+=("$2")
             shift 2
             ;;
         --extras)
             EXTRAS="$2"
+            shift 2
+            ;;
+        --tabular-pipeline)
+            TABULAR_PIPELINE="$2"
+            shift 2
+            ;;
+        --timeseries-pipeline)
+            TIMESERIES_PIPELINE="$2"
             shift 2
             ;;
         --dry-run)
@@ -87,9 +136,16 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# ── Source .env file ─────────────────────────────────────────────────────────
+# ── Validate suite ───────────────────────────────────────────────────────────
 
-if [[ -n "$ENV_FILE" ]]; then
+if [[ -n "$SUITE" && "$SUITE" != "automl" && "$SUITE" != "autorag" && "$SUITE" != "all" ]]; then
+    echo "error: --suite must be 'automl', 'autorag', or 'all', got '$SUITE'" >&2
+    exit 1
+fi
+
+# ── Source .env files ────────────────────────────────────────────────────────
+
+for ENV_FILE in "${ENV_FILES[@]}"; do
     if [[ ! -f "$ENV_FILE" ]]; then
         echo "error: env file not found: $ENV_FILE" >&2
         exit 1
@@ -99,9 +155,44 @@ if [[ -n "$ENV_FILE" ]]; then
     # shellcheck disable=SC1090
     source "$ENV_FILE"
     set +a
+done
+
+# ── Apply pipeline path overrides (automl) ───────────────────────────────────
+
+if [[ -n "$TABULAR_PIPELINE" ]]; then
+    export AUTOML_TABULAR_PIPELINE_PATH="$TABULAR_PIPELINE"
+fi
+if [[ -n "$TIMESERIES_PIPELINE" ]]; then
+    export AUTOML_TIMESERIES_PIPELINE_PATH="$TIMESERIES_PIPELINE"
 fi
 
 # ── Build command ────────────────────────────────────────────────────────────
+
+# Set suite-specific defaults
+case "$SUITE" in
+    automl)
+        EXTRAS="${EXTRAS:-test_automl}"
+        if [[ -n "$TESTS_TAGS" ]]; then
+            export AUTOML_FUNCTIONAL_TESTS_TAGS="$TESTS_TAGS"
+        fi
+        ;;
+    autorag)
+        EXTRAS="${EXTRAS:-test_autorag}"
+        if [[ -n "$TESTS_TAGS" ]]; then
+            export FUNCTIONAL_TESTS_TAGS="$TESTS_TAGS"
+        fi
+        ;;
+    all)
+        EXTRAS="${EXTRAS:-test_automl,test_autorag}"
+        if [[ -n "$TESTS_TAGS" ]]; then
+            export AUTOML_FUNCTIONAL_TESTS_TAGS="$TESTS_TAGS"
+            export FUNCTIONAL_TESTS_TAGS="$TESTS_TAGS"
+        fi
+        ;;
+    *)
+        EXTRAS="${EXTRAS:-test_autorag}"
+        ;;
+esac
 
 PYTEST_CMD=(uv run --project "$SCRIPT_DIR")
 
@@ -115,9 +206,12 @@ PYTEST_CMD+=(pytest --rootdir "$SCRIPT_DIR")
 
 [[ -n "$MARKER_EXPR" ]] && PYTEST_CMD+=(-m "$MARKER_EXPR")
 
-if [[ -n "$TESTS_TAGS" ]]; then
-    export TESTS_TAGS
-fi
+# Append suite test path(s) before user-supplied pytest args
+case "$SUITE" in
+    automl)  PYTEST_CMD+=(autox_tests/automl/) ;;
+    autorag) PYTEST_CMD+=(autox_tests/autorag/) ;;
+    all)     PYTEST_CMD+=(autox_tests/automl/ autox_tests/autorag/) ;;
+esac
 
 if [[ ${#PYTEST_EXTRA_ARGS[@]} -gt 0 ]]; then
     PYTEST_CMD+=("${PYTEST_EXTRA_ARGS[@]}")
@@ -128,7 +222,13 @@ fi
 cd "$SCRIPT_DIR"
 
 DISPLAY_PREFIX=""
-[[ -n "$TESTS_TAGS" ]] && DISPLAY_PREFIX="TESTS_TAGS=\"$TESTS_TAGS\" "
+if [[ -n "$TESTS_TAGS" ]]; then
+    case "$SUITE" in
+        automl)  DISPLAY_PREFIX="AUTOML_FUNCTIONAL_TESTS_TAGS=\"$TESTS_TAGS\" " ;;
+        autorag) DISPLAY_PREFIX="FUNCTIONAL_TESTS_TAGS=\"$TESTS_TAGS\" " ;;
+        all)     DISPLAY_PREFIX="AUTOML_FUNCTIONAL_TESTS_TAGS=\"$TESTS_TAGS\" FUNCTIONAL_TESTS_TAGS=\"$TESTS_TAGS\" " ;;
+    esac
+fi
 
 if [[ "$DRY_RUN" == true ]]; then
     echo "[dry-run] ${DISPLAY_PREFIX}${PYTEST_CMD[*]}"
