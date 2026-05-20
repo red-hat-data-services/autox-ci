@@ -857,6 +857,39 @@ def column_sample_to_instances(sample: list[dict]) -> list[dict]:
     ]
 
 
+def _encode_column_to_v2_input(name: str, values: list) -> dict:
+    """Encode a single column as a KServe v2 input tensor dict."""
+    first_non_null = next((v for v in values if v is not None), None)
+    if isinstance(first_non_null, float):
+        datatype = "FP64"
+        data = [0.0 if v is None else float(v) for v in values]
+    elif isinstance(first_non_null, int):
+        datatype = "INT64"
+        data = [0 if v is None else int(v) for v in values]
+    else:
+        datatype = "BYTES"
+        data = ["" if v is None else str(v) for v in values]
+    return {"name": name, "shape": [len(values), 1], "datatype": datatype, "data": data}
+
+
+def column_sample_to_v2_inputs(sample: list[dict]) -> list[dict]:
+    """Convert column-oriented [{col: [val, ...]}] to a KServe v2 ``inputs`` array."""
+    if not sample:
+        return []
+    col_data = sample[0]
+    return [_encode_column_to_v2_input(col, values) for col, values in col_data.items()]
+
+
+def rows_to_v2_inputs(rows: list[dict]) -> list[dict]:
+    """Convert row-oriented dicts to a KServe v2 ``inputs`` array."""
+    if not rows:
+        return []
+    cols = list(rows[0].keys())
+    return [
+        _encode_column_to_v2_input(col, [row.get(col) for row in rows]) for col in cols
+    ]
+
+
 def score_inference_service(
     isvc_url: str,
     model_name: str,
@@ -910,6 +943,37 @@ def score_inference_service(
     raise RuntimeError(
         f"All {max_retries} scoring attempts failed. Last error: {last_error}"
     )
+
+
+def score_inference_service_v2(
+    isvc_url: str,
+    model_name: str,
+    inputs: list[dict],
+    token: str | None,
+) -> tuple[int, dict]:
+    """Send a single KServe v2 infer request; return ``(http_status, response_body)``. Never raises."""
+    infer_url = f"{isvc_url.rstrip('/')}/v2/models/{model_name}/infer"
+    payload = json.dumps({"inputs": inputs}).encode()
+    headers = {"Content-Type": "application/json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    ssl_ctx = ssl.create_default_context()
+    ssl_ctx.check_hostname = False
+    ssl_ctx.verify_mode = ssl.CERT_NONE
+    try:
+        req = urllib.request.Request(
+            infer_url, data=payload, headers=headers, method="POST"
+        )
+        with urllib.request.urlopen(req, context=ssl_ctx, timeout=60) as resp:
+            return resp.status, json.loads(resp.read().decode())
+    except urllib.error.HTTPError as exc:
+        try:
+            body = json.loads(exc.read().decode())
+        except Exception:
+            body = {"error": exc.reason}
+        return exc.code, body
+    except Exception as exc:
+        return 0, {"error": str(exc)}
 
 
 def fetch_hardware_profile_resource_version(co, namespace: str, name: str) -> str:
@@ -1061,6 +1125,7 @@ def run_deployment_test(
     temp_kubeconfig_path: str | None,
     instances: list[dict] | None = None,
     isvc_env_vars: dict[str, str] | None = None,
+    v2_inputs: list[dict] | None = None,
 ) -> dict:
     """Deploy the top-1 model via KServe and validate readiness + scoring.
 
@@ -1104,6 +1169,11 @@ def run_deployment_test(
         "scored": False,
         "predictions": None,
         "score_error": None,
+        "v1_response": None,
+        "v2_status_code": None,
+        "v2_outputs": None,
+        "v2_error": None,
+        "v2_response": None,
     }
 
     predictor_prefix = find_top_model_predictor_prefix(
@@ -1167,7 +1237,7 @@ def run_deployment_test(
                 newly_created = ensure_serving_runtime(
                     co, namespace, serving_runtime_name, serving_image
                 )
-                if newly_created and not existing_runtime_name:
+                if newly_created:
                     temp_runtime_name = serving_runtime_name
                     logger.info(
                         "Waiting 30s for KServe controller to index ServingRuntime..."
@@ -1246,18 +1316,27 @@ def run_deployment_test(
                 )
                 result["scored"] = True
                 result["predictions"] = response.get("predictions")
-                logger.info(
-                    "Scoring succeeded for %r: %s",
-                    isvc_name,
-                    json.dumps(response, default=str),
-                )
+                result["v1_response"] = response
             except Exception as score_err:
                 pod_logs = fetch_pod_logs_str(
                     v1, namespace, f"serving.kserve.io/inferenceservice={isvc_name}"
                 )
                 result["score_error"] = f"{score_err}\n{pod_logs}"
         else:
-            logger.info("No inference_sample for %r — skipping scoring", scenario_id)
+            logger.info("No inference_sample for %r — skipping v1 scoring", scenario_id)
+
+        if v2_inputs:
+            v2_status, v2_body = score_inference_service_v2(
+                external_url, isvc_name, v2_inputs, token
+            )
+            result["v2_status_code"] = v2_status
+            result["v2_response"] = v2_body
+            if v2_status == 200:
+                result["v2_outputs"] = v2_body.get("outputs")
+            else:
+                result["v2_error"] = v2_body.get("error") or f"HTTP {v2_status}"
+        else:
+            logger.info("No v2_inputs for %r — skipping v2 scoring", scenario_id)
 
     except Exception as deploy_err:
         logger.error(

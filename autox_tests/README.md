@@ -211,6 +211,7 @@ Negative scenario entries include an `expected_outcome` field: a human-readable 
 - **InferenceService OOMKilled** — increase `RHOAI_PREDICTOR_MEMORY` (default `4Gi`; AutoGluon models can be large).
 - **Scoring HTTP 500** — check pod logs; the test captures and prints them automatically on failure.
 - **ISVC creation HTTP 500 (`no endpoints available for service "kserve-webhook-server-service"`)** — the KServe webhook pod is down. Run `oc rollout restart deployment/kserve-controller-manager -n redhat-ods-applications` and wait for it to become ready before re-running the test.
+- **ISVC creation HTTP 500 (`no endpoints available for service "rhods-operator-service"`)** — the RHODS operator webhook pod is down. Run `oc rollout restart deployment/rhods-operator -n redhat-ods-operator` and wait for it to become ready before re-running the test.
 - **`boto3` / `kubernetes` import errors** — re-run `uv sync --extra test_automl`.
 
 ---

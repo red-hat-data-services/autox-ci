@@ -34,6 +34,7 @@ from .utils import (
     _run_succeeded,
     collect_model_metrics_and_sizes,
     column_sample_to_instances,
+    column_sample_to_v2_inputs,
     download_and_execute_automl_notebook,
     find_leaderboard_html,
     find_test_dataset_csv,
@@ -191,6 +192,11 @@ class TestAutoMLTabularFunctional:
                     if test_config.inference_sample
                     else None
                 )
+                v2_inputs = (
+                    column_sample_to_v2_inputs(test_config.inference_sample)
+                    if test_config.inference_sample
+                    else None
+                )
                 deployment_result = run_deployment_test(
                     scenario_id=test_config.id,
                     model_entries=model_entries,
@@ -201,15 +207,27 @@ class TestAutoMLTabularFunctional:
                     automl_functional_config=automl_functional_config,
                     temp_kubeconfig_path=temp_kubeconfig_path,
                     instances=instances,
+                    v2_inputs=v2_inputs,
                 )
                 logger.info(
-                    "[%s] deployment: isvc=%s ready=%s url=%s scored=%s predictions_count=%d",
+                    "[%s] deployment: isvc=%s ready=%s url=%s",
                     test_config.id,
                     deployment_result.get("isvc_name"),
                     deployment_result.get("isvc_ready"),
                     deployment_result.get("isvc_url"),
+                )
+                logger.info(
+                    "[%s] v1 response: scored=%s body=%s error=%s",
+                    test_config.id,
                     deployment_result.get("scored"),
-                    len(deployment_result.get("predictions") or []),
+                    deployment_result.get("v1_response"),
+                    deployment_result.get("score_error"),
+                )
+                logger.info(
+                    "[%s] v2 response: status=%s body=%s",
+                    test_config.id,
+                    deployment_result.get("v2_status_code"),
+                    deployment_result.get("v2_response"),
                 )
 
         if (
@@ -218,12 +236,21 @@ class TestAutoMLTabularFunctional:
             and not deployment_result.get("skipped")
         ):
             assert deployment_result.get("scored"), (
-                f"[{test_config.id}] KServe scoring failed: {deployment_result.get('score_error')}"
+                f"[{test_config.id}] KServe v1 scoring failed: {deployment_result.get('score_error')}"
             )
             predictions = deployment_result.get("predictions")
             assert isinstance(predictions, list) and len(predictions) > 0, (
-                f"[{test_config.id}] Predictions must be a non-empty list, got: {predictions!r}"
+                f"[{test_config.id}] v1 predictions must be a non-empty list, got: {predictions!r}"
             )
+            if deployment_result.get("v2_status_code") is not None:
+                assert deployment_result["v2_status_code"] == 200, (
+                    f"[{test_config.id}] KServe v2 scoring expected HTTP 200, "
+                    f"got {deployment_result['v2_status_code']}: {deployment_result.get('v2_error')}"
+                )
+                v2_outputs = deployment_result.get("v2_outputs")
+                assert isinstance(v2_outputs, list) and len(v2_outputs) > 0, (
+                    f"[{test_config.id}] v2 outputs must be a non-empty list, got: {v2_outputs!r}"
+                )
 
 
 @pytest.mark.tabular

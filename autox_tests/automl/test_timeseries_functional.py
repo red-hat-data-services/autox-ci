@@ -39,6 +39,7 @@ from .utils import (
     download_and_execute_automl_notebook,
     find_leaderboard_html,
     find_test_dataset_csv,
+    rows_to_v2_inputs,
     run_deployment_test,
 )
 
@@ -193,6 +194,11 @@ class TestAutoMLTimeseriesFunctional:
                     ts_env_vars["AUTOGLUON_TS_TIMESTAMP_COLUMN"] = (
                         test_config.timestamp_column
                     )
+                v2_inputs = (
+                    rows_to_v2_inputs(test_config.inference_sample)
+                    if test_config.inference_sample
+                    else None
+                )
                 deployment_result = run_deployment_test(
                     scenario_id=test_config.id,
                     model_entries=model_entries,
@@ -204,15 +210,27 @@ class TestAutoMLTimeseriesFunctional:
                     temp_kubeconfig_path=temp_kubeconfig_path,
                     instances=test_config.inference_sample or None,
                     isvc_env_vars=ts_env_vars or None,
+                    v2_inputs=v2_inputs,
                 )
                 logger.info(
-                    "[%s] deployment: isvc=%s ready=%s url=%s scored=%s predictions_count=%d",
+                    "[%s] deployment: isvc=%s ready=%s url=%s",
                     test_config.id,
                     deployment_result.get("isvc_name"),
                     deployment_result.get("isvc_ready"),
                     deployment_result.get("isvc_url"),
+                )
+                logger.info(
+                    "[%s] v1 response: scored=%s body=%s error=%s",
+                    test_config.id,
                     deployment_result.get("scored"),
-                    len(deployment_result.get("predictions") or []),
+                    deployment_result.get("v1_response"),
+                    deployment_result.get("score_error"),
+                )
+                logger.info(
+                    "[%s] v2 response: status=%s body=%s",
+                    test_config.id,
+                    deployment_result.get("v2_status_code"),
+                    deployment_result.get("v2_response"),
                 )
 
         if (
@@ -221,12 +239,18 @@ class TestAutoMLTimeseriesFunctional:
             and not deployment_result.get("skipped")
         ):
             assert deployment_result.get("scored"), (
-                f"[{test_config.id}] KServe scoring failed: {deployment_result.get('score_error')}"
+                f"[{test_config.id}] KServe v1 scoring failed: {deployment_result.get('score_error')}"
             )
             predictions = deployment_result.get("predictions")
             assert isinstance(predictions, list) and len(predictions) > 0, (
-                f"[{test_config.id}] Predictions must be a non-empty list, got: {predictions!r}"
+                f"[{test_config.id}] v1 predictions must be a non-empty list, got: {predictions!r}"
             )
+            if deployment_result.get("v2_status_code") is not None:
+                assert deployment_result["v2_status_code"] >= 400, (
+                    f"[{test_config.id}] KServe v2 scoring should fail for timeseries "
+                    f"(AutoGluon TimeSeriesPredictor does not support v2 protocol), "
+                    f"but got HTTP {deployment_result['v2_status_code']}"
+                )
 
 
 @pytest.mark.timeseries
