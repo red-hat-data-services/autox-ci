@@ -11,6 +11,20 @@ Two independent suites live here, each with its own env file, config JSON, and p
 
 ---
 
+## Custom test configurations
+
+When `autox-ci` is used as a submodule, downstream repos can supply their own test config JSON files to define different datasets, models, or scenario definitions. Override the built-in configs via environment variables or CLI flags:
+
+| Env variable | CLI flag | Overrides |
+|---|---|---|
+| `AUTORAG_TEST_CONFIGS_PATH` | `--rag-configs` | `autorag/configs/test_configs.json` |
+| `AUTOML_TABULAR_TEST_CONFIGS_PATH` | `--tabular-configs` | `automl/configs/tabular_test_configs.json` |
+| `AUTOML_TIMESERIES_TEST_CONFIGS_PATH` | `--timeseries-configs` | `automl/configs/timeseries_test_configs.json` |
+
+Custom JSON files must follow the same schema as the built-in configs they replace. The dataclass fields in `configs/configs.py` define the expected keys.
+
+---
+
 ## AutoML functional tests
 
 End-to-end tests for the AutoGluon tabular and time series training pipelines. Validates pipeline runs, S3 artifacts, and optionally deploys trained models via KServe for inference scoring.
@@ -110,6 +124,8 @@ If no variable is set, all scenarios from the JSON files are eligible (subject t
 | Variable | Default | Purpose |
 |---|---|---|
 | `AUTOML_FUNCTIONAL_TESTS_TAGS` | — | Comma-separated tags — only scenarios that have **all** requested tags run. Unset = run all. |
+| `AUTOML_TABULAR_TEST_CONFIGS_PATH` | — | Path to custom tabular test configs JSON. Overrides built-in `tabular_test_configs.json`. |
+| `AUTOML_TIMESERIES_TEST_CONFIGS_PATH` | — | Path to custom timeseries test configs JSON. Overrides built-in `timeseries_test_configs.json`. |
 | `RHOAI_PIPELINE_RUN_TIMEOUT` | `3600` | Max seconds to wait for a pipeline run |
 | `KFP_DISABLE_EXECUTION_CACHING_BY_DEFAULT` | `true` | Disable KFP step caching |
 | `AUTOML_FUNCTIONAL_TEST_KEEP_ARTIFACTS` | `false` | Skip S3 artifact cleanup after the session |
@@ -321,6 +337,7 @@ cp autox_tests/.env.rag.example autox_tests/.env.rag
 | Variable | Default | Purpose |
 |---|---|---|
 | `FUNCTIONAL_TESTS_TAGS` | — | Comma-separated tags — only matching scenarios run. Unset = run all. |
+| `AUTORAG_TEST_CONFIGS_PATH` | — | Path to custom AutoRAG test configs JSON. Overrides built-in `test_configs.json`. |
 | `RHOAI_PIPELINE_RUN_TIMEOUT` | `3600` | Max seconds to wait for a pipeline run |
 | `K8S_API_URL` | — | Kubernetes API URL for pod log fetching (derived from KFP URL when unset) |
 

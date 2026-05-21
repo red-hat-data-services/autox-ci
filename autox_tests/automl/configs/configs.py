@@ -1,8 +1,10 @@
 """Test configurations for parametrized AutoML functional tests.
 
-Tabular configs are loaded from tabular_test_configs.json.
-Timeseries configs are loaded from timeseries_test_configs.json.
-Filter scenarios by tags with AUTOML_FUNCTIONAL_TESTS_TAGS (comma-separated).
+Tabular configs are loaded from tabular_test_configs.json by default.
+Timeseries configs are loaded from timeseries_test_configs.json by default.
+Set AUTOML_TABULAR_TEST_CONFIGS_PATH or AUTOML_TIMESERIES_TEST_CONFIGS_PATH
+to load from custom JSON files instead. Filter scenarios by tags with
+AUTOML_FUNCTIONAL_TESTS_TAGS (comma-separated).
 """
 
 import json
@@ -12,8 +14,14 @@ from pathlib import Path
 from typing import Any
 
 _CONFIGS_DIR = Path(__file__).parent
-_TABULAR_JSON = _CONFIGS_DIR / "tabular_test_configs.json"
-_TIMESERIES_JSON = _CONFIGS_DIR / "timeseries_test_configs.json"
+_TABULAR_JSON = Path(
+    os.getenv("AUTOML_TABULAR_TEST_CONFIGS_PATH")
+    or (_CONFIGS_DIR / "tabular_test_configs.json")
+)
+_TIMESERIES_JSON = Path(
+    os.getenv("AUTOML_TIMESERIES_TEST_CONFIGS_PATH")
+    or (_CONFIGS_DIR / "timeseries_test_configs.json")
+)
 
 
 @dataclass

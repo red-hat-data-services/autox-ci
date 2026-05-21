@@ -52,8 +52,8 @@
         "generation_models": null,
         "optimization_max_rag_patterns": 4,
         "optimization_metric": "answer_correctness",
-        "input_data_key": "financial_ibm/documents",
-        "test_data_key": "financial_ibm/benchmark_data.json"
+        "input_data_key": "datasets/rag/financial_ibm/documents",
+        "test_data_key": "datasets/rag/financial_ibm/benchmark_data.json"
     },
     {
         "id": "TC-P-2",
@@ -65,7 +65,7 @@
         "optimization_max_rag_patterns": 4,
         "vector_io_provider_id": "milvus-remote",
         "optimization_metric": "faithfulness",
-        "input_data_key": "rh_summit_2026/documents",
-        "test_data_key": "rh_summit_2026/benchmark_data_sample.json"
+        "input_data_key": "datasets/rag/rh_summit_2026/documents",
+        "test_data_key": "datasets/rag/rh_summit_2026/benchmark_data.json"
     }
 ]

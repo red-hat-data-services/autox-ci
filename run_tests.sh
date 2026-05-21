@@ -33,6 +33,13 @@ Options:
                            (sets AUTOML_TIMESERIES_PIPELINE_PATH; AutoML only).
                            AutoRAG pipeline path is set via AUTORAG_PIPELINE_PATH
                            in the env file.
+  --rag-configs PATH       Custom test_configs.json for AutoRAG scenarios
+                           (sets AUTORAG_TEST_CONFIGS_PATH).
+  --tabular-configs PATH   Custom tabular_test_configs.json for AutoML tabular
+                           (sets AUTOML_TABULAR_TEST_CONFIGS_PATH).
+  --timeseries-configs PATH
+                           Custom timeseries_test_configs.json for AutoML
+                           time series (sets AUTOML_TIMESERIES_TEST_CONFIGS_PATH).
   --dry-run                Print the pytest command without executing it.
   -h, --help               Show this message and exit.
 
@@ -65,6 +72,14 @@ Examples:
 
   # Pass extra pytest flags
   $(basename "$0") --suite automl --env-file autox_tests/.env.ml -- -v -x --no-header
+
+  # Use custom test configs (submodule / downstream repo)
+  $(basename "$0") --suite autorag --env-file my.env \\
+      --rag-configs my_configs/autorag_scenarios.json
+
+  $(basename "$0") --suite automl --env-file my.env \\
+      --tabular-configs my_configs/tabular.json \\
+      --timeseries-configs my_configs/timeseries.json
 EOF
 }
 
@@ -78,6 +93,9 @@ MARKER_EXPR=""
 TESTS_TAGS=""
 TABULAR_PIPELINE=""
 TIMESERIES_PIPELINE=""
+RAG_CONFIGS=""
+TABULAR_CONFIGS=""
+TIMESERIES_CONFIGS=""
 PYTEST_EXTRA_ARGS=()
 
 while [[ $# -gt 0 ]]; do
@@ -108,6 +126,18 @@ while [[ $# -gt 0 ]]; do
             ;;
         --timeseries-pipeline)
             TIMESERIES_PIPELINE="$2"
+            shift 2
+            ;;
+        --rag-configs)
+            RAG_CONFIGS="$2"
+            shift 2
+            ;;
+        --tabular-configs)
+            TABULAR_CONFIGS="$2"
+            shift 2
+            ;;
+        --timeseries-configs)
+            TIMESERIES_CONFIGS="$2"
             shift 2
             ;;
         --dry-run)
@@ -145,17 +175,19 @@ fi
 
 # ── Source .env files ────────────────────────────────────────────────────────
 
-for ENV_FILE in "${ENV_FILES[@]}"; do
-    if [[ ! -f "$ENV_FILE" ]]; then
-        echo "error: env file not found: $ENV_FILE" >&2
-        exit 1
-    fi
-    echo "env: sourcing $ENV_FILE"
-    set -a
-    # shellcheck disable=SC1090
-    source "$ENV_FILE"
-    set +a
-done
+if [[ ${#ENV_FILES[@]} -gt 0 ]]; then
+    for ENV_FILE in "${ENV_FILES[@]}"; do
+        if [[ ! -f "$ENV_FILE" ]]; then
+            echo "error: env file not found: $ENV_FILE" >&2
+            exit 1
+        fi
+        echo "env: sourcing $ENV_FILE"
+        set -a
+        # shellcheck disable=SC1090
+        source "$ENV_FILE"
+        set +a
+    done
+fi
 
 # ── Apply pipeline path overrides (automl) ───────────────────────────────────
 
@@ -165,6 +197,24 @@ fi
 if [[ -n "$TIMESERIES_PIPELINE" ]]; then
     export AUTOML_TIMESERIES_PIPELINE_PATH="$TIMESERIES_PIPELINE"
 fi
+
+# ── Apply custom test config overrides ───────────────────────────────────────
+
+for _pair in \
+    "RAG_CONFIGS:AUTORAG_TEST_CONFIGS_PATH:--rag-configs" \
+    "TABULAR_CONFIGS:AUTOML_TABULAR_TEST_CONFIGS_PATH:--tabular-configs" \
+    "TIMESERIES_CONFIGS:AUTOML_TIMESERIES_TEST_CONFIGS_PATH:--timeseries-configs"; do
+    IFS=: read -r _var _env _flag <<< "$_pair"
+    _val="${!_var}"
+    if [[ -n "$_val" ]]; then
+        if [[ ! -f "$_val" ]]; then
+            echo "error: ${_flag} file not found: $_val" >&2
+            exit 1
+        fi
+        export "$_env"="$_val"
+        echo "config: using custom $_flag from $_val"
+    fi
+done
 
 # ── Build command ────────────────────────────────────────────────────────────
 

@@ -1,9 +1,10 @@
 """Test configurations for parametrized functional tests of the Documents RAG Optimization pipeline.
 
-Configurations are loaded from test_configs.json in this directory. Each entry
-specifies pipeline parameter overrides, expected result (pass/fail), and optional
-tags for filtering. Use FUNCTIONAL_TESTS_TAGS (comma-separated) to run only
-configs that have all of the given tags.
+Configurations are loaded from test_configs.json in this directory by default.
+Set AUTORAG_TEST_CONFIGS_PATH to load from a custom JSON file instead.
+Each entry specifies pipeline parameter overrides, expected result (pass/fail),
+and optional tags for filtering. Use FUNCTIONAL_TESTS_TAGS (comma-separated) to
+run only configs that have all of the given tags.
 """
 
 import json
@@ -12,7 +13,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-_CONFIGS_JSON_PATH = Path(__file__).parent / "test_configs.json"
+_CONFIGS_JSON_PATH = Path(
+    os.getenv("AUTORAG_TEST_CONFIGS_PATH")
+    or (Path(__file__).parent / "test_configs.json")
+)
 
 
 @dataclass
