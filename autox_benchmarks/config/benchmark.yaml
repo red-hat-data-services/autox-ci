@@ -9,70 +9,81 @@ run:
   run_name_prefix: "benchmark"
 
 datasets:
-  - id: breast-w
-    name: breast-w
-    train_data_file_key: "datasets/classification/breast-w.csv"
-    label_column: "Class"
-    task_type: "binary"
+  # Binary classification
+- id: breast-w
+  name: breast-w
+  train_data_file_key: "datasets/classification/breast-w.csv"
+  label_column: "Class"
+  task_type: "binary"
 
-  # - id: bank-marketing
-  #   name: bank-marketing
-  #   train_data_file_key: "datasets/classification/bank-marketing.csv"
-  #   label_column: "Class"
-  #   task_type: "binary"
+- id: bank-marketing
+  name: bank-marketing
+  train_data_file_key: "datasets/classification/bank-marketing.csv"
+  label_column: "Class"
+  task_type: "binary"
 
-  # - id: jm1
-  #   name: jm1
-  #   train_data_file_key: "datasets/classification/jm1.csv"
-  #   label_column: "defects"
-  #   task_type: "binary"
+- id: jm1
+  name: jm1
+  train_data_file_key: "datasets/classification/jm1.csv"
+  label_column: "defects"
+  task_type: "binary"
 
-  # - id: letter
-  #   name: letter
-  #   train_data_file_key: "datasets/classification/letter.csv"
-  #   label_column: "class"
-  #   task_type: "multiclass"
+  # Multiclass classification
+- id: letter
+  name: letter
+  train_data_file_key: "datasets/classification/letter.csv"
+  label_column: "class"
+  task_type: "multiclass"
 
-  # - id: optdigits
-  #   name: optdigits
-  #   train_data_file_key: "datasets/classification/optdigits.csv"
-  #   label_column: "class"
-  #   task_type: "multiclass"
+- id: optdigits
+  name: optdigits
+  train_data_file_key: "datasets/classification/optdigits.csv"
+  label_column: "class"
+  task_type: "multiclass"
 
-  # - id: boston
-  #   name: boston
-  #   train_data_file_key: "datasets/regression/boston.csv"
-  #   label_column: "MEDV"
-  #   task_type: "regression"
+  # Regression
+- id: boston
+  name: boston
+  train_data_file_key: "datasets/regression/boston.csv"
+  label_column: "MEDV"
+  task_type: "regression"
 
-  # - id: wine_quality
-  #   name: wine_quality
-  #   train_data_file_key: "datasets/regression/wine_quality.csv"
-  #   label_column: "quality"
-  #   task_type: "regression"
+- id: wine_quality
+  name: wine_quality
+  train_data_file_key: "datasets/regression/wine_quality.csv"
+  label_column: "quality"
+  task_type: "regression"
 
-  # - id: kin8nm
-  #   name: kin8nm
-  #   train_data_file_key: "datasets/regression/kin8nm.csv"
-  #   label_column: "y"
-  #   task_type: "regression"
+- id: kin8nm
+  name: kin8nm
+  train_data_file_key: "datasets/regression/kin8nm.csv"
+  label_column: "y"
+  task_type: "regression"
 
-  # - id: cpu_act
-  #   name: cpu_act
-  #   train_data_file_key: "datasets/regression/cpu_act.csv"
-  #   label_column: "usr"
-  #   task_type: "regression"
+- id: cpu_act
+  name: cpu_act
+  train_data_file_key: "datasets/regression/cpu_act.csv"
+  label_column: "usr"
+  task_type: "regression"
 
-  # - id: houses
-  #   name: houses
-  #   train_data_file_key: "datasets/regression/houses.csv"
-  #   label_column: "median_house_value"
-  #   task_type: "regression"
+- id: houses
+  name: houses
+  train_data_file_key: "datasets/regression/houses.csv"
+  label_column: "median_house_value"
+  task_type: "regression"
 
-  # - id: monthly-sunspots
-  #   name: monthly-sunspots
-  #   train_data_file_key: "datasets/timeseries/monthly-sunspots.csv"
-  #   task_type: "timeseries"
-  #   id_column: "series_id"
-  #   timestamp_column: "Month"
-  #   target: "Sunspots"
+  # Timeseries
+- id: monthly-sunspots
+  name: monthly-sunspots
+  train_data_file_key: "datasets/timeseries/monthly-sunspots.csv"
+  task_type: "timeseries"
+  id_column: "series_id"
+  timestamp_column: "Month"
+  target: "Sunspots"
+
+  # bigger dataset (44Mb)
+- id: higgs
+  name: higgs
+  train_data_file_key: "datasets/classification/higgs.csv"
+  label_column: "class"
+  task_type: "binary"
