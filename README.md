@@ -45,6 +45,9 @@ cp autox_tests/.env.ml.example autox_tests/.env.ml
 | `-t, --tags TAGS` | Comma-separated tags for scenario filtering (matched against test config JSON) |
 | `--env-file FILE` | Source a `.env` file before running (shell exports take precedence) |
 | `--extras NAME` | uv extras to install (default: `test_autorag`; comma-separated for multiple) |
+| `--rag-configs PATH` | Custom AutoRAG test configs JSON (sets `AUTORAG_TEST_CONFIGS_PATH`) |
+| `--tabular-configs PATH` | Custom AutoML tabular test configs JSON (sets `AUTOML_TABULAR_TEST_CONFIGS_PATH`) |
+| `--timeseries-configs PATH` | Custom AutoML timeseries test configs JSON (sets `AUTOML_TIMESERIES_TEST_CONFIGS_PATH`) |
 | `--dry-run` | Print the command without executing |
 
 Everything after `--` is forwarded to pytest.
@@ -92,3 +95,25 @@ This repo can be embedded as a git submodule:
 ```
 
 `run_tests.sh` resolves paths relative to its own location, so it works from any calling directory.
+
+### Custom test configurations
+
+Downstream repos can provide their own test config JSONs to override the built-in scenarios (e.g. different datasets, models, or S3 paths). Custom files must follow the same JSON schema as the built-in configs.
+
+```bash
+# AutoRAG with custom scenarios
+./submodules/autox-ci/run_tests.sh --suite autorag --env-file my.env \
+    --rag-configs my_configs/autorag_scenarios.json
+
+# AutoML with custom tabular + timeseries scenarios
+./submodules/autox-ci/run_tests.sh --suite automl --env-file my.env \
+    --tabular-configs my_configs/tabular.json \
+    --timeseries-configs my_configs/timeseries.json
+```
+
+The same overrides work via environment variables (useful in CI):
+
+```bash
+export AUTORAG_TEST_CONFIGS_PATH=my_configs/autorag_scenarios.json
+./submodules/autox-ci/run_tests.sh --suite autorag --env-file my.env
+```

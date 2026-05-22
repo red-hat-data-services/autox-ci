@@ -11,6 +11,20 @@ Two independent suites live here, each with its own env file, config JSON, and p
 
 ---
 
+## Custom test configurations
+
+When `autox-ci` is used as a submodule, downstream repos can supply their own test config JSON files to define different datasets, models, or scenario definitions. Override the built-in configs via environment variables or CLI flags:
+
+| Env variable | CLI flag | Overrides |
+|---|---|---|
+| `AUTORAG_TEST_CONFIGS_PATH` | `--rag-configs` | `autorag/configs/test_configs.json` |
+| `AUTOML_TABULAR_TEST_CONFIGS_PATH` | `--tabular-configs` | `automl/configs/tabular_test_configs.json` |
+| `AUTOML_TIMESERIES_TEST_CONFIGS_PATH` | `--timeseries-configs` | `automl/configs/timeseries_test_configs.json` |
+
+Custom JSON files must follow the same schema as the built-in configs they replace. The dataclass fields in `configs/configs.py` define the expected keys.
+
+---
+
 ## AutoML functional tests
 
 End-to-end tests for the AutoGluon tabular and time series training pipelines. Validates pipeline runs, S3 artifacts, and optionally deploys trained models via KServe for inference scoring.
@@ -75,6 +89,32 @@ cp autox_tests/.env.ml.example autox_tests/.env.ml
 #### Pipeline YAMLs
 
 | Variable | Purpose |
+| -------- | ------- |
+| `OGX_SECRET_NAME` | Secret with OGX client settings (e.g. API key, base URL). |
+| `VECTOR_IO_PROVIDER_ID` | Registered vector I/O provider id in OGX. |
+
+Optional fallbacks for `data_mode=existing_s3` when JSON omits buckets: `TEST_DATA_BUCKET_NAME`, `TEST_DATA_KEY`, `INPUT_DATA_BUCKET_NAME`, `INPUT_DATA_KEY`, or `TEST_DATA_SOURCE_BUCKET` / `TEST_DATA_SOURCE_PREFIX`.
+
+JSON scenarios: `tests/config/autorag_test_configs.json`.
+
+If selected configs use `upload` or `existing_s3`, **S3 env vars** and bucket defaults must satisfy the checks in `tests.lib.settings` (see `describe_autorag_integration_failure`).
+
+## Controlling which tests run (env + pytest)
+
+Scenario lists are read **when test modules import** (see `CONFIGS_FOR_RUN` in each `test_*_rhoai.py`). Set env vars **before** starting pytest (or in `tests/.env` so they load before collection).
+
+### Filter JSON scenarios by tags
+
+**`RHOAI_TEST_CONFIG_TAGS`** — Comma-separated list. Only scenarios whose `tags` in the JSON **intersect** this set (case-insensitive) are included.
+
+Example (only scenarios tagged `smoke`):
+
+```bash
+export RHOAI_TEST_CONFIG_TAGS=smoke
+pytest tests/scenarios/ -v
+```
+
+If no variable is set, all scenarios from the JSON files are eligible (subject to other filters).
 |---|---|
 | `AUTOML_TABULAR_PIPELINE_PATH` | Local path or `https://` URL to the compiled tabular pipeline YAML |
 | `AUTOML_TIMESERIES_PIPELINE_PATH` | Local path or `https://` URL to the compiled time series pipeline YAML |
@@ -84,6 +124,8 @@ cp autox_tests/.env.ml.example autox_tests/.env.ml
 | Variable | Default | Purpose |
 |---|---|---|
 | `AUTOML_FUNCTIONAL_TESTS_TAGS` | — | Comma-separated tags — only scenarios that have **all** requested tags run. Unset = run all. |
+| `AUTOML_TABULAR_TEST_CONFIGS_PATH` | — | Path to custom tabular test configs JSON. Overrides built-in `tabular_test_configs.json`. |
+| `AUTOML_TIMESERIES_TEST_CONFIGS_PATH` | — | Path to custom timeseries test configs JSON. Overrides built-in `timeseries_test_configs.json`. |
 | `RHOAI_PIPELINE_RUN_TIMEOUT` | `3600` | Max seconds to wait for a pipeline run |
 | `KFP_DISABLE_EXECUTION_CACHING_BY_DEFAULT` | `true` | Disable KFP step caching |
 | `AUTOML_FUNCTIONAL_TEST_KEEP_ARTIFACTS` | `false` | Skip S3 artifact cleanup after the session |
@@ -287,7 +329,7 @@ cp autox_tests/.env.rag.example autox_tests/.env.rag
 
 | Variable | Purpose |
 |---|---|
-| `FUNC_TEST_EMBEDDINGS_MODELS` | Override embeddings models used in tests |
+| `FUNC_TEST_EMBEDDING_MODELS` | Override embeddings models used in tests |
 | `FUNC_TEST_GENERATION_MODELS` | Override generation models used in tests |
 
 #### Test filtering and timeouts
@@ -295,6 +337,7 @@ cp autox_tests/.env.rag.example autox_tests/.env.rag
 | Variable | Default | Purpose |
 |---|---|---|
 | `FUNCTIONAL_TESTS_TAGS` | — | Comma-separated tags — only matching scenarios run. Unset = run all. |
+| `AUTORAG_TEST_CONFIGS_PATH` | — | Path to custom AutoRAG test configs JSON. Overrides built-in `test_configs.json`. |
 | `RHOAI_PIPELINE_RUN_TIMEOUT` | `3600` | Max seconds to wait for a pipeline run |
 | `K8S_API_URL` | — | Kubernetes API URL for pod log fetching (derived from KFP URL when unset) |
 

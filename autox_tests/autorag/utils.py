@@ -298,7 +298,7 @@ def _validate_artifacts_in_s3(s3_client, bucket, prefix):
     return result
 
 
-_NOTEBOOK_ENV_PREFIXES = ("LLAMA_STACK_CLIENT_", "AWS_")
+_NOTEBOOK_ENV_PREFIXES = ("OGX_CLIENT_", "AWS_")
 _SYSTEM_ENV_KEYS = frozenset({"PATH", "HOME", "TMPDIR", "TEMP", "TMP", "LANG", "LC_ALL", "USER", "LOGNAME", "SHELL"})
 
 

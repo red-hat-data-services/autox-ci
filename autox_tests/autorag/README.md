@@ -54,7 +54,7 @@ Scenarios live in `configs/test_configs.json`. Each entry specifies:
 | `description` | Human-readable summary |
 | `tags` | List of tags for runtime filtering via `-t` / `TESTS_TAGS` |
 | `expected_result` | `"pass"` or `"fail"` |
-| `llama_stack_vector_io_provider_id` | Milvus provider ID for this scenario |
+| `vector_io_provider_id` | Milvus provider ID for this scenario |
 | `pipeline_params_overrides` | Per-scenario parameter overrides |
 
 ### Tag filtering

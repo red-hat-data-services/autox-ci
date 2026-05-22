@@ -35,7 +35,7 @@ def get_functional_config():
     """Build functional test config from environment; None if not configured.
 
     Relaxed guards compared to integration config (does not require
-    llama_stack_vector_io_provider_id or input_data_key since those are
+    vector_io_provider_id or input_data_key since those are
     overridden per-scenario). Adds milvus provider IDs and constrained model lists.
     """
     load_tests_env("autorag")
@@ -47,9 +47,9 @@ def get_functional_config():
     t_bucket = os.environ.get("TEST_DATA_BUCKET_NAME")
     i_secret = os.environ.get("INPUT_DATA_SECRET_NAME")
     i_bucket = os.environ.get("INPUT_DATA_BUCKET_NAME")
-    llama_secret = os.environ.get("LLAMA_STACK_SECRET_NAME")
+    ogx_secret = os.environ.get("OGX_SECRET_NAME")
 
-    if not all([kfp_url, token, t_secret, t_bucket, i_secret, i_bucket, llama_secret]):
+    if not all([kfp_url, token, t_secret, t_bucket, i_secret, i_bucket, ogx_secret]):
         return None
 
     endpoint = os.environ.get("ARTIFACTS_AWS_S3_ENDPOINT")
@@ -66,7 +66,7 @@ def get_functional_config():
         "test_data_bucket_name": t_bucket.strip(),
         "input_data_secret_name": i_secret.strip(),
         "input_data_bucket_name": i_bucket.strip(),
-        "llama_stack_secret_name": llama_secret.strip(),
+        "ogx_secret_name": ogx_secret.strip(),
         "s3_endpoint": endpoint.strip() if endpoint else None,
         "s3_access_key": access.strip() if access else None,
         "s3_secret_key": secret.strip() if secret else None,
