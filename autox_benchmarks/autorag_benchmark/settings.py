@@ -21,6 +21,7 @@ class BenchmarkSettings:
     vector_io_provider_id: str
     optimization_metric: str
     optimization_max_rag_patterns: int
+    system_prompt: str
     poll_interval_seconds: float
     timeout_seconds: float
     enable_caching: bool
@@ -85,6 +86,7 @@ def benchmark_settings_from_config(cfg: dict[str, Any], config_dir: Path) -> Ben
         vector_io_provider_id=str(vector_io_provider),
         optimization_metric=str(run_cfg.get("optimization_metric", "faithfulness")),
         optimization_max_rag_patterns=int(run_cfg.get("optimization_max_rag_patterns", 8)),
+        system_prompt=str(run_cfg.get("system_prompt", "")),
         poll_interval_seconds=float(run_cfg.get("poll_interval_seconds", 30)),
         timeout_seconds=float(run_cfg.get("timeout_seconds", 86400)),
         enable_caching=bool(run_cfg.get("enable_caching", False)),

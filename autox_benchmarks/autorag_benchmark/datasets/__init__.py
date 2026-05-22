@@ -39,6 +39,10 @@ def list_datasets() -> list[str]:
 from autorag_benchmark.datasets import beir  # noqa: E402, F401
 from autorag_benchmark.datasets import open_ragbench  # noqa: E402, F401
 from autorag_benchmark.datasets import slidevqa  # noqa: E402, F401
+from autorag_benchmark.datasets import html_rag  # noqa: E402, F401
+from autorag_benchmark.datasets import nomiracl_dataset  # noqa: E402, F401
+from autorag_benchmark.datasets import mlqa_dataset  # noqa: E402, F401
+from autorag_benchmark.datasets import mkqa_dataset  # noqa: E402, F401
 
 __all__ = [
     "REGISTRY",
