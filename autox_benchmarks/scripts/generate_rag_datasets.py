@@ -63,7 +63,7 @@ def main():
     parser.add_argument(
         "--dataset",
         required=True,
-        choices=["beir", "open_ragbench", "slidevqa"],
+        choices=["beir", "open_ragbench", "slidevqa", "html_rag", "nomiracl", "mlqa", "mkqa"],
         help="Dataset to generate",
     )
 
@@ -81,7 +81,7 @@ def main():
     )
     parser.add_argument(
         "--output-format",
-        choices=["txt", "md", "pdf", "png", "jpg"],
+        choices=["txt", "md", "html", "pdf", "pptx", "png", "jpg"],
         default="txt",
         help="Output format for knowledge base documents (default: txt)",
     )
@@ -103,6 +103,48 @@ def main():
         "--slidevqa-split",
         default="val",
         help="SlideVQA dataset split (train, val, test) - only for --dataset slidevqa (default: val)",
+    )
+
+    # HtmlRag (Natural Questions) specific options
+    parser.add_argument(
+        "--nq-split",
+        default="validation",
+        help="Natural Questions split (train, validation) - only for --dataset html_rag (default: validation)",
+    )
+
+    # NoMIRACL specific options
+    parser.add_argument(
+        "--nomiracl-language",
+        default="en",
+        help="NoMIRACL language code (ar, bn, de, en, es, fa, fi, fr, hi, id, ja, ko, ru, sw, te, th, yo, zh) "
+             "- only for --dataset nomiracl (default: en)",
+    )
+    parser.add_argument(
+        "--nomiracl-split",
+        default="dev",
+        help="NoMIRACL split (dev, test) - only for --dataset nomiracl (default: dev)",
+    )
+
+    # MLQA specific options
+    parser.add_argument(
+        "--mlqa-language",
+        default="en",
+        help="MLQA language code (ar, de, en, es, hi, vi, zh) "
+             "- only for --dataset mlqa (default: en)",
+    )
+    parser.add_argument(
+        "--mlqa-split",
+        default="test",
+        help="MLQA split (test, validation) - only for --dataset mlqa (default: test)",
+    )
+
+    # MKQA specific options
+    parser.add_argument(
+        "--mkqa-language",
+        default="en",
+        help="MKQA language code (ar, da, de, en, es, fi, fr, he, hu, it, ja, km, ko, "
+             "ms, nl, no, pl, pt, ru, sv, th, tr, vi, zh_cn, zh_hk, zh_tw) "
+             "- only for --dataset mkqa (default: en)",
     )
 
     # S3 upload options
@@ -145,6 +187,14 @@ def main():
             dataset_name = f"beir_{args.beir_dataset}"
         elif args.dataset == "slidevqa":
             dataset_name = f"slidevqa_{args.slidevqa_split}"
+        elif args.dataset == "html_rag":
+            dataset_name = f"html_rag_{args.nq_split}"
+        elif args.dataset == "nomiracl":
+            dataset_name = f"nomiracl_{args.nomiracl_language}_{args.nomiracl_split}"
+        elif args.dataset == "mlqa":
+            dataset_name = f"mlqa_{args.mlqa_language}_{args.mlqa_split}"
+        elif args.dataset == "mkqa":
+            dataset_name = f"mkqa_{args.mkqa_language}"
         args.output_dir = Path("./generated_datasets") / dataset_name / args.output_format
 
     kb_dir = args.output_dir / "knowledge_base"
@@ -160,6 +210,16 @@ def main():
         options["split"] = args.beir_split
     elif args.dataset == "slidevqa":
         options["split"] = args.slidevqa_split
+    elif args.dataset == "html_rag":
+        options["split"] = args.nq_split
+    elif args.dataset == "nomiracl":
+        options["language"] = args.nomiracl_language
+        options["split"] = args.nomiracl_split
+    elif args.dataset == "mlqa":
+        options["language"] = args.mlqa_language
+        options["split"] = args.mlqa_split
+    elif args.dataset == "mkqa":
+        options["language"] = args.mkqa_language
 
     # Generate dataset
     print(f"\n{'='*60}")
@@ -173,6 +233,16 @@ def main():
         print(f"BEIR split: {args.beir_split}")
     elif args.dataset == "slidevqa":
         print(f"SlideVQA split: {args.slidevqa_split}")
+    elif args.dataset == "html_rag":
+        print(f"NQ split: {args.nq_split}")
+    elif args.dataset == "nomiracl":
+        print(f"Language: {args.nomiracl_language}")
+        print(f"Split: {args.nomiracl_split}")
+    elif args.dataset == "mlqa":
+        print(f"Language: {args.mlqa_language}")
+        print(f"Split: {args.mlqa_split}")
+    elif args.dataset == "mkqa":
+        print(f"Language: {args.mkqa_language}")
     print()
 
     try:
@@ -249,6 +319,18 @@ def main():
             elif args.dataset == "slidevqa":
                 # Structure: datasets/rag/slidevqa/{split}/{format}/{num_samples}
                 args.s3_prefix = f"datasets/rag/slidevqa/{args.slidevqa_split}/{args.output_format}/{args.num_samples}"
+            elif args.dataset == "html_rag":
+                # Structure: datasets/rag/html_rag/{split}/html/{num_samples}
+                args.s3_prefix = f"datasets/rag/html_rag/{args.nq_split}/html/{args.num_samples}"
+            elif args.dataset == "nomiracl":
+                # Structure: datasets/rag/nomiracl/{language}/{split}/{format}/{num_samples}
+                args.s3_prefix = f"datasets/rag/nomiracl/{args.nomiracl_language}/{args.nomiracl_split}/{args.output_format}/{args.num_samples}"
+            elif args.dataset == "mlqa":
+                # Structure: datasets/rag/mlqa/{language}/{split}/{format}/{num_samples}
+                args.s3_prefix = f"datasets/rag/mlqa/{args.mlqa_language}/{args.mlqa_split}/{args.output_format}/{args.num_samples}"
+            elif args.dataset == "mkqa":
+                # Structure: datasets/rag/mkqa/{language}/{format}/{num_samples}
+                args.s3_prefix = f"datasets/rag/mkqa/{args.mkqa_language}/{args.output_format}/{args.num_samples}"
             else:
                 # Fallback for other datasets
                 args.s3_prefix = f"datasets/rag/{args.dataset}/{args.output_format}/{args.num_samples}"
@@ -293,6 +375,18 @@ def main():
     elif args.dataset == "slidevqa":
         dataset_id = f"slidevqa-{args.slidevqa_split}-{args.num_samples}"
         dataset_name = f"SlideVQA {args.slidevqa_split.title()} ({args.num_samples} samples)"
+    elif args.dataset == "html_rag":
+        dataset_id = f"html-rag-nq-{args.nq_split}-{args.num_samples}"
+        dataset_name = f"HtmlRag NQ {args.nq_split.title()} ({args.num_samples} samples)"
+    elif args.dataset == "nomiracl":
+        dataset_id = f"nomiracl-{args.nomiracl_language}-{args.nomiracl_split}-{args.num_samples}-{args.output_format}"
+        dataset_name = f"NoMIRACL {args.nomiracl_language.upper()} {args.nomiracl_split.title()} ({args.num_samples}) {args.output_format.upper()}"
+    elif args.dataset == "mlqa":
+        dataset_id = f"mlqa-{args.mlqa_language}-{args.mlqa_split}-{args.num_samples}-{args.output_format}"
+        dataset_name = f"MLQA {args.mlqa_language.upper()} {args.mlqa_split.title()} ({args.num_samples}) {args.output_format.upper()}"
+    elif args.dataset == "mkqa":
+        dataset_id = f"mkqa-{args.mkqa_language}-{args.num_samples}-{args.output_format}"
+        dataset_name = f"MKQA {args.mkqa_language.upper()} ({args.num_samples}) {args.output_format.upper()}"
 
     if args.upload_to_s3:
         print(f"""

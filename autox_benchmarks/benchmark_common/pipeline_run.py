@@ -2,11 +2,51 @@
 
 from __future__ import annotations
 
+import logging
 import subprocess
 import time
+from pathlib import Path
 from typing import Any
 
 from benchmark_common.run_state import is_terminal_state, read_run_state, unwrap_run_from_get_run
+from benchmark_common.yaml_io import load_yaml_dict
+
+logger = logging.getLogger(__name__)
+
+
+def get_pipeline_supported_params(pipeline_file: str | Path) -> set[str] | None:
+    """Return the set of root input parameter names declared in a compiled KFP pipeline YAML.
+
+    Returns *None* if the structure cannot be parsed (e.g. the file is not a
+    compiled KFP YAML), so callers can fall back to passing all arguments.
+    """
+    import yaml
+
+    try:
+        with open(pipeline_file, encoding="utf-8") as f:
+            for doc in yaml.safe_load_all(f):
+                if not isinstance(doc, dict):
+                    continue
+                params = doc.get("root", {}).get("inputDefinitions", {}).get("parameters", {})
+                if isinstance(params, dict) and params:
+                    return set(params.keys())
+    except Exception:
+        pass
+    return None
+
+
+def filter_pipeline_arguments(
+    arguments: dict[str, Any],
+    pipeline_file: str | Path,
+) -> dict[str, Any]:
+    """Drop arguments that the pipeline does not declare as root inputs."""
+    supported = get_pipeline_supported_params(pipeline_file)
+    if supported is None:
+        return arguments
+    dropped = set(arguments) - supported
+    if dropped:
+        logger.info("Dropping unsupported pipeline parameters: %s", ", ".join(sorted(dropped)))
+    return {k: v for k, v in arguments.items() if k in supported}
 
 
 def submit_pipeline_package(

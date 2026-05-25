@@ -178,17 +178,27 @@ def main() -> None:
 
             # Simplified batch selection for AutoRAG, traditional for AutoML
             if benchmark_type == "AutoRAG":
-                # AutoRAG: Just select batches to view (no baseline/compare distinction)
-                st.subheader("Select Batches")
-                selected_batches = st.multiselect(
-                    "Batches to analyze",
-                    batch_ids,
-                    default=batch_ids[:3] if len(batch_ids) >= 3 else batch_ids,
-                    help="Select one or more benchmark batches to view best configurations"
+                st.subheader("Data source")
+                autorag_source = st.radio(
+                    "Load from",
+                    [JOINED_RESULTS_LABEL, "All batches", "Individual batches"],
+                    horizontal=True,
+                    key="autorag_data_source",
                 )
-                if not selected_batches:
-                    st.info("Select at least one batch to analyze.")
-                    st.stop()
+                if autorag_source == JOINED_RESULTS_LABEL:
+                    selected_batches = [JOINED_RESULTS_LABEL]
+                elif autorag_source == "All batches":
+                    selected_batches = batch_ids
+                else:
+                    selected_batches = st.multiselect(
+                        "Batches to analyze",
+                        batch_ids,
+                        default=batch_ids[:3] if len(batch_ids) >= 3 else batch_ids,
+                        help="Select one or more benchmark batches to view best configurations"
+                    )
+                    if not selected_batches:
+                        st.info("Select at least one batch to analyze.")
+                        st.stop()
                 # No baseline needed for AutoRAG minimal UI
                 baseline_batch_id = None
                 baseline_label = "all_batches"
@@ -262,26 +272,26 @@ def main() -> None:
             batch_ids = []
 
     @st.cache_data(show_spinner="Loading joined_results…")
-    def load_joined_s3(_bucket: str, _prefix: str, _s3_cfg: dict, _cache: str, _refresh: bool) -> bytes:
+    def load_joined_s3(bucket: str, prefix: str, _s3_cfg: dict, cache: str, refresh: bool) -> bytes:
         return fetch_joined_results(
             s3_cfg=_s3_cfg,
-            bucket=_bucket,
-            benchmark_prefix=_prefix,
-            cache_dir=Path(_cache),
-            force_refresh=_refresh,
+            bucket=bucket,
+            benchmark_prefix=prefix,
+            cache_dir=Path(cache),
+            force_refresh=refresh,
         )
 
     @st.cache_data(show_spinner="Loading batch CSV…")
     def load_batch_s3(
-        _batch: str, _bucket: str, _prefix: str, _s3_cfg: dict, _cache: str, _refresh: bool
+        batch: str, bucket: str, prefix: str, _s3_cfg: dict, cache: str, refresh: bool
     ) -> bytes:
         return fetch_merged_leaderboards(
             s3_cfg=_s3_cfg,
-            bucket=_bucket,
-            benchmark_prefix=_prefix,
-            batch_id=_batch,
-            cache_dir=Path(_cache),
-            force_refresh=_refresh,
+            bucket=bucket,
+            benchmark_prefix=prefix,
+            batch_id=batch,
+            cache_dir=Path(cache),
+            force_refresh=refresh,
         )
 
     try:
@@ -291,9 +301,14 @@ def main() -> None:
                 baseline_df = pd.DataFrame()  # Empty baseline for AutoRAG
                 compare_dfs: dict[str, pd.DataFrame] = {}
                 for bid in selected_batches:
-                    compare_dfs[bid] = load_merged_csv(
-                        load_batch_s3(bid, bucket, bench_prefix, s3_cfg, str(cache_dir), force_refresh)
-                    )
+                    if bid == JOINED_RESULTS_LABEL:
+                        compare_dfs[bid] = load_merged_csv(
+                            load_joined_s3(bucket, bench_prefix, s3_cfg, str(cache_dir), force_refresh)
+                        )
+                    else:
+                        compare_dfs[bid] = load_merged_csv(
+                            load_batch_s3(bid, bucket, bench_prefix, s3_cfg, str(cache_dir), force_refresh)
+                        )
             else:
                 # AutoML: Traditional baseline + compare loading
                 if baseline_batch_id:

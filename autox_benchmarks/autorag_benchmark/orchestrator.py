@@ -28,7 +28,7 @@ from autorag_benchmark.settings import BenchmarkSettings, benchmark_settings_fro
 from benchmark_common.kfp_client import create_kfp_client
 from benchmark_common.manifest import load_dataset_entries
 from benchmark_common.pipeline_package_resolve import resolve_autorag_pipeline_package_path
-from benchmark_common.pipeline_run import extract_run_id, submit_pipeline_package, wait_for_terminal_run
+from benchmark_common.pipeline_run import extract_run_id, filter_pipeline_arguments, submit_pipeline_package, wait_for_terminal_run
 from benchmark_common.results_csv import write_results_csv
 from benchmark_common.run_state import is_success_state
 
@@ -129,6 +129,7 @@ class BenchmarkOrchestrator:
                 continue
 
             pipeline_file = pipeline_file_for_dataset(ds, settings)
+            arguments = filter_pipeline_arguments(arguments, pipeline_file)
             run_name = run_name_for_dataset(settings.run_name_prefix, ds_id)
             base = base_row_for_dataset(ds, i, run_name)
 

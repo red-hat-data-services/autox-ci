@@ -39,6 +39,10 @@ def build_pipeline_arguments(
     else:
         args["optimization_max_rag_patterns"] = settings.optimization_max_rag_patterns
 
+    system_prompt = str(dataset.get("system_prompt", "")).strip() or settings.system_prompt
+    if system_prompt:
+        args["system_prompt"] = system_prompt
+
     # Handle model lists (embedding_models and generation_models)
     for model_type in ("embedding_models", "generation_models"):
         if model_type in dataset and isinstance(dataset[model_type], list):

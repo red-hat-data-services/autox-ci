@@ -1,0 +1,24 @@
+datasets:
+  - id: mkqa-en-50-txt
+    name: "MKQA EN (50) TXT"
+    input_data_key: "datasets/rag/mkqa/en/txt/50/knowledge_base"
+    test_data_key: "datasets/rag/mkqa/en/txt/50/benchmark_data.json"
+    optimization_metric: "faithfulness"
+    embedding_models:
+      - "vllm-embedding/bge-m3"
+
+  - id: mkqa-de-50-txt
+    name: "MKQA DE (50) TXT"
+    input_data_key: "datasets/rag/mkqa/de/txt/50/knowledge_base"
+    test_data_key: "datasets/rag/mkqa/de/txt/50/benchmark_data.json"
+    optimization_metric: "faithfulness"
+    embedding_models:
+      - "vllm-embedding/bge-m3"
+
+  - id: mkqa-ja-50-txt
+    name: "MKQA JA (50) TXT"
+    input_data_key: "datasets/rag/mkqa/ja/txt/50/knowledge_base"
+    test_data_key: "datasets/rag/mkqa/ja/txt/50/benchmark_data.json"
+    optimization_metric: "faithfulness"
+    embedding_models:
+      - "vllm-embedding/bge-m3"
