@@ -336,7 +336,7 @@ cp autox_tests/.env.rag.example autox_tests/.env.rag
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `FUNCTIONAL_TESTS_TAGS` | — | Comma-separated tags — only matching scenarios run. Unset = run all. |
+| `TESTS_TAGS` | — | Comma-separated tags — only matching scenarios run. Unset = run all. |
 | `AUTORAG_TEST_CONFIGS_PATH` | — | Path to custom AutoRAG test configs JSON. Overrides built-in `test_configs.json`. |
 | `RHOAI_PIPELINE_RUN_TIMEOUT` | `3600` | Max seconds to wait for a pipeline run |
 | `K8S_API_URL` | — | Kubernetes API URL for pod log fetching (derived from KFP URL when unset) |
@@ -351,7 +351,7 @@ pytest autox_tests/autorag/ -v
 pytest autox_tests/autorag/ -m positive -v
 
 # Smoke scenarios only
-FUNCTIONAL_TESTS_TAGS=smoke pytest autox_tests/autorag/ -v
+TESTS_TAGS=smoke pytest autox_tests/autorag/ -v
 
 # Single scenario
 pytest autox_tests/autorag/ -k "TC-P-1" -v
