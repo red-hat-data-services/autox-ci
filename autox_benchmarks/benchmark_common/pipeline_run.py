@@ -39,14 +39,21 @@ def filter_pipeline_arguments(
     arguments: dict[str, Any],
     pipeline_file: str | Path,
 ) -> dict[str, Any]:
-    """Drop arguments that the pipeline does not declare as root inputs."""
+    """Return arguments unchanged; log names not declared in the compiled pipeline IR.
+
+    Validation and rejection of unknown or invalid parameters is left to KFP / the
+    pipeline backend. We do not drop keys client-side.
+    """
     supported = get_pipeline_supported_params(pipeline_file)
     if supported is None:
         return arguments
-    dropped = set(arguments) - supported
-    if dropped:
-        logger.info("Dropping unsupported pipeline parameters: %s", ", ".join(sorted(dropped)))
-    return {k: v for k, v in arguments.items() if k in supported}
+    undeclared = set(arguments) - supported
+    if undeclared:
+        logger.info(
+            "Parameters not in pipeline IR root inputs (KFP may reject): %s",
+            ", ".join(sorted(undeclared)),
+        )
+    return arguments
 
 
 def submit_pipeline_package(

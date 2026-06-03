@@ -21,13 +21,26 @@ def pipeline_file_for_dataset(dataset: dict[str, Any], settings: BenchmarkSettin
     return settings.pipeline_yaml
 
 
+def _merge_manifest_pipeline_overrides(
+    arguments: dict[str, Any],
+    dataset: dict[str, Any],
+) -> dict[str, Any]:
+    """Apply optional per-dataset overrides from the manifest."""
+    extra = dataset.get("pipeline_arguments") or dataset.get("pipeline_params")
+    if not isinstance(extra, dict) or not extra:
+        return arguments
+    return {**arguments, **extra}
+
+
 def build_pipeline_arguments(
     dataset: dict[str, Any],
     settings: BenchmarkSettings,
 ) -> dict[str, Any]:
     if is_timeseries_dataset(dataset):
-        return _build_timeseries_arguments(dataset, settings)
-    return _build_tabular_arguments(dataset, settings)
+        base = _build_timeseries_arguments(dataset, settings)
+    else:
+        base = _build_tabular_arguments(dataset, settings)
+    return _merge_manifest_pipeline_overrides(base, dataset)
 
 
 def _build_tabular_arguments(

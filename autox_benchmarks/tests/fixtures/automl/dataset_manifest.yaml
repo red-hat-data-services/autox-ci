@@ -1,0 +1,27 @@
+datasets:
+  - id: breast-w-test
+    name: breast-w-test
+    train_data_file_key: "datasets/classification/breast-w.csv"
+    label_column: "Class"
+    task_type: "binary"
+    pipeline_arguments:
+      top_n: 4
+
+  - id: boston-test
+    name: boston-test
+    train_data_file_key: "datasets/regression/boston.csv"
+    label_column: "medv"
+    task_type: "regression"
+
+  - id: sunspots-test
+    name: sunspots-test
+    train_data_file_key: "datasets/timeseries/monthly-sunspots.csv"
+    task_type: "timeseries"
+    id_column: "item_id"
+    timestamp_column: "timestamp"
+    target: "target"
+    prediction_length: 12
+
+  - id: broken-tabular
+    name: broken-tabular
+    train_data_file_key: "datasets/classification/incomplete.csv"

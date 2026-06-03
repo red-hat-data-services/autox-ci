@@ -11,7 +11,10 @@ Configuration:
   - YAML ($BENCHMARK_CONFIG_PATH / config/benchmark.yaml): ``pipeline.compile`` (default: clone
     opendatahub-io/pipelines-components and compile tabular/time-series ``pipeline.py``), or optional
     static ``pipeline.package_path`` / ``timeseries_package_path`` when those files exist; run tuning;
-    manifest. CLI: ``--tabular-package-path``, ``--timeseries-package-path`` to force static IR.
+    manifest. Static IR overrides (first match wins): CLI ``--tabular-package-path`` /
+    ``--timeseries-package-path``, env ``$BENCHMARK_TABULAR_PACKAGE_PATH`` /
+    ``$BENCHMARK_TIMESERIES_PACKAGE_PATH``, ``benchmark.yaml`` ``pipeline:``, or
+    ``credentials.ini`` ``[pipeline]``.
   - credentials.ini (required): kfp host/namespace/token, bucket, pipeline secret name, [s3] for
     leaderboard discovery, uploads, and experiment dedupe (skip identical runs by default;
     use ``--rerun-identical-experiments`` to force new pipelines).

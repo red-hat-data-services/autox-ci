@@ -19,49 +19,54 @@ Both benchmark types:
 
 ```
 autox_benchmarks/
-├── automl_benchmark/          # AutoML-specific orchestration
-├── autorag_benchmark/         # AutoRAG-specific orchestration
-│   └── datasets/              # Dataset generation providers (BEIR, OpenRAGBench)
-├── benchmark_common/          # Shared utilities (KFP client, S3, CSV)
-├── config/                    # Configuration files
-│   ├── benchmark.yaml         # AutoRAG benchmark config
-│   ├── credentials.ini        # Secrets (not in git)
-│   └── dataset_manifest.yaml  # AutoRAG dataset registry
-├── scripts/                   # Entry point scripts
-│   ├── automl_benchmark_orchestrator.py
+├── automl_benchmark/          # AutoML orchestration, compare logic, S3 upload
+├── autorag_benchmark/         # AutoRAG orchestration, pattern scores, datasets/
+├── benchmark_common/          # Shared KFP, S3, pipeline compile, manifest helpers
+├── config/                    # Your local config (gitignored secrets)
+│   ├── benchmark.yaml         # Run tuning + manifest path (copy from templates/)
+│   ├── credentials.ini        # KFP / S3 / pipeline secrets (required)
+│   └── dataset_manifest.yaml  # Dataset registry for your suite
+├── pipelines/                 # Optional pre-compiled KFP IR (checked-in examples)
+├── scripts/                   # CLI entry points (run from this directory)
+│   ├── benchmark_orchestrator.py       # AutoML (tabular + time series)
 │   ├── autorag_benchmark_orchestrator.py
-│   └── generate_rag_datasets.py
-├── templates/                 # Example configurations
-│   └── credentials.example.ini
-└── results/                   # Generated benchmark CSVs
+│   ├── benchmark_compare_app.py        # Streamlit compare UI
+│   ├── generate_rag_datasets.py
+│   └── ...
+├── templates/                 # Example benchmark.yaml, manifests, credentials.ini
+├── tests/                     # Unit tests (e.g. compare_logic)
+├── docs/                      # S3 layout reference
+└── results/                   # Default output CSV location
 ```
 
 ## Installation
 
-**Option 1: Install with optional benchmark dependencies (recommended):**
-
-From the repository root:
+From the **`autox_benchmarks/`** directory (this package is self-contained):
 
 ```bash
-pip install -e ".[benchmarks]"
+cd autox_benchmarks
+pip install -e .
 ```
 
-This installs the package plus all benchmark orchestration and dataset generation dependencies.
-
-**Option 2: Install from requirements file:**
+Optional extras:
 
 ```bash
-pip install -r autox_benchmarks/requirements.txt
+pip install -e ".[compare]"   # Streamlit compare UI
+pip install -r requirements.txt   # same runtime + dataset-generation deps (beir, etc.)
 ```
 
 ## Quick Start
 
+All orchestrator commands below assume your shell **current working directory is `autox_benchmarks/`** (so `config/` and `scripts/` resolve correctly).
+
 ### 1. Configure Credentials
 
-Copy the example credentials file:
-
 ```bash
+cd autox_benchmarks
 cp templates/credentials.example.ini config/credentials.ini
+cp templates/benchmark.example.yaml config/benchmark.yaml    # AutoML
+# cp templates/benchmark.autorag.example.yaml config/benchmark.yaml   # AutoRAG
+cp templates/dataset_manifest.example.yaml config/dataset_manifest.yaml
 ```
 
 Edit `config/credentials.ini` with your cluster and S3 details:
@@ -100,7 +105,24 @@ aws_secret_access_key = YOUR_SECRET
 aws_default_region = us-east-1
 ```
 
-### 2. Run AutoRAG Benchmark
+### 2. Run AutoML Benchmark
+
+```bash
+python scripts/benchmark_orchestrator.py \
+  --config config/benchmark.yaml \
+  --credentials config/credentials.ini \
+  --output results/benchmark_runs.csv \
+  --dataset-filter all
+```
+
+**Options:**
+- `--dataset-filter` — `all`, `tabular` (binary/multiclass/regression), or `timeseries`
+- `--dry-run` — Build arguments and print them; do not call KFP
+- `--fail-fast` — Stop after the first failed dataset run
+- `--tabular-package-path` / `--timeseries-package-path` — Use a pre-compiled pipeline YAML (skip Git compile for that slot)
+- `--rerun-identical-experiments` — Submit new KFP runs even when S3 experiment dedupe would reuse a prior result
+
+### 3. Run AutoRAG Benchmark
 
 ```bash
 python scripts/autorag_benchmark_orchestrator.py \
@@ -110,25 +132,7 @@ python scripts/autorag_benchmark_orchestrator.py \
 ```
 
 **Options:**
-- `--dry-run` - Validate configuration without submitting pipelines
-- `--fail-fast` - Stop on first pipeline failure
-
-### 3. Run AutoML Benchmark
-
-```bash
-python scripts/automl_benchmark_orchestrator.py \
-  --config config/benchmark.yaml \
-  --credentials config/credentials.ini \
-  --output results/automl_benchmark_runs.csv \
-  --dataset-filter all
-```
-
-**Options:**
-- `--dataset-filter PATTERN` - Run only matching datasets: `all`, `tabular`, `timeseries`
-- `--dry-run` - Validate configuration without submitting pipelines
-- `--fail-fast` - Stop on first pipeline failure
-- `--tabular-package-path` / `--timeseries-package-path` - Use pre-compiled pipeline YAML (skip Git compile for that slot)
-- `--rerun-identical-experiments` - Force new KFP runs even when S3 experiment dedupe would reuse a prior result
+- `--dry-run`, `--fail-fast`, `--package-path` (compiled RAG pipeline YAML)
 
 ### 4. Compare benchmark results (local UI)
 
@@ -141,7 +145,55 @@ streamlit run scripts/benchmark_compare_app.py
 ```
 
 Uses `config/credentials.ini` for S3 access (cache: `~/.cache/autox_benchmarks/compare/`). See [docs/s3-storage-schema.md](docs/s3-storage-schema.md).
-- `--rerun-identical-experiments` - Force new runs even if identical fingerprint exists
+
+## Environment variables
+
+| Variable | Used by | Purpose |
+|----------|---------|---------|
+| `BENCHMARK_CREDENTIALS_PATH` | Both | Path to `credentials.ini` (default: `config/credentials.ini`) |
+| `BENCHMARK_CONFIG_PATH` | Both | Path to `benchmark.yaml` (default: `config/benchmark.yaml`) |
+| `KFP_API_TOKEN` | Both | KFP bearer token if not set in INI (`token` / `token_file` / `token_env`) |
+| `BENCHMARK_TABULAR_PACKAGE_PATH` | AutoML | Pre-compiled tabular pipeline YAML (same as `--tabular-package-path`) |
+| `BENCHMARK_TIMESERIES_PACKAGE_PATH` | AutoML | Pre-compiled time series pipeline YAML |
+| `BENCHMARK_PACKAGE_PATH` / `RAG_PACKAGE_PATH` | AutoRAG | Pre-compiled RAG pipeline YAML (same as `--package-path`) |
+
+## Compiled pipeline IR (skip Git compile)
+
+By default the orchestrator clones [pipelines-components](https://github.com/opendatahub-io/pipelines-components) and compiles `pipeline.py` into cached YAML. To use a **fixed compiled IR** instead, set one of (first match wins):
+
+1. **CLI** — `--tabular-package-path`, `--timeseries-package-path` (AutoML) or `--package-path` (AutoRAG)
+2. **Environment** — table above (`BENCHMARK_TABULAR_PACKAGE_PATH`, etc.)
+3. **`config/benchmark.yaml`** — `pipeline.package_path` / `pipeline.timeseries_package_path` (paths relative to the config file directory)
+4. **`config/credentials.ini`** — `[pipeline]` `package_path` / `timeseries_package_path` (merged over YAML)
+
+Example (AutoML, from `autox_benchmarks/`):
+
+```bash
+export BENCHMARK_TABULAR_PACKAGE_PATH="$(pwd)/pipelines/autogluon-tabular-training-pipeline.yaml"
+python scripts/benchmark_orchestrator.py --dry-run -v
+```
+
+Bundled examples live under `pipelines/`; production IR is often produced by your pipeline CI and pointed at with CLI or env.
+
+## Pipeline parameters
+
+The orchestrator builds a **baseline** argument dict per dataset (secrets, bucket keys, `task_type`, RAG metrics, etc.). You can extend or override per manifest row:
+
+```yaml
+datasets:
+  - id: breast-w
+    train_data_file_key: datasets/classification/breast-w.csv
+    task_type: binary
+    label_column: Class
+    pipeline_arguments:
+      top_n: 5
+```
+
+(`pipeline_params` is an alias for `pipeline_arguments`.)
+
+Arguments are sent to KFP **as-is**. Names not declared in the compiled pipeline IR are logged at INFO; **invalid or unknown parameters are rejected by KFP / the pipeline run**, not pre-validated (and dropped) in the orchestrator. Use `--dry-run -v` to inspect the payload before submitting.
+
+Declared root inputs are read from the compiled YAML when possible; see `benchmark_common/pipeline_run.py`.
 
 ## AutoRAG Dataset Generation
 
@@ -150,7 +202,7 @@ Generate benchmark datasets (BEIR, OpenRAGBench) and upload to S3.
 ### Prerequisites
 
 ```bash
-pip install -r autox_benchmarks/requirements.txt
+cd autox_benchmarks && pip install -r requirements.txt
 ```
 
 > **Note:** Dataset generation requires additional dependencies (`beir`, `requests`) which are included in `requirements.txt`.
@@ -326,7 +378,8 @@ benchmark_s3_prefix = benchmarks/ml
 
 ```yaml
 pipeline:
-  package_path: "../pipelines/autorag-pipeline.yaml"
+  compile: {}   # default: compile documents RAG pipeline from Git
+  # package_path: "../pipelines/documents-rag-optimization-pipeline.yaml"
 
 run:
   optimization_metric: "faithfulness"
@@ -343,8 +396,9 @@ dataset_manifest_path: "dataset_manifest.yaml"
 
 ```yaml
 pipeline:
-  package_path: "../pipelines/autogluon-tabular-training-pipeline.yaml"
-  timeseries_package_path: "../pipelines/autogluon-timeseries-training-pipeline.yaml"
+  compile: {}
+  # package_path: "../pipelines/autogluon-tabular-training-pipeline.yaml"
+  # timeseries_package_path: "../pipelines/autogluon-timeseries-training-pipeline.yaml"
 
 run:
   top_n: 3
@@ -397,6 +451,25 @@ datasets:
 ```
 
 ## Development
+
+### Tests (AutoML)
+
+From `autox_benchmarks/`:
+
+```bash
+pip install -e ".[dev]"
+pytest tests/ -v
+```
+
+Dry-run integration tests use `tests/fixtures/automl/` (static pipeline YAML under `pipelines/`, no KFP or Git). They cover CLI flags, dataset filters, manifest `pipeline_arguments`, and package-path resolution.
+
+### Online integration tests (AutoML)
+
+Real KFP + S3 smoke run on **breast-w-smoke** (`top_n: 1`). Only needs `config/credentials.ini` (smoke CSV is auto-uploaded). See [tests/integration/README.md](tests/integration/README.md).
+
+```bash
+pytest tests/integration/ -v -s
+```
 
 ### Project Structure
 
@@ -537,6 +610,7 @@ python scripts/generate_rag_datasets.py \
 
 3. Run with `--dry-run` to validate config without submitting:
    ```bash
+   cd autox_benchmarks
    python scripts/autorag_benchmark_orchestrator.py --dry-run -v
    ```
 
@@ -559,7 +633,7 @@ The dataset providers will automatically use `requests` if available, which hand
 **Fix:** Install all dependencies (includes dataset generation):
 
 ```bash
-pip install -r autox_benchmarks/requirements.txt
+cd autox_benchmarks && pip install -r requirements.txt
 ```
 
 ### SlideVQA Access Denied

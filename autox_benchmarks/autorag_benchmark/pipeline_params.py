@@ -12,6 +12,16 @@ def pipeline_file_for_dataset(dataset: dict[str, Any], settings: BenchmarkSettin
     return settings.pipeline_yaml
 
 
+def _merge_manifest_pipeline_overrides(
+    arguments: dict[str, Any],
+    dataset: dict[str, Any],
+) -> dict[str, Any]:
+    extra = dataset.get("pipeline_arguments") or dataset.get("pipeline_params")
+    if not isinstance(extra, dict) or not extra:
+        return arguments
+    return {**arguments, **extra}
+
+
 def build_pipeline_arguments(
     dataset: dict[str, Any],
     settings: BenchmarkSettings,
@@ -48,4 +58,4 @@ def build_pipeline_arguments(
         if model_type in dataset and isinstance(dataset[model_type], list):
             args[model_type] = dataset[model_type]
 
-    return args
+    return _merge_manifest_pipeline_overrides(args, dataset)

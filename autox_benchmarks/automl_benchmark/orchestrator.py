@@ -15,7 +15,12 @@ from automl_benchmark.pipeline_params import (
     is_timeseries_dataset,
     pipeline_file_for_dataset,
 )
-from benchmark_common.pipeline_run import extract_run_id, submit_pipeline_package, wait_for_terminal_run
+from benchmark_common.pipeline_run import (
+    extract_run_id,
+    filter_pipeline_arguments,
+    submit_pipeline_package,
+    wait_for_terminal_run,
+)
 from automl_benchmark.s3_leaderboard_artifact import (
     discover_leaderboard_html_s3_uri,
     download_leaderboard_html_to_dir,
@@ -237,6 +242,7 @@ class BenchmarkOrchestrator:
                 continue
 
             pipeline_file = pipeline_file_for_dataset(ds, settings)
+            arguments = filter_pipeline_arguments(arguments, pipeline_file)
             run_name = run_name_for_dataset(settings.run_name_prefix, ds_id)
             base = base_row_for_dataset(ds, i, run_name, settings.top_n)
 

@@ -18,8 +18,15 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = []
+dev = ["pytest>=7.0"]
 compare = ["streamlit>=1.30", "plotly>=5.18"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+markers = [
+    "integration: online tests against real KFP/S3 (run via pytest tests/integration/)",
+]
 
 [tool.setuptools.packages.find]
 where = ["."]

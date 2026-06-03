@@ -69,16 +69,26 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--tabular-package-path",
         type=str,
-        default=None,
+        default=os.environ.get("BENCHMARK_TABULAR_PACKAGE_PATH")
+        or os.environ.get("TABULAR_PACKAGE_PATH")
+        or None,
         metavar="PATH",
-        help="Use this compiled tabular pipeline YAML (skips Git compile for tabular runs)",
+        help=(
+            "Compiled tabular pipeline YAML (skips Git compile). "
+            "Default: $BENCHMARK_TABULAR_PACKAGE_PATH or $TABULAR_PACKAGE_PATH"
+        ),
     )
     parser.add_argument(
         "--timeseries-package-path",
         type=str,
-        default=None,
+        default=os.environ.get("BENCHMARK_TIMESERIES_PACKAGE_PATH")
+        or os.environ.get("TIMESERIES_PACKAGE_PATH")
+        or None,
         metavar="PATH",
-        help="Use this compiled time series pipeline YAML (skips Git compile for time series runs)",
+        help=(
+            "Compiled time series pipeline YAML (skips Git compile). "
+            "Default: $BENCHMARK_TIMESERIES_PACKAGE_PATH or $TIMESERIES_PACKAGE_PATH"
+        ),
     )
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args(argv)
