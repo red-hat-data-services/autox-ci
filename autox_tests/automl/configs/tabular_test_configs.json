@@ -1,0 +1,150 @@
+[
+  {
+    "id": "TC-A-1_regression",
+    "label_column": "price",
+    "task_type": "regression",
+    "top_n": 1,
+    "train_data_file_key": "functional-test/tabular/regression/housing_pricing.csv",
+    "tags": ["tabular", "regression", "smoke"],
+    "inference_sample": [
+      {
+        "area":             [7420],
+        "bedrooms":         [4],
+        "bathrooms":        [2],
+        "stories":          [3],
+        "mainroad":         ["yes"],
+        "guestroom":        ["no"],
+        "basement":         ["no"],
+        "hotwaterheating":  ["no"],
+        "airconditioning":  ["yes"],
+        "parking":          [2],
+        "prefarea":         ["yes"],
+        "furnishingstatus": ["furnished"]
+      }
+    ]
+  },
+  {
+    "id": "TC-A-2_binary_classification",
+    "label_column": "Survived",
+    "task_type": "binary",
+    "top_n": 3,
+    "train_data_file_key": "functional-test/tabular/classification_binary/titanic.csv",
+    "tags": ["tabular", "classification", "binary", "smoke"],
+    "inference_sample": [
+      {
+        "PassengerId": [1],
+        "Pclass":      [3],
+        "Name":        ["Braund, Mr. Owen Harris"],
+        "Sex":         ["male"],
+        "Age":         [22.0],
+        "SibSp":       [1],
+        "Parch":       [0],
+        "Ticket":      ["A/5 21171"],
+        "Fare":        [7.25],
+        "Cabin":       [null],
+        "Embarked":    ["S"]
+      }
+    ]
+  },
+  {
+    "id": "TC-A-3_multiclass",
+    "label_column": "Action",
+    "task_type": "multiclass",
+    "top_n": 2,
+    "train_data_file_key": "functional-test/tabular/classification_multiclass/car_rental_training_data_light.csv",
+    "tags": ["tabular", "classification", "multiclass"],
+    "inference_sample": [
+      {
+        "ID":               [83],
+        "Gender":           ["Female"],
+        "Status":           ["M"],
+        "Children":         [2],
+        "Age":              [48.85],
+        "Customer_Status":  ["Inactive"],
+        "Car_Owner":        ["Yes"],
+        "Customer_Service": ["The car was unavailable and the representative did not offer alternatives."],
+        "Satisfaction":     [0],
+        "Business_Area":    ["Product: Availability/Variety/Size"]
+      }
+    ]
+  },
+  {
+    "id": "TC-NA-1_invalid_task_type",
+    "label_column": "price",
+    "task_type": "not_a_valid_task",
+    "top_n": 1,
+    "train_data_file_key": "functional-test/tabular/regression/housing_pricing.csv",
+    "tags": ["negative", "validation"],
+    "fault_category": "Invalid task_type",
+    "injected_fault": "task_type='not_a_valid_task' (not in {binary, multiclass, regression})",
+    "expected_failing_stage": "pipeline",
+    "expected_failing_task": ["automl-data-loader", "autogluon-models-training"],
+    "expected_outcome": "Fail fast with clear validation message"
+  },
+  {
+    "id": "TC-NA-2_invalid_top_n_zero",
+    "label_column": "price",
+    "task_type": "regression",
+    "top_n": 0,
+    "train_data_file_key": "functional-test/tabular/regression/housing_pricing.csv",
+    "tags": ["negative", "validation"],
+    "fault_category": "Invalid top_n",
+    "injected_fault": "top_n=0 (must be a positive integer)",
+    "expected_failing_stage": "pipeline",
+    "expected_failing_task": ["autogluon-models-training", "automl-data-loader"],
+    "expected_outcome": "Rejected before usable run or step failure"
+  },
+  {
+    "id": "TC-NA-3_label_column_absent",
+    "label_column": "NonExistentColumn",
+    "task_type": "regression",
+    "top_n": 1,
+    "train_data_file_key": "functional-test/tabular/regression/housing_pricing.csv",
+    "tags": ["negative", "data"],
+    "fault_category": "Label column",
+    "injected_fault": "label_column='NonExistentColumn' absent from uploaded CSV",
+    "expected_failing_stage": "pipeline",
+    "expected_failing_task": ["automl-data-loader"],
+    "expected_outcome": "KeyError / ValueError-style failure"
+  },
+  {
+    "id": "TC-NA-4_missing_s3_object",
+    "label_column": "price",
+    "task_type": "regression",
+    "top_n": 1,
+    "train_data_file_key": "functional-test/neg/tc-na-4/does-not-exist-00000000.csv",
+    "tags": ["negative", "storage"],
+    "fault_category": "Object storage",
+    "injected_fault": "train_data_file_key points to a non-existent S3 object",
+    "expected_failing_stage": "pipeline",
+    "expected_failing_task": ["automl-data-loader"],
+    "expected_outcome": "S3/not-found or access error; no partial train artifacts"
+  },
+  {
+    "id": "TC-NA-5_task_data_mismatch",
+    "label_column": "price",
+    "task_type": "multiclass",
+    "top_n": 1,
+    "train_data_file_key": "functional-test/tabular/regression/housing_pricing.csv",
+    "tags": ["negative", "data"],
+    "fault_category": "Task/data mismatch",
+    "injected_fault": "task_type='multiclass' on a regression dataset (continuous price target)",
+    "expected_failing_stage": "pipeline",
+    "expected_failing_task": ["automl-data-loader"],
+    "expected_outcome": "Stratified split fails: continuous price column has unique values each with 1 member when task_type='multiclass'"
+  },
+  {
+    "id": "TC-NA-6_bad_credentials",
+    "label_column": "price",
+    "task_type": "regression",
+    "top_n": 1,
+    "train_data_file_key": "functional-test/tabular/regression/housing_pricing.csv",
+    "train_data_secret_name_override": "non-existent-s3-secret-xyz",
+    "tags": ["negative", "credentials"],
+    "fault_category": "Credentials",
+    "injected_fault": "train_data_secret_name references a non-existent Kubernetes secret",
+    "expected_failing_stage": "pipeline",
+    "expected_failing_task": ["automl-data-loader"],
+    "expected_outcome": "Auth failure; no silent fallback"
+  }
+]

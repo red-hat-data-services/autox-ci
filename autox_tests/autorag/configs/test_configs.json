@@ -1,0 +1,71 @@
+[
+    {
+        "id": "TC-F-1",
+        "description": "Verify failure on not supported 'vector_io_provider_id'.",
+        "tags": ["negative"],
+        "expected_result": "fail",
+        "vector_io_provider_type": null,
+        "vector_io_provider_id": "not-supported-provider-id",
+        "optimization_metric": "faithfulness",
+        "optimization_max_rag_patterns": 5,
+        "embedding_models": null,
+        "generation_models": null,
+        "input_data_key": "datasets/rag/rh_summit_2026/documents",
+        "test_data_key": "datasets/rag/rh_summit_2026/benchmark_data.json"
+    },
+    {
+        "id": "TC-F-2",
+        "description": "Verify failure on provided incorrect models.",
+        "tags": [],
+        "expected_result": "fail",
+        "vector_io_provider_type": "inline::milvus",
+        "vector_io_provider_id": "milvus-lite",
+        "embedding_models": ["non-existing-embedding-models-for-failure"],
+        "generation_models": ["non-existing-generation-models-for-failure"],
+        "optimization_metric": "answer_correctness",
+        "optimization_max_rag_patterns": 6,
+        "input_data_key": "datasets/rag/rh_summit_2026/documents",
+        "test_data_key": "datasets/rag/rh_summit_2026/benchmark_data.json"
+    },
+    {
+        "id": "TC-F-3",
+        "description": "Verify failure on incorrect input_data_key.",
+        "tags": [],
+        "expected_result": "fail",
+        "vector_io_provider_type": "inline::milvus",
+        "vector_io_provider_id": "milvus-lite",
+        "input_data_key": "non/existing/key",
+        "test_data_key": "datasets/rag/rh_summit_2026/benchmark_data.json",
+        "optimization_metric": "answer_correctness",
+        "optimization_max_rag_patterns": 6,
+        "embedding_models": null,
+        "generation_models": null
+    },
+    {
+        "id": "TC-P-1",
+        "description": "Run simple scenario using inline milvus and 4 patterns.",
+        "tags": ["smoke", "inline::milvus", "answer_correctness", "default_models"],
+        "expected_result": "pass",
+        "vector_io_provider_type": "inline::milvus",
+        "vector_io_provider_id": "milvus-lite",
+        "embedding_models": ["vllm-embedding/bge-m3"],
+        "generation_models": null,
+        "optimization_max_rag_patterns": 4,
+        "optimization_metric": "answer_correctness",
+        "input_data_key": "datasets/rag/rh_summit_2026/documents",
+        "test_data_key": "datasets/rag/rh_summit_2026/benchmark_data.json"
+    },
+    {
+        "id": "TC-P-2",
+        "description": "Run scenario using remote milvus instance, with models defined in .env.",
+        "tags": ["smoke", "remote::milvus", "faithfulness"],
+        "expected_result": "pass",
+        "embedding_models": ["vllm-embedding/bge-m3"],
+        "vector_io_provider_type": "remote::milvus",
+        "optimization_max_rag_patterns": 4,
+        "vector_io_provider_id": "milvus-remote",
+        "optimization_metric": "faithfulness",
+        "input_data_key": "datasets/rag/rh_summit_2026/documents",
+        "test_data_key": "datasets/rag/rh_summit_2026/benchmark_data.json"
+    }
+]

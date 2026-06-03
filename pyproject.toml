@@ -7,14 +7,15 @@ name = "autox-ci"
 version = "0.1.0"
 description = "OpenShift AI / Kubeflow Pipelines end-to-end integration tests"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.14"
 dependencies = [
   "pytest>=7.0",
   "kubernetes>=28.0",
   "boto3>=1.28",
-  "kfp>=2.5.0",
+  "kfp>=2.16.1",
   "python-dotenv>=1.0.0",
   "pyyaml>=6.0",
+  "ipykernel>=7.2.0",
 ]
 
 [project.optional-dependencies]
@@ -31,13 +32,44 @@ benchmarks = [
   "Pillow>=10.0.0",
   "requests>=2.31.0",
 ]
+test_automl = [
+  "papermill",
+  "ipykernel",
+  "autogluon.common==1.5.0+rhaiv.2",
+  "autogluon.core==1.5.0+rhaiv.2",
+  "autogluon.features==1.5.0+rhaiv.2",
+  "autogluon.tabular[lightgbm,xgboost,tabm]==1.5.0+rhaiv.2",
+  "autogluon.timeseries==1.5.0+rhaiv.2",
+]
+test_autorag = [
+  "nbformat",
+  "notebook",
+  "papermill",
+  "pip",
+]
+
+[[tool.uv.index]]
+name = "rhai"
+url = "https://console.redhat.com/api/pypi/public-rhai/rhoai/3.4/cpu-ubi9/simple/"
+explicit = true
+
+[tool.uv.sources]
+"autogluon-common" = { index = "rhai" }
+"autogluon-core" = { index = "rhai" }
+"autogluon-features" = { index = "rhai" }
+"autogluon-tabular" = { index = "rhai" }
+"autogluon-timeseries" = { index = "rhai" }
 
 [tool.setuptools]
-package-dir = { tests = "e2e-tests" }
-packages = ["tests", "tests.lib"]
+package-dir = { autox_tests = "autox_tests" }
+packages = ["autox_tests", "autox_tests.lib"]
 
 [tool.pytest.ini_options]
-testpaths = ["e2e-tests/scenarios"]
+testpaths = [
+  "autox_tests/automl/scenarios",
+  "autox_tests/automl/functional",
+  "autox_tests/autorag",
+]
 markers = [
   "integration: integration tests hitting live cluster/APIs",
   "openshift_ai: OpenShift AI / RHOAI scenarios",
@@ -45,4 +77,6 @@ markers = [
   "tabular: tabular AutoML family",
   "timeseries: time series AutoML family",
   "autorag: AutoRAG pipeline family",
+  "positive: Tests expected to pass covering positive paths",
+  "negative: Tests expected to fail covering negative paths",
 ]
