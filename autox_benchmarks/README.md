@@ -452,6 +452,25 @@ datasets:
 
 ## Development
 
+### Tests (AutoML)
+
+From `autox_benchmarks/`:
+
+```bash
+pip install -e ".[dev]"
+pytest tests/ -v
+```
+
+Dry-run integration tests use `tests/fixtures/automl/` (static pipeline YAML under `pipelines/`, no KFP or Git). They cover CLI flags, dataset filters, manifest `pipeline_arguments`, and package-path resolution.
+
+### Online integration tests (AutoML)
+
+Real KFP + S3 smoke run on **breast-w-smoke** (`top_n: 1`). Only needs `config/credentials.ini` (smoke CSV is auto-uploaded). See [tests/integration/README.md](tests/integration/README.md).
+
+```bash
+pytest tests/integration/ -v -s
+```
+
 ### Project Structure
 
 - `benchmark_common/` - Shared utilities
