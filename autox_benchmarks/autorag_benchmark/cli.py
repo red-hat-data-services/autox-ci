@@ -59,9 +59,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--package-path",
         type=str,
-        default=None,
+        default=os.environ.get("BENCHMARK_PACKAGE_PATH")
+        or os.environ.get("RAG_PACKAGE_PATH")
+        or None,
         metavar="PATH",
-        help="Use this compiled RAG pipeline YAML (skips Git compile)",
+        help=(
+            "Compiled RAG pipeline YAML (skips Git compile). "
+            "Default: $BENCHMARK_PACKAGE_PATH or $RAG_PACKAGE_PATH"
+        ),
     )
     args = parser.parse_args(argv)
 

@@ -7,7 +7,9 @@ Implementation lives in the ``autorag_benchmark`` package; this file is a thin C
 
 Configuration:
   - YAML ($BENCHMARK_CONFIG_PATH / config/benchmark.yaml): ``pipeline.compile`` (default: compile RAG
-    ``pipeline.py`` from Git) or static ``pipeline.package_path``; CLI ``--package-path`` overrides.
+    ``pipeline.py`` from Git) or static ``pipeline.package_path``. Static IR overrides: CLI
+    ``--package-path``, env ``$BENCHMARK_PACKAGE_PATH`` / ``$RAG_PACKAGE_PATH``, ``benchmark.yaml``
+    ``pipeline:``, or ``credentials.ini`` ``[pipeline]``.
     Also: optimization settings (metric, max patterns), run tuning, manifest.
   - credentials.ini (required): kfp host/namespace/token, buckets (input/test), pipeline secrets,
     llama-stack credentials. Use config/credentials.ini, $BENCHMARK_CREDENTIALS_PATH, or ``--credentials PATH``.

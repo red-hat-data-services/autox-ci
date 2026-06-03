@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
 from typing import Any
 
@@ -31,6 +32,14 @@ def _compile_git_ref(c: dict[str, Any]) -> str:
     return str(c.get("git_ref") or DEFAULT_COMPILE_GIT_REF).strip()
 
 
+def _first_env_path(*names: str) -> str | None:
+    for name in names:
+        raw = os.environ.get(name, "").strip()
+        if raw:
+            return raw
+    return None
+
+
 def resolve_automl_pipeline_package_paths(
     cfg: dict[str, Any],
     config_dir: Path,
@@ -50,6 +59,14 @@ def resolve_automl_pipeline_package_paths(
     pl = cfg.setdefault("pipeline", {})
     c = _compile_section(pl)
     cache = compile_cache_root if compile_cache_root is not None else default_compile_cache_root()
+
+    if cli_tabular is None:
+        cli_tabular = _first_env_path("BENCHMARK_TABULAR_PACKAGE_PATH", "TABULAR_PACKAGE_PATH")
+    if cli_timeseries is None:
+        cli_timeseries = _first_env_path(
+            "BENCHMARK_TIMESERIES_PACKAGE_PATH",
+            "TIMESERIES_PACKAGE_PATH",
+        )
 
     def _resolve_slot(
         *,
@@ -121,6 +138,9 @@ def resolve_autorag_pipeline_package_path(
     pl = cfg.setdefault("pipeline", {})
     c = _compile_section(pl)
     cache = compile_cache_root if compile_cache_root is not None else default_compile_cache_root()
+
+    if cli_package is None:
+        cli_package = _first_env_path("BENCHMARK_PACKAGE_PATH", "RAG_PACKAGE_PATH")
 
     if cli_package:
         p = Path(cli_package).expanduser().resolve()
