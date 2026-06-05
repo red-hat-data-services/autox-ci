@@ -30,10 +30,8 @@ def get_automl_functional_config():
     kfp_url = os.environ.get("RHOAI_KFP_URL") or os.environ.get("KFP_HOST")
     token = os.environ.get("RHOAI_TOKEN") or os.environ.get("KFP_TOKEN")
     project = os.environ.get("RHOAI_PROJECT_NAME") or os.environ.get("KFP_NAMESPACE")
-    train_secret = os.environ.get("RHOAI_TEST_S3_SECRET_NAME")
-    train_bucket = os.environ.get("AUTOML_TRAIN_DATA_BUCKET_NAME") or os.environ.get(
-        "RHOAI_TEST_DATA_BUCKET"
-    )
+    train_secret = os.environ.get("RHOAI_TRAIN_S3_SECRET_NAME")
+    train_bucket = os.environ.get("RHOAI_TRAIN_DATA_BUCKET")
 
     if not all([kfp_url, token, train_secret, train_bucket]):
         return None
