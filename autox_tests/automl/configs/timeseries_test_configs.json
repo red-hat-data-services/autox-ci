@@ -30,6 +30,22 @@
       { "Fruit": "strawberry", "Date": "2019-01-08", "Price_min": 4.169491525423729,  "Price_max": 4.864406779661017  },
       { "Fruit": "strawberry", "Date": "2019-01-09", "Price_min": 4.220338983050848,  "Price_max": 4.923728813559322  },
       { "Fruit": "strawberry", "Date": "2019-01-10", "Price_min": 4.271186440677966,  "Price_max": 4.983050847457627  }
+    ],
+    "known_covariates_sample": [
+      { "Fruit": "apple",      "Date": "2019-01-11", "Price_max": 2.132758620689655  },
+      { "Fruit": "apple",      "Date": "2019-01-12", "Price_max": 2.133333333333333  },
+      { "Fruit": "apple",      "Date": "2019-01-13", "Price_max": 2.133908045977011  },
+      { "Fruit": "apple",      "Date": "2019-01-14", "Price_max": 2.134482758620690  },
+      { "Fruit": "apple",      "Date": "2019-01-15", "Price_max": 2.135057471264368  },
+      { "Fruit": "apple",      "Date": "2019-01-16", "Price_max": 2.135632183908046  },
+      { "Fruit": "apple",      "Date": "2019-01-17", "Price_max": 2.136206896551724  },
+      { "Fruit": "strawberry", "Date": "2019-01-11", "Price_max": 5.042372881355932  },
+      { "Fruit": "strawberry", "Date": "2019-01-12", "Price_max": 5.101694915254237  },
+      { "Fruit": "strawberry", "Date": "2019-01-13", "Price_max": 5.161016949152542  },
+      { "Fruit": "strawberry", "Date": "2019-01-14", "Price_max": 5.220338983050847  },
+      { "Fruit": "strawberry", "Date": "2019-01-15", "Price_max": 5.279661016949152  },
+      { "Fruit": "strawberry", "Date": "2019-01-16", "Price_max": 5.338983050847457  },
+      { "Fruit": "strawberry", "Date": "2019-01-17", "Price_max": 5.398305084745762  }
     ]
   },
   {

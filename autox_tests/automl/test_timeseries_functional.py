@@ -211,6 +211,7 @@ class TestAutoMLTimeseriesFunctional:
                     instances=test_config.inference_sample or None,
                     isvc_env_vars=ts_env_vars or None,
                     v2_inputs=v2_inputs,
+                    known_covariates=test_config.known_covariates_sample or None,
                 )
                 logger.info(
                     "[%s] deployment: isvc=%s ready=%s url=%s",

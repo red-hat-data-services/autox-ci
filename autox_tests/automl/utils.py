@@ -897,6 +897,7 @@ def score_inference_service(
     token: str | None,
     max_retries: int = 5,
     retry_interval_seconds: int = 30,
+    known_covariates: list[dict] | None = None,
 ) -> dict:
     """Send a KServe v1 predict request with retry on 5xx transient errors.
 
@@ -904,7 +905,10 @@ def score_inference_service(
     Raises RuntimeError after all retries are exhausted.
     """
     predict_url = f"{isvc_url.rstrip('/')}/v1/models/{model_name}:predict"
-    payload = json.dumps({"instances": instances}).encode()
+    body: dict = {"instances": instances}
+    if known_covariates:
+        body["known_covariates"] = known_covariates
+    payload = json.dumps(body).encode()
     headers = {"Content-Type": "application/json"}
     if token:
         headers["Authorization"] = f"Bearer {token}"
@@ -1126,11 +1130,13 @@ def run_deployment_test(
     instances: list[dict] | None = None,
     isvc_env_vars: dict[str, str] | None = None,
     v2_inputs: list[dict] | None = None,
+    known_covariates: list[dict] | None = None,
 ) -> dict:
     """Deploy the top-1 model via KServe and validate readiness + scoring.
 
     ``instances`` — pre-computed scoring payload; pass None to skip scoring.
     ``isvc_env_vars`` — extra env vars for the predictor container (e.g. timeseries column names).
+    ``known_covariates`` — future covariate rows required by timeseries models trained with known_covariates_names.
     """
     try:
         from kubernetes import client
@@ -1312,7 +1318,8 @@ def run_deployment_test(
         if instances:
             try:
                 response = score_inference_service(
-                    external_url, isvc_name, instances, token
+                    external_url, isvc_name, instances, token,
+                    known_covariates=known_covariates,
                 )
                 result["scored"] = True
                 result["predictions"] = response.get("predictions")
