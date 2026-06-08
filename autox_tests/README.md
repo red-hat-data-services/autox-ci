@@ -73,8 +73,8 @@ cp autox_tests/.env.ml.example autox_tests/.env.ml
 | `RHOAI_KFP_URL` | Data Science Pipelines HTTP API URL |
 | `RHOAI_TOKEN` | Bearer token for KFP and Kubernetes API |
 | `RHOAI_PROJECT_NAME` | OpenShift namespace for pipeline runs |
-| `AUTOML_TRAIN_DATA_BUCKET_NAME` | S3 bucket containing training CSVs |
-| `RHOAI_TEST_S3_SECRET_NAME` | Kubernetes secret with S3 credentials (default: `s3-connection`) |
+| `RHOAI_TRAIN_DATA_BUCKET` | S3 bucket containing training CSVs (passed to the pipeline as `train_data_bucket_name`) |
+| `RHOAI_TRAIN_S3_SECRET_NAME` | Kubernetes secret name with S3 credentials (passed to the pipeline as `train_data_secret_name`; default: `s3-connection`) |
 
 #### S3 artifact validation
 
