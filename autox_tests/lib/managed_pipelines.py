@@ -42,7 +42,9 @@ _TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
 
 def _legacy_pipeline_package_configured() -> bool:
     """Return True when any legacy ``*_PIPELINE_PATH`` env var is set."""
-    return any((os.environ.get(name) or "").strip() for name in _LEGACY_PACKAGE_PATH_ENVS)
+    return any(
+        (os.environ.get(name) or "").strip() for name in _LEGACY_PACKAGE_PATH_ENVS
+    )
 
 
 def use_managed_pipelines_from_env() -> bool:
@@ -68,7 +70,9 @@ def _env_or_default(env_var: str, default: str) -> str:
     return raw or default
 
 
-def get_managed_kfp_pipeline_name(kind: Literal["tabular", "timeseries", "autorag"]) -> str:
+def get_managed_kfp_pipeline_name(
+    kind: Literal["tabular", "timeseries", "autorag"],
+) -> str:
     """Return the KFP display name for a managed pipeline (from env)."""
     env_by_kind = {
         "tabular": KFP_NAME_TABULAR_ENV,
@@ -83,7 +87,9 @@ def get_managed_kfp_pipeline_name(kind: Literal["tabular", "timeseries", "autora
     return _env_or_default(env_by_kind[kind], default_by_kind[kind])
 
 
-def get_pipeline_artifact_prefix(kind: Literal["tabular", "timeseries", "autorag"]) -> str:
+def get_pipeline_artifact_prefix(
+    kind: Literal["tabular", "timeseries", "autorag"],
+) -> str:
     """Return the S3 artifact path prefix segment for a pipeline run."""
     env_by_kind = {
         "tabular": ARTIFACT_PREFIX_TABULAR_ENV,
@@ -125,47 +131,68 @@ def _resolve_latest_pipeline_version_id(client: Any, pipeline_id: str) -> str:
     return ""
 
 
+def _list_pipeline_display_names(client: Any, *, page_size: int = 50) -> list[str]:
+    """Return display names from the first page of ``list_pipelines`` (for timeout hints)."""
+    try:
+        resp = client.list_pipelines(page_size=page_size)
+    except Exception:
+        return []
+    return [
+        (getattr(p, "display_name", None) or "").strip()
+        for p in (getattr(resp, "pipelines", None) or [])
+    ]
+
+
 def _find_pipeline_by_display_name(
     client: Any,
     display_name: str,
-    *,
-    page_size: int = 50,
-) -> tuple[str, str] | None:
-    """Return ``(pipeline_id, pipeline_version_id)`` or ``None``.
+) -> tuple[tuple[str, str] | None, list[str]]:
+    """Return ``(result_or_None, list_of_known_names)``.
 
     Uses :meth:`kfp.Client.get_pipeline_id` (KFP v2 JSON filter), not legacy
     ``display_name="..."`` syntax which the API rejects with HTTP 400.
+
+    Known names come from the same ``list_pipelines`` traversal on the fallback
+    client path, or from a single first-page list when using ``get_pipeline_id``.
     """
-    del page_size  # kept for backward-compatible call signature
     get_pipeline_id = getattr(client, "get_pipeline_id", None)
     if callable(get_pipeline_id):
         try:
             pipeline_id = get_pipeline_id(display_name)
         except ValueError:
             logger.warning("Multiple KFP pipelines named %r", display_name)
-            return None
+            return None, _list_pipeline_display_names(client)
         if not pipeline_id:
-            return None
-        return pipeline_id, _resolve_latest_pipeline_version_id(client, pipeline_id)
+            return None, _list_pipeline_display_names(client)
+        return (
+            pipeline_id,
+            _resolve_latest_pipeline_version_id(client, pipeline_id),
+        ), []
 
     # Fallback for older clients: list and match client-side (no server filter).
+    known_names: list[str] = []
     page_token = ""
     while True:
         resp = client.list_pipelines(page_token=page_token, page_size=50)
         for pipeline in getattr(resp, "pipelines", None) or []:
             name = (getattr(pipeline, "display_name", None) or "").strip()
+            if name:
+                known_names.append(name)
             if name == display_name:
                 pipeline_id = getattr(pipeline, "pipeline_id", None)
                 if not pipeline_id:
                     continue
                 version_id = getattr(pipeline, "default_pipeline_version_id", None)
                 if version_id:
-                    return pipeline_id, version_id
-                return pipeline_id, _resolve_latest_pipeline_version_id(client, pipeline_id)
+                    return (pipeline_id, version_id), known_names
+                return (
+                    pipeline_id,
+                    _resolve_latest_pipeline_version_id(client, pipeline_id),
+                ), known_names
         page_token = getattr(resp, "next_page_token", None) or ""
         if not page_token:
             break
-    return None
+    return None, known_names
 
 
 def wait_for_managed_pipeline(
@@ -179,7 +206,7 @@ def wait_for_managed_pipeline(
     deadline = time.monotonic() + timeout_seconds
     last_names: list[str] = []
     while time.monotonic() < deadline:
-        found = _find_pipeline_by_display_name(client, kfp_pipeline_name)
+        found, last_names = _find_pipeline_by_display_name(client, kfp_pipeline_name)
         if found:
             pipeline_id, version_id = found
             logger.info(
@@ -189,14 +216,6 @@ def wait_for_managed_pipeline(
                 version_id or "(default)",
             )
             return found
-        try:
-            resp = client.list_pipelines(page_size=50)
-            last_names = [
-                (getattr(p, "display_name", None) or "").strip()
-                for p in (getattr(resp, "pipelines", None) or [])
-            ]
-        except Exception:
-            last_names = []
         time.sleep(poll_interval_seconds)
     hint = f" Known pipelines: {last_names!r}" if last_names else ""
     raise TimeoutError(
@@ -217,7 +236,9 @@ def resolve_managed_pipeline_target(
 
     if use_managed_pipelines_from_env():
         kfp_name = get_managed_kfp_pipeline_name(kind)
-        wait_timeout = int(os.environ.get(RHOAI_MANAGED_PIPELINE_WAIT_TIMEOUT_ENV) or "300")
+        wait_timeout = int(
+            os.environ.get(RHOAI_MANAGED_PIPELINE_WAIT_TIMEOUT_ENV) or "300"
+        )
         pipeline_id, version_id = wait_for_managed_pipeline(
             client,
             kfp_name,
@@ -279,7 +300,7 @@ def submit_pipeline_run_and_wait(
             overridden = os.environ.get(_KF_OVERRIDE_EXPERIMENT, exp_name)
             if overridden != exp_name:
                 warnings.warn(
-                    f'Changing experiment name from "{exp_name}" to "{overridden}".'
+                    f'Changing experiment name from "{exp_name or "(default)"}" to "{overridden}".'
                 )
             exp_name = overridden or "Default"
         experiment = client.create_experiment(name=exp_name, namespace=namespace)

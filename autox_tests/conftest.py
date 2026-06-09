@@ -6,7 +6,7 @@ import logging
 import os
 import re
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Generator
 from pathlib import Path
 from typing import Any
 
@@ -17,7 +17,10 @@ from autox_tests.lib.dspa_support import (
     get_dspa_route_kfp_base_url,
     wait_for_dspa_ready,
 )
-from autox_tests.lib.rhoai_support import build_temp_kubeconfig, ensure_rhoai_project_and_s3_secret
+from autox_tests.lib.rhoai_support import (
+    build_temp_kubeconfig,
+    ensure_rhoai_project_and_s3_secret,
+)
 from autox_tests.lib.settings import (
     get_dspa_config_from_env,
     get_rhoai_integration_https_verify,
@@ -68,7 +71,9 @@ def _ensure_datascience_pipelines_application(
     endpoint_for_dspa = (endpoint or "").strip()
 
     if progress:
-        progress(f"Creating DataSciencePipelinesApplication in namespace {namespace!r}...")
+        progress(
+            f"Creating DataSciencePipelinesApplication in namespace {namespace!r}..."
+        )
 
     created, err = create_datascience_pipelines_application(
         namespace,
@@ -119,11 +124,13 @@ def _resolve_kfp_api_host(
     configured_kfp_url: str | None,
 ) -> str:
     """Return KFP API base URL (with trailing slash) from route discovery or env."""
-    dspa_cfg = get_dspa_config_from_env()
     host: str | None = None
 
-    if datascience_pipelines_application is not None and dspa_cfg and dspa_cfg.get("create"):
-        ns = (datascience_pipelines_application.get("metadata") or {}).get("namespace") or namespace
+    if datascience_pipelines_application is not None:
+        dspa_cfg = get_dspa_config_from_env() or {}
+        ns = (datascience_pipelines_application.get("metadata") or {}).get(
+            "namespace"
+        ) or namespace
         host = get_dspa_route_kfp_base_url(
             ns,
             route_name_prefix=str(dspa_cfg.get("route_name_prefix", "ds-pipeline")),
@@ -152,7 +159,9 @@ def rhoai_namespace_setup_config() -> dict[str, Any] | None:
 
 
 @pytest.fixture(scope="session")
-def rhoai_cluster_kubeconfig(rhoai_namespace_setup_config: dict[str, Any] | None) -> str | None:
+def rhoai_cluster_kubeconfig(
+    rhoai_namespace_setup_config: dict[str, Any] | None,
+) -> Generator[str | None, None, None]:
     """Minimal kubeconfig for OpenShift API (namespace, secrets, DSPA, routes)."""
     if rhoai_namespace_setup_config is None:
         return None
@@ -212,23 +221,20 @@ def datascience_pipelines_application(
             "Install with: uv sync --extra test_automl"
         )
 
-    messages: list[str] = []
-
     def _progress(msg: str) -> None:
-        messages.append(msg)
-        logger.info("DSPA setup progress update (details redacted).")
+        safe = _sanitize_progress_message(msg)
+        logger.info(safe)
         try:
             from autox_tests.lib.pytest_terminal import emit_terminal_line
 
-            emit_terminal_line(request.config, "DSPA setup progress update (details redacted).")
+            emit_terminal_line(request.config, safe)
         except Exception:
             pass
 
-    if not messages:
-        _progress(
-            f"Auto-setup: creating DSPA in project {rhoai_project_and_s3_secret!r} "
-            "(set RHOAI_KFP_URL to use an existing pipeline server instead)."
-        )
+    _progress(
+        f"Auto-setup: creating DSPA in project {rhoai_project_and_s3_secret!r} "
+        "(set RHOAI_KFP_URL to use an existing pipeline server instead)."
+    )
 
     return _ensure_datascience_pipelines_application(
         namespace=rhoai_project_and_s3_secret,

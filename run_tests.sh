@@ -202,10 +202,11 @@ fi
 # ── DSPA auto-setup (default when RHOAI_KFP_URL is unset in .env) ───────────
 
 if [[ -z "${RHOAI_KFP_URL:-}" && -z "${KFP_HOST:-}" ]]; then
-    if [[ "${RHOAI_CREATE_DSPA:-}" != "false" && "${RHOAI_CREATE_DSPA:-}" != "0" ]]; then
-        export RHOAI_CREATE_DSPA=true
-        echo "cluster: will create DSPA (RHOAI_KFP_URL unset; set RHOAI_CREATE_DSPA=false to disable)"
-    fi
+    case "${RHOAI_CREATE_DSPA:-}" in
+        false|0|no|off) ;;  # user explicitly disabled
+        *) export RHOAI_CREATE_DSPA=true
+           echo "cluster: will create DSPA (RHOAI_KFP_URL unset; set RHOAI_CREATE_DSPA=false to disable)" ;;
+    esac
 fi
 
 # ── Pipeline source: managed KFP (default) vs legacy YAML paths ───────────────
