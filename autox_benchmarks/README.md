@@ -101,7 +101,7 @@ AWS_SECRET_ACCESS_KEY=YOUR_SECRET
 AWS_DEFAULT_REGION=us-east-1
 ```
 
-`.env` is loaded automatically. Shell/CI variables take precedence. Legacy `config/credentials.ini` still works via `--credentials` (deprecated).
+`.env` is loaded automatically. Shell/CI variables take precedence.
 
 ### 2. Run AutoML Benchmark
 
@@ -151,7 +151,6 @@ Uses `.env` for S3 access (cache: `~/.cache/autox_benchmarks/compare/`). See [do
 | `BENCHMARK_KFP_HOST` | Both | KFP API URL (aliases: `RHOAI_KFP_URL`, `KFP_HOST`) |
 | `BENCHMARK_KFP_NAMESPACE` | Both | DSPA namespace (aliases: `RHOAI_PROJECT_NAME`, `KFP_NAMESPACE`) |
 | `BENCHMARK_KFP_TOKEN` | Both | KFP bearer token (aliases: `RHOAI_TOKEN`, `KFP_API_TOKEN`) |
-| `BENCHMARK_CREDENTIALS_PATH` | Both | **Deprecated** — legacy `credentials.ini` path |
 | `BENCHMARK_TABULAR_PACKAGE_PATH` | AutoML | Pre-compiled tabular pipeline YAML (same as `--tabular-package-path`) |
 | `BENCHMARK_TIMESERIES_PACKAGE_PATH` | AutoML | Pre-compiled time series pipeline YAML |
 | `BENCHMARK_PACKAGE_PATH` / `RAG_PACKAGE_PATH` | AutoRAG | Pre-compiled RAG pipeline YAML (same as `--package-path`) |

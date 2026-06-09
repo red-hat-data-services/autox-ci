@@ -34,13 +34,6 @@ def main(argv: list[str] | None = None) -> int:
         help="Path to .env with cluster/S3 settings (default: .env in project root)",
     )
     parser.add_argument(
-        "--credentials",
-        type=Path,
-        default=None,
-        metavar="PATH",
-        help="Deprecated: credentials.ini path (prefer --env-file / .env)",
-    )
-    parser.add_argument(
         "--output",
         type=Path,
         default=Path("results/benchmark_runs.csv"),
@@ -110,11 +103,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 1
 
-    orch = BenchmarkOrchestrator(
-        cfg_path,
-        credentials_ini_path=args.credentials,
-        env_file=args.env_file,
-    )
+    orch = BenchmarkOrchestrator(cfg_path, env_file=args.env_file)
     return orch.execute(
         output_csv=args.output,
         dry_run=args.dry_run,

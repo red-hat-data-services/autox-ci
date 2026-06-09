@@ -211,7 +211,6 @@ __marimo__/
 .env
 .env.*
 !.env.example
-credentials.ini
 
 # Other
 .DS_Store

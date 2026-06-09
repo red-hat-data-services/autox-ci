@@ -1,4 +1,4 @@
-"""Shared boto3 S3 client construction from credentials.ini [s3] section."""
+"""Shared boto3 S3 client construction from merged config [s3] section."""
 
 from __future__ import annotations
 

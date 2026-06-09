@@ -1,4 +1,4 @@
-"""Load benchmark cluster/storage credentials from .env (preferred) or legacy INI."""
+"""Load benchmark cluster/storage credentials from .env."""
 
 from __future__ import annotations
 
@@ -7,13 +7,11 @@ import os
 from pathlib import Path
 from typing import Any
 
-from benchmark_common.ini_credentials import load_credentials_ini
-
 logger = logging.getLogger(__name__)
 
-_CREDENTIALS_HELP = (
+CREDENTIALS_HELP = (
     "Copy .env.example to .env and set KFP / storage / pipeline / S3 variables, "
-    "or pass --env-file PATH. Legacy INI: --credentials PATH or config/credentials.ini."
+    "or pass --env-file PATH."
 )
 
 
@@ -221,62 +219,16 @@ def _env_has_kfp_storage_pipeline(overlay: dict[str, Any]) -> bool:
     )
 
 
-def resolve_legacy_ini_path(explicit: Path | None) -> Path | None:
-    if explicit is not None:
-        p = explicit.expanduser().resolve()
-        if not p.is_file():
-            raise FileNotFoundError(f"Credentials file not found: {p}")
-        return p
-    env_p = _get_env("BENCHMARK_CREDENTIALS_PATH")
-    if env_p:
-        p = Path(env_p).expanduser().resolve()
-        return p if p.is_file() else None
-    default = (_repo_root() / "config" / "credentials.ini").resolve()
-    return default if default.is_file() else None
+def load_credentials_overlay(*, env_file: Path | None = None) -> tuple[dict[str, Any], str]:
+    """Load credentials overlay for merging into benchmark.yaml."""
+    path = load_benchmark_dotenv(env_file)
+    if env_file is not None and path is None:
+        raise FileNotFoundError(f".env file not found: {env_file.expanduser().resolve()}")
 
-
-def load_credentials_overlay(
-    *,
-    env_file: Path | None = None,
-    credentials_path: Path | None = None,
-) -> tuple[dict[str, Any], str]:
-    """
-    Load credentials overlay for merging into benchmark.yaml.
-
-    Priority:
-    1. Explicit ``credentials_path`` (.ini legacy)
-    2. Explicit ``env_file`` (.env)
-    3. Auto-discovered ``.env`` (project root or cwd)
-    4. Legacy ``config/credentials.ini`` or ``$BENCHMARK_CREDENTIALS_PATH``
-    """
-    if credentials_path is not None:
-        ini_path = credentials_path.expanduser().resolve()
-        if not ini_path.is_file():
-            raise FileNotFoundError(f"Credentials file not found: {ini_path}")
-        if ini_path.suffix.lower() == ".ini" or ini_path.name.startswith("credentials"):
-            logger.warning(
-                "Loading legacy credentials.ini from %s — prefer .env (see .env.example)",
-                ini_path,
-            )
-            return load_credentials_ini(ini_path), str(ini_path)
-        load_benchmark_dotenv(ini_path)
-        overlay = credentials_dict_from_env()
-        if not _env_has_kfp_storage_pipeline(overlay):
-            raise ValueError(f".env at {ini_path} is missing required benchmark variables. {_CREDENTIALS_HELP}")
-        return overlay, str(ini_path)
-
-    load_benchmark_dotenv(env_file)
     overlay = credentials_dict_from_env()
-    if _env_has_kfp_storage_pipeline(overlay):
-        source = str(resolve_env_file_path(env_file) or ".env (environment)")
-        return overlay, source
+    if not _env_has_kfp_storage_pipeline(overlay):
+        hint = str(path) if path else ".env"
+        raise FileNotFoundError(f"Missing or incomplete credentials in {hint}. {CREDENTIALS_HELP}")
 
-    ini_path = resolve_legacy_ini_path(None)
-    if ini_path is not None:
-        logger.warning(
-            "Using legacy credentials.ini at %s — copy .env.example to .env and migrate",
-            ini_path,
-        )
-        return load_credentials_ini(ini_path), str(ini_path)
-
-    raise FileNotFoundError(f"No credentials found. {_CREDENTIALS_HELP}")
+    source = str(path or "environment")
+    return overlay, source

@@ -216,15 +216,15 @@ class TestLoadConfig:
         assert config_dir == automl_orchestrator.config_path.parent
         assert len(datasets) == 4
 
-    def test_missing_credentials_ini_fails(self, automl_benchmark_yaml: Path, tmp_path: Path) -> None:
-        orch = BenchmarkOrchestrator(automl_benchmark_yaml, credentials_ini_path=tmp_path / "missing.ini")
+    def test_missing_env_file_fails(self, automl_benchmark_yaml: Path, tmp_path: Path) -> None:
+        orch = BenchmarkOrchestrator(automl_benchmark_yaml, env_file=tmp_path / "missing.env")
         with pytest.raises(FileNotFoundError):
             orch.load_config_and_datasets()
 
     def test_missing_pipeline_file_returns_one(
         self,
         automl_benchmark_yaml: Path,
-        automl_credentials_ini: Path,
+        automl_env_file: Path,
         tmp_path: Path,
     ) -> None:
         bad_yaml = tmp_path / "bad_benchmark.yaml"
@@ -235,6 +235,6 @@ class TestLoadConfig:
             encoding="utf-8",
         )
         manifest = automl_benchmark_yaml.parent / "dataset_manifest.yaml"
-        orch = BenchmarkOrchestrator(bad_yaml, credentials_ini_path=automl_credentials_ini)
+        orch = BenchmarkOrchestrator(bad_yaml, env_file=automl_env_file)
         out = tmp_path / "fail.csv"
         assert orch.execute(output_csv=out, dry_run=True) == 1

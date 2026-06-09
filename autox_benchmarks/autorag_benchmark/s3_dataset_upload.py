@@ -28,40 +28,17 @@ def _s3_section_to_boto_config(s3_section: dict[str, Any]) -> dict[str, Any] | N
     return config
 
 
-def get_s3_boto_config(credentials_path: Path | None = None) -> dict[str, Any] | None:
-    """Read S3 configuration from .env (preferred) or legacy credentials file.
-
-    Args:
-        credentials_path: Optional path to ``.env`` or legacy ``credentials.ini``.
-
-    Returns:
-        boto3.client('s3', **config) compatible dict or None if credentials missing.
-    """
+def get_s3_boto_config(env_file: Path | None = None) -> dict[str, Any] | None:
+    """Read S3 configuration from .env (or shell environment)."""
     try:
-        if credentials_path is not None:
-            path = credentials_path.expanduser().resolve()
-            if path.suffix.lower() == ".ini":
-                overlay, _ = load_credentials_overlay(credentials_path=path)
-            else:
-                overlay, _ = load_credentials_overlay(env_file=path)
-        else:
-            overlay, _ = load_credentials_overlay()
+        overlay, _ = load_credentials_overlay(env_file=env_file)
         return _s3_section_to_boto_config(overlay.get("s3") or {})
     except (FileNotFoundError, ValueError):
         return get_s3_boto_config_from_env()
 
 
 def get_s3_boto_config_from_env() -> dict[str, Any] | None:
-    """Read S3 configuration from environment variables.
-
-    Returns boto3.client('s3', **config) compatible dict or None if credentials missing.
-
-    Environment variables:
-        AWS_S3_ENDPOINT: S3 endpoint URL (optional, defaults to AWS)
-        AWS_ACCESS_KEY_ID: Access key (required)
-        AWS_SECRET_ACCESS_KEY: Secret key (required)
-        AWS_DEFAULT_REGION: Region (optional, defaults to us-east-1)
-    """
+    """Read S3 configuration from environment variables."""
     access_key = os.getenv("AWS_ACCESS_KEY_ID")
     secret_key = os.getenv("AWS_SECRET_ACCESS_KEY")
 
@@ -92,21 +69,9 @@ def upload_dataset_to_s3(
     bucket: str,
     prefix: str,
 ) -> tuple[str, str]:
-    """Upload knowledge base directory and benchmark JSON to S3.
-
-    Args:
-        s3_client: Boto3 S3 client
-        local_kb_dir: Path to local knowledge_base directory
-        local_bench_path: Path to local benchmark_data.json file
-        bucket: S3 bucket name
-        prefix: S3 key prefix (e.g., "datasets/beir_scifact_50")
-
-    Returns:
-        (input_data_key, test_data_key) for dataset_manifest.yaml
-    """
+    """Upload knowledge base directory and benchmark JSON to S3."""
     prefix = prefix.strip("/")
 
-    # Upload knowledge base directory
     kb_prefix = f"{prefix}/knowledge_base" if prefix else "knowledge_base"
     print(f"Uploading knowledge base to s3://{bucket}/{kb_prefix}...")
     upload_tree_to_s3_prefix(
@@ -116,7 +81,6 @@ def upload_dataset_to_s3(
         local_root=local_kb_dir,
     )
 
-    # Upload benchmark JSON
     bench_key = f"{prefix}/benchmark_data.json" if prefix else "benchmark_data.json"
     print(f"Uploading benchmark data to s3://{bucket}/{bench_key}...")
     upload_file_to_s3(
@@ -126,7 +90,7 @@ def upload_dataset_to_s3(
         local_path=local_bench_path,
     )
 
-    print(f"\nUpload complete!")
+    print("\nUpload complete!")
     print(f"  Knowledge base: s3://{bucket}/{kb_prefix}")
     print(f"  Benchmark data: s3://{bucket}/{bench_key}")
 

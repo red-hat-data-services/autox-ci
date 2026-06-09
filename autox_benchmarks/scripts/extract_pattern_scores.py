@@ -22,9 +22,10 @@ def main():
         help="Path to benchmark config YAML",
     )
     parser.add_argument(
-        "--credentials",
-        default="config/credentials.ini",
-        help="Path to credentials INI file",
+        "--env-file",
+        type=Path,
+        default=None,
+        help="Path to .env file (default: project .env)",
     )
     parser.add_argument(
         "--output-json",
@@ -40,7 +41,7 @@ def main():
     # Load config
     cfg, _ = load_merged_benchmark_config(
         Path(args.config).resolve(),
-        Path(args.credentials).resolve() if args.credentials else None,
+        args.env_file.resolve() if args.env_file else None,
     )
 
     print(f"Extracting pattern scores for run: {args.run_id}")

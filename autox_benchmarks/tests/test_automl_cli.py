@@ -25,12 +25,12 @@ class TestMainArgumentForwarding:
     """Ensure every CLI flag reaches BenchmarkOrchestrator.execute with expected values."""
 
     @pytest.fixture
-    def base_argv(self, automl_benchmark_yaml: Path, automl_credentials_ini: Path, tmp_path: Path) -> list[str]:
+    def base_argv(self, automl_benchmark_yaml: Path, automl_env_file: Path, tmp_path: Path) -> list[str]:
         return [
             "--config",
             str(automl_benchmark_yaml),
-            "--credentials",
-            str(automl_credentials_ini),
+            "--env-file",
+            str(automl_env_file),
             "--output",
             str(tmp_path / "out.csv"),
             "--dry-run",
@@ -107,16 +107,16 @@ class TestMainArgumentForwarding:
         assert mock_execute.call_args.kwargs["tabular_package_path_cli"] == str(tabular_pipeline_path)
 
     @patch("automl_benchmark.cli.BenchmarkOrchestrator.execute", return_value=0)
-    def test_env_config_and_credentials(
+    def test_env_config_and_env_file(
         self,
         mock_execute,
         automl_benchmark_yaml: Path,
-        automl_credentials_ini: Path,
+        automl_env_file: Path,
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         monkeypatch.setenv("BENCHMARK_CONFIG_PATH", str(automl_benchmark_yaml))
-        monkeypatch.setenv("BENCHMARK_CREDENTIALS_PATH", str(automl_credentials_ini))
+        monkeypatch.setenv("BENCHMARK_ENV_FILE", str(automl_env_file))
         argv = ["--dry-run", "--output", str(tmp_path / "env_out.csv")]
         assert main(argv) == 0
         mock_execute.assert_called_once()
@@ -136,13 +136,13 @@ class TestMainErrors:
         self,
         _mock_execute,
         automl_benchmark_yaml: Path,
-        automl_credentials_ini: Path,
+        automl_env_file: Path,
     ) -> None:
         argv = [
             "--config",
             str(automl_benchmark_yaml),
-            "--credentials",
-            str(automl_credentials_ini),
+            "--env-file",
+            str(automl_env_file),
             "--dry-run",
         ]
         assert main(argv) == 1

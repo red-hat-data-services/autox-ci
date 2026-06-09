@@ -10,6 +10,9 @@ from benchmark_common.credentials import credentials_dict_from_env, load_credent
 
 
 def test_credentials_dict_from_env_automl(monkeypatch: pytest.MonkeyPatch) -> None:
+    for key in list(os.environ):
+        if key.startswith(("BENCHMARK_", "RHOAI_", "KFP_", "AWS_", "AUTOML_")):
+            monkeypatch.delenv(key, raising=False)
     monkeypatch.setenv("BENCHMARK_KFP_HOST", "https://kfp.example.com")
     monkeypatch.setenv("RHOAI_PROJECT_NAME", "my-ns")
     monkeypatch.setenv("KFP_API_TOKEN", "tok")
@@ -27,10 +30,10 @@ def test_credentials_dict_from_env_automl(monkeypatch: pytest.MonkeyPatch) -> No
     assert overlay["s3"]["aws_access_key_id"] == "key"
 
 
-def test_load_credentials_overlay_legacy_ini(automl_credentials_ini, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_load_credentials_overlay_from_fixture_env(automl_env_file, monkeypatch: pytest.MonkeyPatch) -> None:
     for key in list(os.environ):
         if key.startswith(("BENCHMARK_", "RHOAI_", "KFP_", "AWS_", "AUTOML_")):
             monkeypatch.delenv(key, raising=False)
-    overlay, source = load_credentials_overlay(credentials_path=automl_credentials_ini)
-    assert str(automl_credentials_ini) in source
+    overlay, source = load_credentials_overlay(env_file=automl_env_file)
+    assert str(automl_env_file) in source
     assert overlay["kfp"]["experiment_name"] == "automl-benchmark-test"

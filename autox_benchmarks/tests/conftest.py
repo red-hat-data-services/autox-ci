@@ -81,8 +81,8 @@ def automl_benchmark_yaml(automl_fixture_dir: Path) -> Path:
 
 
 @pytest.fixture
-def automl_credentials_ini(automl_fixture_dir: Path) -> Path:
-    path = automl_fixture_dir / "credentials.ini"
+def automl_env_file(automl_fixture_dir: Path) -> Path:
+    path = automl_fixture_dir / "benchmark.env"
     assert path.is_file()
     return path
 
@@ -106,18 +106,18 @@ def dry_run_arguments_from_row(row: pd.Series) -> dict:
 
 
 @pytest.fixture
-def automl_orchestrator(automl_benchmark_yaml: Path, automl_credentials_ini: Path):
+def automl_orchestrator(automl_benchmark_yaml: Path, automl_env_file: Path):
     from automl_benchmark.orchestrator import BenchmarkOrchestrator
 
-    return BenchmarkOrchestrator(automl_benchmark_yaml, credentials_ini_path=automl_credentials_ini)
+    return BenchmarkOrchestrator(automl_benchmark_yaml, env_file=automl_env_file)
 
 
 @pytest.fixture
-def isolated_env(automl_benchmark_yaml, automl_credentials_ini, monkeypatch):
+def isolated_env(automl_benchmark_yaml, automl_env_file, monkeypatch):
     """Point default env discovery at test fixtures; clear package-path overrides."""
     monkeypatch.chdir(REPO_ROOT)
     monkeypatch.setenv("BENCHMARK_CONFIG_PATH", str(automl_benchmark_yaml))
-    monkeypatch.setenv("BENCHMARK_CREDENTIALS_PATH", str(automl_credentials_ini))
+    monkeypatch.setenv("BENCHMARK_ENV_FILE", str(automl_env_file))
     for key in (
         "BENCHMARK_TABULAR_PACKAGE_PATH",
         "TABULAR_PACKAGE_PATH",
