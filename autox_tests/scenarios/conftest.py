@@ -14,6 +14,7 @@ from typing import Any, Iterator
 
 import pytest
 
+from autox_tests.conftest import _sanitize_progress_message
 from autox_tests.lib.dspa_support import (
     create_datascience_pipelines_application,
     get_dspa_route_kfp_base_url,
@@ -192,9 +193,9 @@ def datascience_pipelines_application(
     endpoint_for_dspa = (dspa_cfg.get("object_storage_endpoint") or "").strip() or (endpoint or "").strip()
 
     def _dspa_progress(msg: str) -> None:
-        emit_terminal_line(request.config, msg)
+        emit_terminal_line(request.config, _sanitize_progress_message(msg))
 
-    emit_terminal_line(request.config, f"Starting DSPA setup for namespace {project!r}...")
+    _dspa_progress(f"Starting DSPA setup for namespace {project!r}...")
     created, err = create_datascience_pipelines_application(
         project,
         dspa_cfg,

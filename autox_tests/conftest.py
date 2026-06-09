@@ -223,7 +223,7 @@ def datascience_pipelines_application(
 
     def _progress(msg: str) -> None:
         safe = _sanitize_progress_message(msg)
-        logger.info(safe)
+        logger.info("DSPA progress update emitted")
         try:
             from autox_tests.lib.pytest_terminal import emit_terminal_line
 
