@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import os
-import re
 import time
 from collections.abc import Callable, Generator
 from pathlib import Path
@@ -31,20 +30,7 @@ from autox_tests.lib.settings import (
 logger = logging.getLogger(__name__)
 
 
-def _sanitize_progress_message(msg: str) -> str:
-    """Redact likely sensitive values before logging/terminal output."""
-    sanitized = msg
-    sanitized = re.sub(
-        r"(?i)\b(secret|token|password|passwd|api[_-]?key|access[_-]?key)\b\s*[:=]\s*([^\s,;]+)",
-        r"\1=<redacted>",
-        sanitized,
-    )
-    sanitized = re.sub(
-        r"(?i)\b(namespace|project)\s+(['\"])[^'\"]+\2",
-        r"\1 '<redacted>'",
-        sanitized,
-    )
-    return sanitized
+_DSPA_PROGRESS_LINE = "DSPA progress update emitted"
 
 
 def _ensure_datascience_pipelines_application(
@@ -221,13 +207,12 @@ def datascience_pipelines_application(
             "Install with: uv sync --extra test_automl"
         )
 
-    def _progress(msg: str) -> None:
-        safe = _sanitize_progress_message(msg)
-        logger.info("DSPA progress update emitted")
+    def _progress(_msg: str) -> None:
+        logger.info(_DSPA_PROGRESS_LINE)
         try:
             from autox_tests.lib.pytest_terminal import emit_terminal_line
 
-            emit_terminal_line(request.config, safe)
+            emit_terminal_line(request.config, _DSPA_PROGRESS_LINE)
         except Exception:
             pass
 
