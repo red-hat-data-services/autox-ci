@@ -73,7 +73,7 @@
     "label_column": "Heating.Load",
     "task_type": "regression",
     "top_n": 5,
-    "train_data_file_key": "functional-test/tabular/regression/nested/path/energy_efficiency_regression.csv",
+    "train_data_file_key": "functional-test/tabular/regression/energy_efficiency_regression.csv",
     "tags": ["tabular", "regression"],
     "inference_sample": [
       {
@@ -130,7 +130,7 @@
     "label_column": "quality",
     "task_type": "multiclass",
     "top_n": 1,
-    "train_data_file_key": "functional-test/tabular/classification_multiclass/nested/path/wine_quality_multiclass.csv",
+    "train_data_file_key": "functional-test/tabular/classification_multiclass/wine_quality_multiclass_limited_classes.csv",
     "tags": ["tabular", "classification", "multiclass"],
     "inference_sample": [
       {
