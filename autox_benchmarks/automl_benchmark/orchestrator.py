@@ -135,9 +135,15 @@ def _validate_dataset_entry(ds: dict[str, Any], ds_id: str) -> str | None:
 class BenchmarkOrchestrator:
     """High-level benchmark run: one pipeline run per dataset entry, then aggregate CSV."""
 
-    def __init__(self, config_path: Path, credentials_ini_path: Path | None = None) -> None:
+    def __init__(
+        self,
+        config_path: Path,
+        credentials_ini_path: Path | None = None,
+        env_file: Path | None = None,
+    ) -> None:
         self.config_path = config_path.resolve()
         self.credentials_ini_path = credentials_ini_path
+        self.env_file = env_file
 
     def load_config_and_datasets(
         self,
@@ -146,7 +152,11 @@ class BenchmarkOrchestrator:
         tabular_package_path_cli: str | None = None,
         timeseries_package_path_cli: str | None = None,
     ) -> tuple[dict[str, Any], BenchmarkSettings, list[dict[str, Any]], Path]:
-        cfg, config_dir = load_merged_benchmark_config(self.config_path, self.credentials_ini_path)
+        cfg, config_dir = load_merged_benchmark_config(
+            self.config_path,
+            self.credentials_ini_path,
+            self.env_file,
+        )
         datasets = load_dataset_entries(cfg, config_dir)
 
         needs_tabular = False

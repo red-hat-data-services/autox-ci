@@ -24,7 +24,7 @@ autox_benchmarks/
 ├── benchmark_common/          # Shared KFP, S3, pipeline compile, manifest helpers
 ├── config/                    # Your local config (gitignored secrets)
 │   ├── benchmark.yaml         # Run tuning + manifest path (copy from templates/)
-│   ├── credentials.ini        # KFP / S3 / pipeline secrets (required)
+│   ├── .env                     # KFP / S3 / pipeline secrets (copy from .env.example)
 │   └── dataset_manifest.yaml  # Dataset registry for your suite
 ├── pipelines/                 # Optional pre-compiled KFP IR (checked-in examples)
 ├── scripts/                   # CLI entry points (run from this directory)
@@ -33,7 +33,8 @@ autox_benchmarks/
 │   ├── benchmark_compare_app.py        # Streamlit compare UI
 │   ├── generate_rag_datasets.py
 │   └── ...
-├── templates/                 # Example benchmark.yaml, manifests, credentials.ini
+├── templates/                 # Example benchmark.yaml, manifests
+├── .env.example               # Credentials template (copy to .env)
 ├── tests/                     # Unit tests (e.g. compare_logic)
 ├── docs/                      # S3 layout reference
 └── results/                   # Default output CSV location
@@ -51,66 +52,62 @@ pip install -e .
 Optional extras:
 
 ```bash
-pip install -e ".[compare]"   # Streamlit compare UI
-pip install -r requirements.txt   # same runtime + dataset-generation deps (beir, etc.)
+pip install -e ".[compare]"    # Streamlit compare UI
+pip install -e ".[datasets]"   # RAG dataset generation (beir, huggingface-hub, etc.)
+pip install -e ".[all]"        # compare + datasets
+pip install -e ".[dev]"        # pytest
 ```
 
 ## Quick Start
 
 All orchestrator commands below assume your shell **current working directory is `autox_benchmarks/`** (so `config/` and `scripts/` resolve correctly).
 
-### 1. Configure Credentials
+### 1. Configure credentials
 
 ```bash
 cd autox_benchmarks
-cp templates/credentials.example.ini config/credentials.ini
+cp .env.example .env
 cp templates/benchmark.example.yaml config/benchmark.yaml    # AutoML
 # cp templates/benchmark.autorag.example.yaml config/benchmark.yaml   # AutoRAG
 cp templates/dataset_manifest.example.yaml config/dataset_manifest.yaml
 ```
 
-Edit `config/credentials.ini` with your cluster and S3 details:
+Edit `.env` with your cluster and S3 details (same style as `autox_tests/.env.ml`):
 
-```ini
-[kfp]
-host = https://ds-pipeline-dspa-PROJECT.apps.CLUSTER.example.com
-namespace = YOUR_PROJECT
-token = sha256~...  # or use token_file or KFP_API_TOKEN env var
-experiment_name = rag-optimization-benchmark
+```bash
+BENCHMARK_KFP_HOST=https://ds-pipeline-dspa-PROJECT.apps.CLUSTER.example.com
+BENCHMARK_KFP_NAMESPACE=YOUR_PROJECT
+BENCHMARK_KFP_TOKEN=sha256~...   # or set KFP_API_TOKEN in the shell
+BENCHMARK_KFP_EXPERIMENT_NAME=autogluon-benchmark
 
-[storage]
 # AutoML
-train_data_bucket_name = your-bucket
-# AutoRAG
-input_data_bucket_name = your-bucket
-test_data_bucket_name = your-bucket
-# Benchmark result uploads (both AutoML and AutoRAG)
-benchmark_s3_prefix = benchmarks
-upload_benchmark_results = true
+BENCHMARK_TRAIN_DATA_BUCKET_NAME=your-bucket
+BENCHMARK_TRAIN_DATA_SECRET_NAME=automl-s3-credentials
 
-[pipeline]
-# AutoML
-train_data_secret_name = automl-s3-credentials
-# AutoRAG
-input_data_secret_name = rag-input-s3-credentials
-test_data_secret_name = rag-test-s3-credentials
-ogx_secret_name = llama-stack-credentials
-vector_io_provider_id = milvus-lite
-# Legacy parameter names (llama_stack_secret_name, llama_stack_vector_io_provider_id) also supported
+# AutoRAG (when using autorag_benchmark)
+# BENCHMARK_INPUT_DATA_BUCKET_NAME=your-bucket
+# BENCHMARK_TEST_DATA_BUCKET_NAME=your-bucket
+# BENCHMARK_INPUT_DATA_SECRET_NAME=rag-input-s3-credentials
+# BENCHMARK_TEST_DATA_SECRET_NAME=rag-test-s3-credentials
+# BENCHMARK_OGX_SECRET_NAME=llama-stack-credentials
+# BENCHMARK_VECTOR_IO_PROVIDER_ID=milvus-lite
 
-[s3]
-endpoint = https://s3.amazonaws.com
-aws_access_key_id = YOUR_KEY
-aws_secret_access_key = YOUR_SECRET
-aws_default_region = us-east-1
+BENCHMARK_S3_PREFIX=benchmarks
+BENCHMARK_UPLOAD_RESULTS=true
+
+AWS_S3_ENDPOINT=https://s3.amazonaws.com
+AWS_ACCESS_KEY_ID=YOUR_KEY
+AWS_SECRET_ACCESS_KEY=YOUR_SECRET
+AWS_DEFAULT_REGION=us-east-1
 ```
+
+`.env` is loaded automatically. Shell/CI variables take precedence. Legacy `config/credentials.ini` still works via `--credentials` (deprecated).
 
 ### 2. Run AutoML Benchmark
 
 ```bash
 python scripts/benchmark_orchestrator.py \
   --config config/benchmark.yaml \
-  --credentials config/credentials.ini \
   --output results/benchmark_runs.csv \
   --dataset-filter all
 ```
@@ -127,7 +124,6 @@ python scripts/benchmark_orchestrator.py \
 ```bash
 python scripts/autorag_benchmark_orchestrator.py \
   --config config/benchmark.yaml \
-  --credentials config/credentials.ini \
   --output results/rag_benchmark_runs.csv
 ```
 
@@ -144,15 +140,18 @@ pip install -e ".[compare]"
 streamlit run scripts/benchmark_compare_app.py
 ```
 
-Uses `config/credentials.ini` for S3 access (cache: `~/.cache/autox_benchmarks/compare/`). See [docs/s3-storage-schema.md](docs/s3-storage-schema.md).
+Uses `.env` for S3 access (cache: `~/.cache/autox_benchmarks/compare/`). See [docs/s3-storage-schema.md](docs/s3-storage-schema.md).
 
 ## Environment variables
 
 | Variable | Used by | Purpose |
 |----------|---------|---------|
-| `BENCHMARK_CREDENTIALS_PATH` | Both | Path to `credentials.ini` (default: `config/credentials.ini`) |
+| `BENCHMARK_ENV_FILE` | Both | Path to `.env` (default: `autox_benchmarks/.env`) |
 | `BENCHMARK_CONFIG_PATH` | Both | Path to `benchmark.yaml` (default: `config/benchmark.yaml`) |
-| `KFP_API_TOKEN` | Both | KFP bearer token if not set in INI (`token` / `token_file` / `token_env`) |
+| `BENCHMARK_KFP_HOST` | Both | KFP API URL (aliases: `RHOAI_KFP_URL`, `KFP_HOST`) |
+| `BENCHMARK_KFP_NAMESPACE` | Both | DSPA namespace (aliases: `RHOAI_PROJECT_NAME`, `KFP_NAMESPACE`) |
+| `BENCHMARK_KFP_TOKEN` | Both | KFP bearer token (aliases: `RHOAI_TOKEN`, `KFP_API_TOKEN`) |
+| `BENCHMARK_CREDENTIALS_PATH` | Both | **Deprecated** — legacy `credentials.ini` path |
 | `BENCHMARK_TABULAR_PACKAGE_PATH` | AutoML | Pre-compiled tabular pipeline YAML (same as `--tabular-package-path`) |
 | `BENCHMARK_TIMESERIES_PACKAGE_PATH` | AutoML | Pre-compiled time series pipeline YAML |
 | `BENCHMARK_PACKAGE_PATH` / `RAG_PACKAGE_PATH` | AutoRAG | Pre-compiled RAG pipeline YAML (same as `--package-path`) |
@@ -164,7 +163,7 @@ By default the orchestrator clones [pipelines-components](https://github.com/ope
 1. **CLI** — `--tabular-package-path`, `--timeseries-package-path` (AutoML) or `--package-path` (AutoRAG)
 2. **Environment** — table above (`BENCHMARK_TABULAR_PACKAGE_PATH`, etc.)
 3. **`config/benchmark.yaml`** — `pipeline.package_path` / `pipeline.timeseries_package_path` (paths relative to the config file directory)
-4. **`config/credentials.ini`** — `[pipeline]` `package_path` / `timeseries_package_path` (merged over YAML)
+4. **`.env`** — `BENCHMARK_TABULAR_PACKAGE_PATH` / `BENCHMARK_TIMESERIES_PACKAGE_PATH` (merged over YAML)
 
 Example (AutoML, from `autox_benchmarks/`):
 
@@ -202,10 +201,10 @@ Generate benchmark datasets (BEIR, OpenRAGBench) and upload to S3.
 ### Prerequisites
 
 ```bash
-cd autox_benchmarks && pip install -r requirements.txt
+cd autox_benchmarks && pip install -e ".[datasets]"
 ```
 
-> **Note:** Dataset generation requires additional dependencies (`beir`, `requests`) which are included in `requirements.txt`.
+> **Note:** Dataset generation requires the `[datasets]` extra (`beir`, `requests`, `huggingface-hub`, etc.).
 
 ### Generate and Upload
 
@@ -355,11 +354,11 @@ s3://bucket/benchmarks/rag/{batch_id}/
 
 **Batch ID format:** `YYYYMMDDTHHMMSSZ` (e.g., `20260514T143527Z`)
 
-> **Note:** The default structure separates ML and RAG results. You can customize the prefix in `credentials.ini` with `benchmark_s3_prefix`.
+> **Note:** The default structure separates ML and RAG results. You can customize the prefix in `.env` with `BENCHMARK_S3_PREFIX`.
 
 ### Customizing S3 Upload
 
-Set in `config/credentials.ini`:
+Set in `.env`:
 
 ```ini
 [storage]
@@ -465,7 +464,7 @@ Dry-run integration tests use `tests/fixtures/automl/` (static pipeline YAML und
 
 ### Online integration tests (AutoML)
 
-Real KFP + S3 smoke run on **breast-w-smoke** (`top_n: 1`). Only needs `config/credentials.ini` (smoke CSV is auto-uploaded). See [tests/integration/README.md](tests/integration/README.md).
+Real KFP + S3 smoke run on **breast-w-smoke** (`top_n: 1`). Only needs `.env` (smoke CSV is auto-uploaded). See [tests/integration/README.md](tests/integration/README.md).
 
 ```bash
 pytest tests/integration/ -v -s
@@ -567,7 +566,7 @@ python scripts/generate_rag_datasets.py \
 
 **Check:**
 
-1. Credentials are set in `config/credentials.ini`:
+1. Credentials are set in `.env`:
    ```ini
    [s3]
    endpoint = https://s3.amazonaws.com
@@ -593,7 +592,7 @@ python scripts/generate_rag_datasets.py \
 
 **Check:**
 
-1. KFP credentials in `config/credentials.ini`:
+1. KFP credentials in `.env`:
    ```ini
    [kfp]
    host = https://ds-pipeline-dspa-PROJECT.apps.CLUSTER.com
@@ -633,7 +632,7 @@ The dataset providers will automatically use `requests` if available, which hand
 **Fix:** Install all dependencies (includes dataset generation):
 
 ```bash
-cd autox_benchmarks && pip install -r requirements.txt
+cd autox_benchmarks && pip install -e ".[datasets]"
 ```
 
 ### SlideVQA Access Denied

@@ -1,5 +1,5 @@
 # Online integration tests: single smoke dataset, minimal top_n.
-# Requires config/credentials.ini only; see tests/integration/README.md.
+# Requires .env only; see tests/integration/README.md.
 
 pipeline:
   package_path: "../../../pipelines/autogluon-tabular-training-pipeline.yaml"

@@ -20,11 +20,10 @@ DOCS_S3_SCHEMA = "docs/s3-storage-schema.md"
 JOINED_RESULTS_LABEL = "joined_results.csv (rolling)"
 
 
-def _default_credentials_path() -> Path:
-    env = os.environ.get("BENCHMARK_CREDENTIALS_PATH")
-    if env:
-        return Path(env)
-    return _REPO_ROOT / "config" / "credentials.ini"
+def _default_env_path() -> Path:
+    from benchmark_common.credentials import resolve_env_file_path
+
+    return resolve_env_file_path() or (_REPO_ROOT / ".env")
 
 
 def _score_range(z_values: Any) -> tuple[float, float]:
@@ -81,7 +80,7 @@ def _render_score_heatmap(pivot: Any, title: str) -> Any:
 def main() -> None:
     import pandas as pd
     import streamlit as st
-    from benchmark_common.ini_credentials import load_credentials_ini
+    from benchmark_common.credentials import load_benchmark_dotenv, load_credentials_overlay
     from autorag_compare_ui import render_autorag_tabs
 
     st.set_page_config(page_title="Benchmark compare", layout="wide")
@@ -152,14 +151,15 @@ def main() -> None:
         use_s3 = st.radio("Source", ["S3", "Local files"], horizontal=True) == "S3"
         cache_dir = Path(st.text_input("Cache directory", str(DEFAULT_CACHE_DIR)))
         force_refresh = st.checkbox("Force refresh from S3", value=False)
-        cred_path = Path(st.text_input("credentials.ini", str(_default_credentials_path())))
+        env_path = Path(st.text_input(".env file", str(_default_env_path())))
 
         if use_s3:
-            if not cred_path.is_file():
-                st.error(f"Missing credentials: {cred_path}")
+            if not env_path.is_file():
+                st.error(f"Missing .env: {env_path} (copy from .env.example)")
                 st.stop()
             try:
-                ini_cfg = load_credentials_ini(cred_path)
+                load_benchmark_dotenv(env_path)
+                ini_cfg, _source = load_credentials_overlay(env_file=env_path)
                 bucket, bench_prefix, s3_cfg = storage_from_credentials(ini_cfg)
             except (ValueError, FileNotFoundError) as e:
                 st.error(str(e))

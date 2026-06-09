@@ -27,14 +27,18 @@ def main(argv: list[str] | None = None) -> int:
         help="YAML config (default: $BENCHMARK_CONFIG_PATH or config/benchmark.yaml)",
     )
     parser.add_argument(
+        "--env-file",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="Path to .env with cluster/S3 settings (default: .env in project root)",
+    )
+    parser.add_argument(
         "--credentials",
         type=Path,
         default=None,
         metavar="PATH",
-        help=(
-            "Required INI: [kfp]/[storage]/[pipeline]/[s3] — cluster identity (default: "
-            "$BENCHMARK_CREDENTIALS_PATH or config/credentials.ini)"
-        ),
+        help="Deprecated: credentials.ini path (prefer --env-file / .env)",
     )
     parser.add_argument(
         "--output",
@@ -106,7 +110,11 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 1
 
-    orch = BenchmarkOrchestrator(cfg_path, credentials_ini_path=args.credentials)
+    orch = BenchmarkOrchestrator(
+        cfg_path,
+        credentials_ini_path=args.credentials,
+        env_file=args.env_file,
+    )
     return orch.execute(
         output_csv=args.output,
         dry_run=args.dry_run,
