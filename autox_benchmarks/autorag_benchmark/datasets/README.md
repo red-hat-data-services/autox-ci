@@ -65,32 +65,17 @@ s3://ai-eng-cracow/datasets/rag/
 ### Install Dependencies
 
 ```bash
-pip install -r autox_benchmarks/requirements.txt
+cd autox_benchmarks
+pip install -e ".[datasets]"
 ```
 
-Or with optional dependencies:
+### Configure S3 credentials
+
+Copy `.env.example` to `.env` and set AWS keys:
 
 ```bash
-pip install -e ".[dataset-generation]"
-```
-
-### Configure S3 Credentials
-
-Create `config/credentials.ini` with your S3 credentials:
-
-```ini
-[s3]
-endpoint = https://s3.amazonaws.com
-aws_access_key_id = YOUR_ACCESS_KEY_ID
-aws_secret_access_key = YOUR_SECRET_ACCESS_KEY
-aws_default_region = us-east-1
-```
-
-Or copy the example:
-
-```bash
-cp config/credentials.example.dataset-gen.ini config/credentials.ini
-# Edit config/credentials.ini with your credentials
+cp .env.example .env
+# AWS_S3_ENDPOINT, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_DEFAULT_REGION
 ```
 
 ### Generate and Upload Datasets
@@ -230,29 +215,17 @@ SlideVQA is a Visual Question Answering dataset for presentation slides from the
 
 ## Advanced Usage
 
-### Custom Credentials File
+### Custom .env file
 
 ```bash
 python scripts/generate_rag_datasets.py \
   --dataset open_ragbench \
   --num-samples 50 \
   --upload-to-s3 \
-  --credentials /path/to/my/credentials.ini
+  --env-file /path/to/my.env
 ```
 
-### Use Environment Variables (instead of credentials.ini)
-
-```bash
-export AWS_S3_ENDPOINT=https://s3.amazonaws.com
-export AWS_ACCESS_KEY_ID=your_key_id
-export AWS_SECRET_ACCESS_KEY=your_secret_key
-export AWS_DEFAULT_REGION=us-east-1
-
-python scripts/generate_rag_datasets.py \
-  --dataset open_ragbench \
-  --num-samples 50 \
-  --upload-to-s3
-```
+Shell variables override `.env` values when already set.
 
 ### Custom S3 Bucket
 

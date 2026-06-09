@@ -15,8 +15,8 @@ Usage:
   python scripts/generate_rag_datasets.py --dataset beir --beir-dataset scifact \
     --num-samples 50 --output-dir ./generated_datasets/beir_scifact
 
-  # Generate and upload to S3 using credentials.ini (recommended)
-  # First, create config/credentials.ini with [s3] section:
+  # Generate and upload to S3 using .env (recommended)
+  # First, copy .env.example to .env with AWS_* keys:
   #   [s3]
   #   endpoint = https://s3.amazonaws.com
   #   aws_access_key_id = YOUR_KEY
@@ -30,7 +30,7 @@ Usage:
 
   # Use custom credentials file
   python scripts/generate_rag_datasets.py --dataset beir --beir-dataset scifact \
-    --num-samples 100 --upload-to-s3 --credentials /path/to/credentials.ini
+    --num-samples 100 --upload-to-s3 --env-file /path/to/.env
 
   # Or use environment variables (fallback)
   export AWS_ACCESS_KEY_ID=...
@@ -39,7 +39,7 @@ Usage:
     --upload-to-s3
 
 Requirements:
-  pip install -r autox_benchmarks/requirements.txt
+  pip install -e ".[datasets]"
 """
 
 from __future__ import annotations
@@ -154,9 +154,9 @@ def main():
         help="Upload generated dataset to S3 after generation",
     )
     parser.add_argument(
-        "--credentials",
+        "--env-file",
         type=Path,
-        help="Path to credentials.ini file (default: config/credentials.ini)",
+        help="Path to .env file (default: project .env)",
     )
     parser.add_argument(
         "--s3-bucket",
@@ -274,25 +274,10 @@ def main():
             get_s3_boto_config,
         )
 
-        # Get S3 config from credentials.ini or environment
-        s3_config = get_s3_boto_config(args.credentials)
+        s3_config = get_s3_boto_config(args.env_file)
         if not s3_config:
             print("\nError: S3 credentials not found", file=sys.stderr)
-            print("\nOption 1 - Credentials file (recommended):", file=sys.stderr)
-            if args.credentials:
-                print(f"  File not found or missing [s3] section: {args.credentials}", file=sys.stderr)
-            else:
-                print("  Create config/credentials.ini with [s3] section:", file=sys.stderr)
-                print("    endpoint = https://s3.amazonaws.com", file=sys.stderr)
-                print("    aws_access_key_id = YOUR_KEY", file=sys.stderr)
-                print("    aws_secret_access_key = YOUR_SECRET", file=sys.stderr)
-                print("    aws_default_region = us-east-1", file=sys.stderr)
-                print("  Or use --credentials path/to/credentials.ini", file=sys.stderr)
-            print("\nOption 2 - Environment variables:", file=sys.stderr)
-            print("  export AWS_ACCESS_KEY_ID=...", file=sys.stderr)
-            print("  export AWS_SECRET_ACCESS_KEY=...", file=sys.stderr)
-            print("  export AWS_DEFAULT_REGION=us-east-1", file=sys.stderr)
-            print("  export AWS_S3_ENDPOINT=https://s3.amazonaws.com  # optional", file=sys.stderr)
+            print("Copy .env.example to .env and set AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, etc.", file=sys.stderr)
             sys.exit(1)
 
         # Create S3 client

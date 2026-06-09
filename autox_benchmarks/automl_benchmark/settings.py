@@ -53,7 +53,7 @@ def benchmark_settings_from_config(cfg: dict[str, Any], config_dir: Path) -> Ben
     if not secret or not bucket:
         raise ValueError(
             "pipeline.train_data_secret_name and storage.train_data_bucket_name are required "
-            "(set in credentials.ini only, not in benchmark.yaml)"
+            "(set in .env only, not in benchmark.yaml)"
         )
 
     tab_root = _artifact_root_from_storage(

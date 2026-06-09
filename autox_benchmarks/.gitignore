@@ -208,7 +208,9 @@ marimo/_lsp/
 __marimo__/
 
 # Secrets
-credentials.ini
+.env
+.env.*
+!.env.example
 
 # Other
 .DS_Store

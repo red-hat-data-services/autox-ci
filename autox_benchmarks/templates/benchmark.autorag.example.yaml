@@ -1,4 +1,4 @@
-# AutoRAG layout (non-secret). Cluster / buckets / secrets live in credentials.ini.
+# AutoRAG layout (non-secret). Cluster / buckets / secrets live in .env.
 #
 # Run with: python scripts/autorag_benchmark_orchestrator.py --config config/benchmark.yaml
 

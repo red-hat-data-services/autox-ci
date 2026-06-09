@@ -1,6 +1,6 @@
 # S3 storage schema for benchmarks
 
-This document describes how benchmark **inputs**, **KFP pipeline outputs**, and **orchestrator-uploaded results** are organized in object storage. It maps to [`templates/credentials.example.ini`](../templates/credentials.example.ini) sections `[storage]`, `[s3]`, and `[kfp]`.
+This document describes how benchmark **inputs**, **KFP pipeline outputs**, and **orchestrator-uploaded results** are organized in object storage. It maps to [`.env.example`](../.env.example) variables for storage buckets, S3 client credentials, and KFP settings.
 
 ## Credentials (no secrets in metadata)
 

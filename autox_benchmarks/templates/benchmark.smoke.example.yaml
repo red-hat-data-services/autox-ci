@@ -1,4 +1,4 @@
-# Smoke test layout (non-secret). Set kfp / storage / pipeline secret name in credentials.ini only.
+# Smoke test layout (non-secret). Set kfp / storage / pipeline secret name in .env only.
 # Uses checked-in pipeline YAML for fast offline runs (override with compile: {} like benchmark.example.yaml).
 
 pipeline:

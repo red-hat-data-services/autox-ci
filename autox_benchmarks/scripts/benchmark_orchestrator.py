@@ -14,16 +14,16 @@ Configuration:
     manifest. Static IR overrides (first match wins): CLI ``--tabular-package-path`` /
     ``--timeseries-package-path``, env ``$BENCHMARK_TABULAR_PACKAGE_PATH`` /
     ``$BENCHMARK_TIMESERIES_PACKAGE_PATH``, ``benchmark.yaml`` ``pipeline:``, or
-    ``credentials.ini`` ``[pipeline]``.
-  - credentials.ini (required): kfp host/namespace/token, bucket, pipeline secret name, [s3] for
+    ``.env`` ``BENCHMARK_TABULAR_PACKAGE_PATH`` / ``BENCHMARK_TIMESERIES_PACKAGE_PATH``.
+  - .env (required): KFP host/namespace/token, bucket, pipeline secret name, AWS keys for
     leaderboard discovery, uploads, and experiment dedupe (skip identical runs by default;
     use ``--rerun-identical-experiments`` to force new pipelines).
-    Use config/credentials.ini, $BENCHMARK_CREDENTIALS_PATH, or ``--credentials PATH``.
+    Copy ``.env.example`` to ``.env`` (or ``--env-file PATH``).
 
 Usage:
-  pip install -r requirements.txt
+  pip install -e .
+  cp .env.example .env
   cp templates/benchmark.example.yaml config/benchmark.yaml
-  cp templates/credentials.example.ini config/credentials.ini   # all cluster + storage identity here
   python scripts/benchmark_orchestrator.py --output results/benchmark_runs.csv
 """
 

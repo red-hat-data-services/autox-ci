@@ -60,7 +60,7 @@ def benchmark_settings_from_config(cfg: dict[str, Any], config_dir: Path) -> Ben
         ]
     ):
         raise ValueError(
-            "Required configuration missing. Please set in credentials.ini: "
+            "Required configuration missing. Please set in .env: "
             "pipeline.input_data_secret_name, pipeline.test_data_secret_name, "
             "pipeline.ogx_secret_name, pipeline.vector_io_provider_id, "
             "storage.input_data_bucket_name, storage.test_data_bucket_name"

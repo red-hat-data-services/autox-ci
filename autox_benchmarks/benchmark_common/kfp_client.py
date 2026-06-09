@@ -34,7 +34,7 @@ def create_kfp_client(cfg: dict[str, Any]):
     if not token:
         token_env = kfp_cfg.get("token_env", "KFP_API_TOKEN")
         logger.warning(
-            "No KFP token (set [kfp] token / token_file in credentials.ini or %s)",
+            "No KFP token (set BENCHMARK_KFP_TOKEN in .env or %s)",
             token_env,
         )
     kwargs: dict[str, Any] = {"host": host, "namespace": ns}

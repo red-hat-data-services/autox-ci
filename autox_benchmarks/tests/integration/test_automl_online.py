@@ -1,6 +1,6 @@
 """Online integration tests for AutoML benchmark orchestrator (real KFP + S3).
 
-Prerequisite: config/credentials.ini (or BENCHMARK_CREDENTIALS_PATH) with working
+Prerequisite: .env (copy from .env.example) with working
 [kfp], [storage], [s3], and KFP token. Smoke training CSV is uploaded automatically
 from tests/fixtures/automl/integration/breast-w_n200.csv when missing on the bucket.
 
@@ -49,11 +49,8 @@ class TestSmokeBenchmarkRun:
     """End-to-end: one breast-w-smoke tabular run via the orchestrator (top_n=1)."""
 
     @pytest.fixture
-    def orchestrator(self, integration_credentials_path: Path) -> BenchmarkOrchestrator:
-        return BenchmarkOrchestrator(
-            INTEGRATION_BENCHMARK_YAML,
-            credentials_ini_path=integration_credentials_path,
-        )
+    def orchestrator(self) -> BenchmarkOrchestrator:
+        return BenchmarkOrchestrator(INTEGRATION_BENCHMARK_YAML)
 
     def test_orchestrator_smoke_run_succeeds(
         self,
@@ -63,7 +60,7 @@ class TestSmokeBenchmarkRun:
     ) -> None:
         cfg, _ = integration_merged_config
         experiment = str((cfg.get("kfp") or {}).get("experiment_name", ""))
-        assert experiment, "kfp.experiment_name must be set in credentials.ini"
+        assert experiment, "BENCHMARK_KFP_EXPERIMENT_NAME must be set in .env"
 
         code = orchestrator.execute(
             output_csv=integration_output_csv,
@@ -91,7 +88,6 @@ class TestSmokeBenchmarkRun:
 
     def test_cli_smoke_run_subprocess(
         self,
-        integration_credentials_path: Path,
         integration_output_csv: Path,
     ) -> None:
         out = integration_output_csv.parent / "cli_smoke.csv"
@@ -100,8 +96,6 @@ class TestSmokeBenchmarkRun:
             "scripts/benchmark_orchestrator.py",
             "--config",
             str(INTEGRATION_BENCHMARK_YAML),
-            "--credentials",
-            str(integration_credentials_path),
             "--output",
             str(out),
             "--dataset-filter",

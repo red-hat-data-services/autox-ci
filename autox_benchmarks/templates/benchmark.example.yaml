@@ -1,7 +1,7 @@
 # Non-secret benchmark layout only. Cluster / S3 / KFP API identity lives exclusively in
-# config/credentials.ini (required — copy from credentials.example.ini).
+# .env (required — copy from .env.example).
 #
-# Merge order: this file (and optional kubernetes_configmap), then credentials.ini on top.
+# Merge order: this file (and optional kubernetes_configmap), then .env on top.
 # Do not put host, namespace, bucket, or Kubernetes secret names here.
 
 pipeline:
@@ -29,7 +29,7 @@ run:
 dataset_manifest_path: "dataset_manifest.example.yaml"
 
 # Optional: merge non-secret keys from an in-cluster ConfigMap (same schema as this file;
-# do not store credentials in the ConfigMap — use credentials.ini).
+# do not store credentials in the ConfigMap — use .env).
 # kubernetes_configmap:
 #   name: "automl-benchmark-config"
 #   namespace: "your-data-science-project"

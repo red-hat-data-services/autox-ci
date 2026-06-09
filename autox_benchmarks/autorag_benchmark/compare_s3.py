@@ -22,11 +22,11 @@ def storage_from_credentials(ini_cfg: dict[str, Any]) -> tuple[str, str, dict[st
     # AutoRAG uses test_data_bucket_name
     bucket = str(storage.get("test_data_bucket_name") or "").strip()
     if not bucket:
-        raise ValueError("credentials.ini [storage] test_data_bucket_name is required")
+        raise ValueError(".env BENCHMARK_TEST_DATA_BUCKET_NAME is required")
     prefix = str(storage.get("benchmark_s3_prefix") or "benchmarks/rag").strip().strip("/")
     s3_cfg = ini_cfg.get("s3") or {}
     if not s3_cfg_usable(s3_cfg):
-        raise ValueError("credentials.ini [s3] aws_access_key_id and aws_secret_access_key are required")
+        raise ValueError(".env AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY are required")
     return bucket, prefix, s3_cfg
 
 

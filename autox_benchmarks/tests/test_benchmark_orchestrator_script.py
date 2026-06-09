@@ -13,7 +13,7 @@ from tests.conftest import REPO_ROOT, read_results_csv
 
 def test_script_dry_run_subprocess(
     automl_benchmark_yaml: Path,
-    automl_credentials_ini: Path,
+    automl_env_file: Path,
     tmp_path: Path,
 ) -> None:
     out = tmp_path / "script_out.csv"
@@ -22,8 +22,8 @@ def test_script_dry_run_subprocess(
         "scripts/benchmark_orchestrator.py",
         "--config",
         str(automl_benchmark_yaml),
-        "--credentials",
-        str(automl_credentials_ini),
+        "--env-file",
+        str(automl_env_file),
         "--output",
         str(out),
         "--dry-run",
