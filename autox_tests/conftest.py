@@ -216,12 +216,11 @@ def datascience_pipelines_application(
 
     def _progress(msg: str) -> None:
         messages.append(msg)
-        safe_msg = _sanitize_progress_message(msg)
-        logger.info("%s", safe_msg)
+        logger.info("DSPA setup progress update (details redacted).")
         try:
             from autox_tests.lib.pytest_terminal import emit_terminal_line
 
-            emit_terminal_line(request.config, safe_msg)
+            emit_terminal_line(request.config, "DSPA setup progress update (details redacted).")
         except Exception:
             pass
 
