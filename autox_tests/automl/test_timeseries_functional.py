@@ -50,7 +50,6 @@ AUTOML_FUNCTIONAL_CONFIG = get_automl_functional_config()
 TIMESERIES_POSITIVE_CONFIGS = get_timeseries_configs_for_run(pass_type="positive")
 TIMESERIES_NEGATIVE_CONFIGS = get_timeseries_configs_for_run(pass_type="negative")
 
-PIPELINE_DISPLAY_NAME = "autogluon-timeseries-training-pipeline"
 _EXPECTED_FAIL_TIMEOUT_CAP = 600
 
 DEPLOY_AFTER_TRAINING: bool = os.environ.get(
@@ -62,7 +61,7 @@ DEPLOY_AFTER_TRAINING: bool = os.environ.get(
 @pytest.mark.positive
 @pytest.mark.skipif(
     AUTOML_FUNCTIONAL_CONFIG is None,
-    reason="AutoML functional test env not set (set RHOAI_KFP_URL, RHOAI_TOKEN, AUTOML_TRAIN_DATA_*; see .env)",
+    reason="AutoML env incomplete (RHOAI_URL, RHOAI_TOKEN, RHOAI_PROJECT_NAME, S3, RHOAI_TRAIN_DATA_*; see .env.ml.example)",
 )
 class TestAutoMLTimeseriesFunctional:
     """Positive functional tests for AutoGluon timeseries training pipeline."""
@@ -77,7 +76,7 @@ class TestAutoMLTimeseriesFunctional:
         test_config: AutoMLTimeseriesFunctionalConfig,
         automl_functional_config,
         kfp_client_automl_functional,
-        compiled_timeseries_pipeline_path,
+        timeseries_pipeline_run_target,
         pipeline_run_timeout,
         s3_client_automl_functional,
         s3_cleanup_tracker,
@@ -92,7 +91,7 @@ class TestAutoMLTimeseriesFunctional:
         start = time.monotonic()
         run_id, detail = _run_pipeline_and_wait(
             kfp_client_automl_functional,
-            compiled_timeseries_pipeline_path,
+            timeseries_pipeline_run_target,
             arguments,
             pipeline_run_timeout,
         )
@@ -119,7 +118,7 @@ class TestAutoMLTimeseriesFunctional:
         bucket = automl_functional_config.get("s3_bucket_artifacts")
         deployment_result: dict = {}
         if s3_client_automl_functional and bucket:
-            prefix = f"{PIPELINE_DISPLAY_NAME}/{run_id}"
+            prefix = f"{timeseries_pipeline_run_target.artifact_prefix}/{run_id}"
             s3_cleanup_tracker.track_artifact_prefix(bucket, prefix)
 
             model_entries = collect_model_metrics_and_sizes(
@@ -258,7 +257,7 @@ class TestAutoMLTimeseriesFunctional:
 @pytest.mark.negative
 @pytest.mark.skipif(
     AUTOML_FUNCTIONAL_CONFIG is None,
-    reason="AutoML functional test env not set (set RHOAI_KFP_URL, RHOAI_TOKEN, AUTOML_TRAIN_DATA_*; see .env)",
+    reason="AutoML env incomplete (RHOAI_URL, RHOAI_TOKEN, RHOAI_PROJECT_NAME, S3, RHOAI_TRAIN_DATA_*; see .env.ml.example)",
 )
 class TestAutoMLTimeseriesFunctionalNegative:
     """Negative functional tests for AutoGluon timeseries training pipeline."""
@@ -273,7 +272,7 @@ class TestAutoMLTimeseriesFunctionalNegative:
         test_config: AutoMLTimeseriesFunctionalConfig,
         automl_functional_config,
         kfp_client_automl_functional,
-        compiled_timeseries_pipeline_path,
+        timeseries_pipeline_run_target,
         pipeline_run_timeout,
         s3_client_automl_functional,
         s3_cleanup_tracker,
@@ -288,7 +287,7 @@ class TestAutoMLTimeseriesFunctionalNegative:
         start = time.monotonic()
         run_id, detail = _run_pipeline_and_wait(
             kfp_client_automl_functional,
-            compiled_timeseries_pipeline_path,
+            timeseries_pipeline_run_target,
             arguments,
             timeout,
         )

@@ -49,18 +49,18 @@ def _make_run_name(prefix: str) -> str:
     return f"{prefix}-{hex_part}-{time_part}"
 
 
-def _run_pipeline_and_wait(client, compiled_path, arguments, timeout):
+def _run_pipeline_and_wait(client, pipeline_target, arguments, timeout):
     """Submit a pipeline run and block until completion; return ``(run_id, detail)``."""
+    from autox_tests.lib.managed_pipelines import submit_pipeline_run_and_wait
+
     run_name = _make_run_name("automl-func")
-    run = client.create_run_from_pipeline_package(
-        compiled_path,
-        arguments=arguments,
+    return submit_pipeline_run_and_wait(
+        client,
+        pipeline_target,
+        arguments,
         run_name=run_name,
-        enable_caching=False,
+        timeout=timeout,
     )
-    run_id = run.run_id
-    detail = client.wait_for_run_completion(run_id, timeout=timeout)
-    return run_id, detail
 
 
 def _normalize_state(state):

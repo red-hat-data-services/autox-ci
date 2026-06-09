@@ -26,6 +26,11 @@ S3_REGION_ENV = "AWS_DEFAULT_REGION"
 S3_BUCKET_DATA_ENV = "RHOAI_TEST_DATA_BUCKET"
 S3_BUCKET_ARTIFACTS_ENV = "RHOAI_TEST_ARTIFACTS_BUCKET"
 S3_SECRET_NAME_ENV = "RHOAI_TEST_S3_SECRET_NAME"
+# AutoML functional tests (rhoai-3.5-ea.2 naming; preferred over legacy TEST_* names)
+RHOAI_TRAIN_DATA_BUCKET_ENV = "RHOAI_TRAIN_DATA_BUCKET"
+RHOAI_TRAIN_S3_SECRET_NAME_ENV = "RHOAI_TRAIN_S3_SECRET_NAME"
+S3_SKIP_SECRET_SETUP_ENV = "RHOAI_SKIP_S3_SECRET_SETUP"
+S3_SECRET_OVERWRITE_KEYS_ENV = "RHOAI_S3_SECRET_OVERWRITE_KEYS"
 S3_CREATE_BUCKET_IF_MISSING_ENV = "RHOAI_TEST_S3_CREATE_BUCKET_IF_MISSING"
 
 # OpenShift API TLS for the Kubernetes client (``RHOAI_URL`` / kubeconfig)
@@ -45,8 +50,10 @@ RHOAI_DSPA_ROUTE_NAME_PREFIX_ENV = "RHOAI_DSPA_ROUTE_NAME_PREFIX"
 RHOAI_DSPA_ROUTE_WAIT_TIMEOUT_ENV = "RHOAI_DSPA_ROUTE_WAIT_TIMEOUT"
 RHOAI_DSPA_READY_WAIT_TIMEOUT_ENV = "RHOAI_DSPA_READY_WAIT_TIMEOUT"
 RHOAI_DSPA_READY_BUFFER_SECONDS_ENV = "RHOAI_DSPA_READY_BUFFER_SECONDS"
-# Optional: in-cluster S3 API URL for DSPA externalStorage only (e.g. HTTP when the public endpoint uses untrusted TLS).
-INCLUSTER_AWS_S3_ENDPOINT_ENV = "INCLUSTER_AWS_S3_ENDPOINT"
+RHOAI_DSPA_NAME_ENV = "RHOAI_DSPA_NAME"
+RHOAI_DSPA_DSP_VERSION_ENV = "RHOAI_DSPA_DSP_VERSION"
+RHOAI_DSPA_MANAGED_PIPELINES_IMAGE_ENV = "RHOAI_DSPA_MANAGED_PIPELINES_IMAGE"
+RHOAI_DSPA_MANAGED_PIPELINE_NAMES_ENV = "RHOAI_DSPA_MANAGED_PIPELINE_NAMES"
 
 # Optional defaults for ``data_mode=existing_s3`` in JSON (AutoML + AutoRAG)
 TEST_DATA_SOURCE_BUCKET_ENV = "TEST_DATA_SOURCE_BUCKET"
@@ -152,13 +159,53 @@ def _kube_tls_for_namespace_config() -> tuple[bool, str | None]:
     return True, None
 
 
-def get_dspa_config_from_env() -> dict[str, Any] | None:
-    """Return DSPA creation options when ``RHOAI_CREATE_DSPA`` is truthy; else ``None``."""
+_DSPA_CREATE_FALSE = frozenset({"0", "false", "no", "off"})
+_DSPA_CREATE_TRUE = frozenset({"1", "true", "yes", "on"})
+
+
+def should_create_dspa_from_env() -> bool:
+    """Whether the test session should create a DataSciencePipelinesApplication.
+
+    Default: **yes** when ``RHOAI_KFP_URL`` is unset (one-command bootstrap from ``.env``).
+    Set ``RHOAI_CREATE_DSPA=false`` to disable, or set ``RHOAI_KFP_URL`` to use an existing server.
+    """
     load_tests_env()
     raw = (os.environ.get(RHOAI_CREATE_DSPA_ENV) or "").strip().lower().strip("'\"")
-    if raw not in ("1", "true", "yes", "on"):
+    if raw in _DSPA_CREATE_FALSE:
+        return False
+    if raw in _DSPA_CREATE_TRUE:
+        return True
+    kfp_url = (
+        (os.environ.get(RHOAI_KFP_URL_ENV) or "").strip()
+        or (os.environ.get(RHOAI_KFP_URL_ENV_ALT) or "").strip()
+    )
+    return not kfp_url
+
+
+def _build_managed_pipelines_spec_from_env() -> dict[str, Any]:
+    """Build ``spec.apiServer.managedPipelines`` from env (``{}`` = operator default)."""
+    image = (os.environ.get(RHOAI_DSPA_MANAGED_PIPELINES_IMAGE_ENV) or "").strip()
+    names_raw = (os.environ.get(RHOAI_DSPA_MANAGED_PIPELINE_NAMES_ENV) or "").strip()
+    if not image and not names_raw:
+        return {}
+    spec: dict[str, Any] = {}
+    if image:
+        spec["image"] = image
+    if names_raw:
+        spec["pipelines"] = [
+            {"name": n.strip()} for n in names_raw.split(",") if n.strip()
+        ]
+    return spec
+
+
+def get_dspa_config_from_env() -> dict[str, Any] | None:
+    """Return DSPA creation options when auto-setup is enabled; else ``None``."""
+    if not should_create_dspa_from_env():
         return None
-    dspa_s3 = (os.environ.get(INCLUSTER_AWS_S3_ENDPOINT_ENV) or "").strip()
+    load_tests_env()
+
+    dsp_version = (os.environ.get(RHOAI_DSPA_DSP_VERSION_ENV) or "").strip() or "v2"
+    dspa_name = (os.environ.get(RHOAI_DSPA_NAME_ENV) or "dspa").strip()
     return {
         "create": True,
         "api_group": os.environ.get(RHOAI_DSPA_API_GROUP_ENV) or "datasciencepipelinesapplications.opendatahub.io",
@@ -168,7 +215,9 @@ def get_dspa_config_from_env() -> dict[str, Any] | None:
         "route_wait_timeout": int(os.environ.get(RHOAI_DSPA_ROUTE_WAIT_TIMEOUT_ENV) or "300"),
         "ready_wait_timeout": int(os.environ.get(RHOAI_DSPA_READY_WAIT_TIMEOUT_ENV) or "600"),
         "ready_buffer_seconds": int(os.environ.get(RHOAI_DSPA_READY_BUFFER_SECONDS_ENV) or "30"),
-        "object_storage_endpoint": dspa_s3 or None,
+        "dsp_version": dsp_version,
+        "resource_name": dspa_name,
+        "managed_pipelines": _build_managed_pipelines_spec_from_env(),
     }
 
 
@@ -186,7 +235,11 @@ def get_rhoai_namespace_setup_config() -> dict[str, Any] | None:
     access = os.environ.get(S3_ACCESS_KEY_ENV)
     secret = os.environ.get(S3_SECRET_KEY_ENV)
     region = os.environ.get(S3_REGION_ENV, "us-east-1")
-    secret_name = os.environ.get(S3_SECRET_NAME_ENV, "s3-connection")
+    secret_name = (
+        (os.environ.get(RHOAI_TRAIN_S3_SECRET_NAME_ENV) or "").strip()
+        or (os.environ.get(S3_SECRET_NAME_ENV) or "").strip()
+        or "s3-connection"
+    )
 
     if not all([url, token, endpoint, access, secret]):
         return None
@@ -218,10 +271,9 @@ def get_rhoai_automl_config() -> dict[str, Any] | None:
     kfp_url = os.environ.get(RHOAI_KFP_URL_ENV)
     bucket_data = os.environ.get(S3_BUCKET_DATA_ENV)
     bucket_artifacts = os.environ.get(S3_BUCKET_ARTIFACTS_ENV)
-    dspa = get_dspa_config_from_env()
     if not bucket_data:
         return None
-    if not kfp_url and not (dspa and dspa.get("create")):
+    if not kfp_url and not should_create_dspa_from_env():
         return None
     return {
         **base,
@@ -240,6 +292,20 @@ def get_test_data_source_defaults() -> dict[str, str | None]:
         "bucket": b.strip() if b else None,
         "prefix": p.strip().strip("/") if p else None,
     }
+
+
+def should_skip_s3_secret_setup() -> bool:
+    """Return whether pytest must not create or modify the S3 connection secret."""
+    load_tests_env()
+    raw = (os.environ.get(S3_SKIP_SECRET_SETUP_ENV) or "").strip().lower()
+    return raw in ("1", "true", "yes", "on")
+
+
+def should_overwrite_s3_secret_keys() -> bool:
+    """Replace credential keys in an existing secret (default: keep UI/dashboard keys)."""
+    load_tests_env()
+    raw = (os.environ.get(S3_SECRET_OVERWRITE_KEYS_ENV) or "").strip().lower()
+    return raw in ("1", "true", "yes", "on")
 
 
 def get_s3_create_bucket_if_missing() -> bool:

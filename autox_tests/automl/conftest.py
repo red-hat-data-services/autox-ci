@@ -2,16 +2,24 @@
 
 import logging
 import os
-import tempfile
-from pathlib import Path
+from typing import Literal
 
 import pytest
 
+from autox_tests.conftest import make_kfp_client_for_session
 from autox_tests.lib.env import load_tests_env
+from autox_tests.lib.managed_pipelines import (
+    PipelineRunTarget,
+    resolve_managed_pipeline_target,
+    use_managed_pipelines_from_env,
+)
 from autox_tests.lib.pipeline_yaml_sources import (
     PIPELINE_YAML_TABULAR_ENV,
     PIPELINE_YAML_TIMESERIES_ENV,
-    resolve_precompiled_pipeline_yaml,
+)
+from autox_tests.lib.settings import (
+    get_rhoai_namespace_setup_config,
+    should_create_dspa_from_env,
 )
 
 logger = logging.getLogger(__name__)
@@ -25,44 +33,42 @@ def pytest_configure(config: pytest.Config) -> None:
 def get_automl_functional_config():
     """Build AutoML functional test config from environment; None if not configured."""
     load_tests_env("automl")
-
-    rhoai_url = os.environ.get("RHOAI_URL")
-    kfp_url = os.environ.get("RHOAI_KFP_URL") or os.environ.get("KFP_HOST")
-    token = os.environ.get("RHOAI_TOKEN") or os.environ.get("KFP_TOKEN")
-    project = os.environ.get("RHOAI_PROJECT_NAME") or os.environ.get("KFP_NAMESPACE")
-    train_secret = os.environ.get("RHOAI_TRAIN_S3_SECRET_NAME")
-    train_bucket = os.environ.get("RHOAI_TRAIN_DATA_BUCKET")
-
-    if not all([kfp_url, token, train_secret, train_bucket]):
+    base = get_rhoai_namespace_setup_config()
+    if base is None:
         return None
 
-    endpoint = os.environ.get("AWS_S3_ENDPOINT")
-    access = os.environ.get("AWS_ACCESS_KEY_ID")
-    secret = os.environ.get("AWS_SECRET_ACCESS_KEY")
-    region = os.environ.get("AWS_DEFAULT_REGION", "us-east-1")
-    bucket_artifacts = os.environ.get("RHOAI_TEST_ARTIFACTS_BUCKET")
+    kfp_url = (os.environ.get("RHOAI_KFP_URL") or os.environ.get("KFP_HOST") or "").strip()
+    if not kfp_url and not should_create_dspa_from_env():
+        logger.info("Set RHOAI_KFP_URL or enable DSPA auto-setup (default when KFP URL is unset).")
+        return None
 
-    base = {
-        "rhoai_url": rhoai_url.strip().rstrip("/") if rhoai_url else None,
-        "rhoai_kfp_url": kfp_url.strip().rstrip("/"),
-        "rhoai_token": token.strip(),
-        "rhoai_project": (project or "").strip(),
-        "train_data_secret_name": train_secret.strip(),
-        "train_data_bucket_name": train_bucket.strip(),
-        "s3_endpoint": endpoint.strip() if endpoint else None,
-        "s3_access_key": access.strip() if access else None,
-        "s3_secret_key": secret.strip() if secret else None,
-        "s3_region": region.strip(),
-        "s3_bucket_artifacts": bucket_artifacts.strip() if bucket_artifacts else None,
+    train_secret = (
+        (os.environ.get("RHOAI_TRAIN_S3_SECRET_NAME") or "").strip()
+        or (os.environ.get("RHOAI_TEST_S3_SECRET_NAME") or base.get("s3_secret_name") or "").strip()
+    )
+    train_bucket = (
+        (os.environ.get("RHOAI_TRAIN_DATA_BUCKET") or "").strip()
+        or (os.environ.get("RHOAI_TEST_DATA_BUCKET") or "").strip()
+        or (os.environ.get("AUTOML_TRAIN_DATA_BUCKET_NAME") or "").strip()
+    )
+    if not train_secret or not train_bucket:
+        return None
+
+    if not use_managed_pipelines_from_env():
+        if not (os.environ.get(PIPELINE_YAML_TABULAR_ENV) or "").strip():
+            return None
+        if not (os.environ.get(PIPELINE_YAML_TIMESERIES_ENV) or "").strip():
+            return None
+
+    bucket_artifacts = (os.environ.get("RHOAI_TEST_ARTIFACTS_BUCKET") or train_bucket).strip()
+
+    return {
+        **base,
+        "rhoai_kfp_url": kfp_url.rstrip("/") if kfp_url else None,
+        "train_data_secret_name": train_secret,
+        "train_data_bucket_name": train_bucket,
+        "s3_bucket_artifacts": bucket_artifacts,
     }
-
-    if not base["rhoai_project"]:
-        logger.info(
-            "Missing RHOAI_PROJECT_NAME. AutoML functional config cannot be created."
-        )
-        return None
-
-    return base
 
 
 @pytest.fixture(scope="session")
@@ -72,57 +78,82 @@ def automl_functional_config():
 
 
 @pytest.fixture(scope="session")
-def kfp_client_automl_functional(automl_functional_config):
-    """Session-scoped KFP client for AutoML functional tests."""
+def kfp_client_automl_functional(
+    automl_functional_config,
+    datascience_pipelines_application,
+    rhoai_cluster_kubeconfig,
+):
+    """KFP client: ``RHOAI_KFP_URL`` or route from auto-created / existing DSPA."""
     if automl_functional_config is None:
         return None
-    from autox_tests.lib.clients import make_kfp_client
-
-    return make_kfp_client(automl_functional_config)
+    try:
+        return make_kfp_client_for_session(
+            namespace_config=automl_functional_config,
+            configured_kfp_url=automl_functional_config.get("rhoai_kfp_url"),
+            datascience_pipelines_application=datascience_pipelines_application,
+            kubeconfig_path=rhoai_cluster_kubeconfig,
+        )
+    except RuntimeError as e:
+        pytest.fail(str(e))
 
 
 @pytest.fixture(scope="session")
 def s3_client_automl_functional(automl_functional_config):
     """Session-scoped S3 client for AutoML functional tests (None if S3 not configured)."""
-    if automl_functional_config is None or not automl_functional_config.get(
-        "s3_endpoint"
-    ):
+    if automl_functional_config is None or not automl_functional_config.get("s3_endpoint"):
         return None
     from autox_tests.lib.clients import make_s3_client
 
     return make_s3_client(automl_functional_config)
 
 
-@pytest.fixture(scope="session")
-def compiled_tabular_pipeline_path(tmp_path_factory):
-    """Resolve tabular AutoML pipeline YAML: local path, URL, or GitHub default.
-
-    Set ``AUTOML_TABULAR_PIPELINE_PATH`` to a local file or ``https://`` URL.
-    """
+def _resolve_automl_pipeline_target(
+    kfp_client_automl_functional,
+    tmp_path_factory,
+    *,
+    kind: Literal["tabular", "timeseries"],
+    path_env_var: str,
+    cache_subdir: str,
+    cache_file_name: str,
+) -> PipelineRunTarget:
+    if not kfp_client_automl_functional:
+        pytest.fail("KFP client required to resolve pipeline run target")
     try:
-        return resolve_precompiled_pipeline_yaml(
-            path_env_var=PIPELINE_YAML_TABULAR_ENV,
-            cache_dir=tmp_path_factory.mktemp("pipeline-yaml-tabular"),
-            cache_file_name="autogluon-tabular-pipeline.yaml",
+        return resolve_managed_pipeline_target(
+            kfp_client_automl_functional,
+            kind=kind,
+            path_env_var=path_env_var,
+            cache_dir=tmp_path_factory.mktemp(cache_subdir),
+            cache_file_name=cache_file_name,
         )
-    except (FileNotFoundError, OSError, RuntimeError) as e:
+    except (FileNotFoundError, OSError, RuntimeError, TimeoutError, EnvironmentError) as e:
         pytest.fail(str(e))
 
 
 @pytest.fixture(scope="session")
-def compiled_timeseries_pipeline_path(tmp_path_factory):
-    """Resolve timeseries AutoML pipeline YAML: local path, URL, or GitHub default.
+def tabular_pipeline_run_target(kfp_client_automl_functional, tmp_path_factory):
+    """Tabular pipeline: managed KFP registration or local/URL ``pipeline.yaml`` package."""
+    return _resolve_automl_pipeline_target(
+        kfp_client_automl_functional,
+        tmp_path_factory,
+        kind="tabular",
+        path_env_var=PIPELINE_YAML_TABULAR_ENV,
+        cache_subdir="pipeline-yaml-tabular",
+        cache_file_name="autogluon-tabular-pipeline.yaml",
+    )
 
-    Set ``AUTOML_TIMESERIES_PIPELINE_PATH`` to a local file or ``https://`` URL.
-    """
-    try:
-        return resolve_precompiled_pipeline_yaml(
-            path_env_var=PIPELINE_YAML_TIMESERIES_ENV,
-            cache_dir=tmp_path_factory.mktemp("pipeline-yaml-timeseries"),
-            cache_file_name="autogluon-timeseries-pipeline.yaml",
-        )
-    except (FileNotFoundError, OSError, RuntimeError) as e:
-        pytest.fail(str(e))
+
+@pytest.fixture(scope="session")
+def timeseries_pipeline_run_target(kfp_client_automl_functional, tmp_path_factory):
+    """Timeseries pipeline: managed KFP registration or local/URL ``pipeline.yaml`` package."""
+    return _resolve_automl_pipeline_target(
+        kfp_client_automl_functional,
+        tmp_path_factory,
+        kind="timeseries",
+        path_env_var=PIPELINE_YAML_TIMESERIES_ENV,
+        cache_subdir="pipeline-yaml-timeseries",
+        cache_file_name="autogluon-timeseries-pipeline.yaml",
+    )
 
 
 @pytest.fixture(scope="session")
@@ -131,61 +162,13 @@ def pipeline_run_timeout():
     return int(os.environ.get("RHOAI_PIPELINE_RUN_TIMEOUT", "3600"))
 
 
-def _build_temp_kubeconfig(server_url: str, token: str, namespace: str) -> str:
-    """Write a minimal bearer-token kubeconfig to a temp file; return its path."""
-    import yaml
-
-    kubeconfig = {
-        "apiVersion": "v1",
-        "kind": "Config",
-        "clusters": [
-            {
-                "cluster": {"server": server_url, "insecure-skip-tls-verify": True},
-                "name": "cluster",
-            }
-        ],
-        "users": [{"user": {"token": token}, "name": "user"}],
-        "contexts": [
-            {
-                "context": {
-                    "cluster": "cluster",
-                    "user": "user",
-                    "namespace": namespace,
-                },
-                "name": "ctx",
-            }
-        ],
-        "current-context": "ctx",
-    }
-    fd, path = tempfile.mkstemp(suffix=".kubeconfig", prefix="automl-test-")
-    with os.fdopen(fd, "w") as f:
-        yaml.dump(kubeconfig, f)
-    return path
-
-
 @pytest.fixture(scope="session")
-def temp_kubeconfig_path(automl_functional_config):
-    """Session-scoped temp kubeconfig built from RHOAI_URL + RHOAI_TOKEN.
-
-    Yields the path to the temp file, or None when config is not set or RHOAI_URL is missing.
-    """
-    if automl_functional_config is None or not automl_functional_config.get(
-        "rhoai_url"
-    ):
+def temp_kubeconfig_path(automl_functional_config, rhoai_cluster_kubeconfig):
+    """Reuse cluster kubeconfig for KServe deployment tests."""
+    if automl_functional_config is None:
         yield None
         return
-    path = _build_temp_kubeconfig(
-        server_url=automl_functional_config["rhoai_url"],
-        token=automl_functional_config["rhoai_token"],
-        namespace=automl_functional_config["rhoai_project"],
-    )
-    try:
-        yield path
-    finally:
-        try:
-            Path(path).unlink(missing_ok=True)
-        except Exception:
-            pass
+    yield rhoai_cluster_kubeconfig
 
 
 class S3CleanupTracker:
@@ -193,7 +176,7 @@ class S3CleanupTracker:
 
     def __init__(self):
         """Initialize with an empty tracking dict."""
-        self.artifact_prefixes: dict[str, list[str]] = {}  # bucket -> [prefixes]
+        self.artifact_prefixes: dict[str, list[str]] = {}
 
     def track_artifact_prefix(self, bucket: str, prefix: str) -> None:
         """Record a pipeline artifact prefix for teardown cleanup."""

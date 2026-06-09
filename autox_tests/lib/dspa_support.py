@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import time
 from collections.abc import Callable
 from typing import Any
@@ -23,27 +24,31 @@ def _brief_dsp_conditions(conditions: list[Any]) -> str:
     for c in conditions[:8]:
         t = c.get("type") or "?"
         st = c.get("status") or "?"
-        parts.append(f"{t}={st}")
+        extra = ""
+        if t == "ObjectStoreAvailable" and st != "True":
+            msg = (c.get("message") or c.get("reason") or "").strip()
+            if msg:
+                extra = f" ({msg[:120]}{'…' if len(msg) > 120 else ''})"
+        parts.append(f"{t}={st}{extra}")
     return "; ".join(parts)
 
 
 def _parse_object_storage_endpoint(endpoint: str) -> tuple[str, str, str]:
-    """Split an S3 API endpoint into ``(scheme, hostname, port)`` for DSPA ``externalStorage``.
-
-    Accepts a full URL (``http://`` or ``https://``) or a ``host[:port]`` string (treated as HTTPS).
-    """
+    """Split an S3 API endpoint into ``(scheme, hostname, port)`` for DSPA ``externalStorage``."""
     raw = (endpoint or "").strip()
     if not raw:
-        return ("https", "", "")
+        raise ValueError("S3 endpoint is empty")
     if "://" not in raw:
         raw = f"https://{raw}"
-    p = urlparse(raw)
-    scheme = (p.scheme or "https").lower()
+    parsed = urlparse(raw)
+    scheme = (parsed.scheme or "https").lower()
     if scheme not in ("http", "https"):
         scheme = "https"
-    host = p.hostname or ""
-    port = str(p.port) if p.port else ""
-    return (scheme, host, port)
+    host = parsed.hostname or ""
+    if not host:
+        raise ValueError(f"Could not parse host from S3 endpoint {endpoint!r}")
+    port = str(parsed.port) if parsed.port else ""
+    return scheme, host, port
 
 
 def create_datascience_pipelines_application(
@@ -55,7 +60,7 @@ def create_datascience_pipelines_application(
     object_storage_region: str | None = None,
     object_storage_secret_name: str | None = None,
     object_storage_bucket: str | None = None,
-    resource_name: str = "dspa",
+    resource_name: str | None = None,
     progress: Callable[[str], None] | None = None,
 ) -> tuple[dict[str, Any] | None, str | None]:
     """Create a DataSciencePipelinesApplication CR; on 409 return existing CR.
@@ -88,44 +93,92 @@ def create_datascience_pipelines_application(
                 f"Invalid object storage endpoint {object_storage_endpoint!r}: could not determine hostname "
                 "(use a full URL, e.g. http://minio.minio.svc:9000)",
             )
-        object_storage: dict[str, Any] = {
-            "externalStorage": {
-                "basePath": "",
-                "bucket": object_storage_bucket,
-                "host": host,
-                "port": port,
-                "region": object_storage_region or "",
-                "s3CredentialsSecret": {
-                    "accessKey": "AWS_ACCESS_KEY_ID",
-                    "secretKey": "AWS_SECRET_ACCESS_KEY",
-                    "secretName": object_storage_secret_name,
-                },
-                "scheme": scheme,
-            }
+        external_storage: dict[str, Any] = {
+            "basePath": "",
+            "bucket": object_storage_bucket,
+            "host": host,
+            "region": object_storage_region or "",
+            "s3CredentialsSecret": {
+                "accessKey": "AWS_ACCESS_KEY_ID",
+                "secretKey": "AWS_SECRET_ACCESS_KEY",
+                "secretName": object_storage_secret_name,
+            },
+            "scheme": scheme,
         }
+        if port:
+            external_storage["port"] = port
+        disable_hc = (os.environ.get("RHOAI_DSPA_OBJECT_STORAGE_DISABLE_HEALTH_CHECK") or "").strip().lower()
+        if disable_hc in ("1", "true", "yes", "on"):
+            object_storage = {
+                "disableHealthCheck": True,
+                "externalStorage": external_storage,
+            }
+        else:
+            object_storage = {"externalStorage": external_storage}
         if progress:
             port_s = f":{port}" if port else ""
             progress(
-                f"DSPA will use external S3 storage ({scheme}://{host}{port_s}, bucket={object_storage_bucket!r})."
+                f"DSPA will use external S3 storage ({scheme}://{host}{port_s}, bucket={object_storage_bucket!r}, "
+                f"secret={object_storage_secret_name!r})."
             )
     else:
         object_storage = {"internal": {}}
         if progress:
             progress("DSPA will use internal/default object storage (no external S3 block in CR).")
 
+    spec: dict[str, Any] = {
+        "objectStorage": object_storage,
+        "podToPodTLS": False,
+    }
+    dsp_version = (dspa_cfg.get("dsp_version") or "").strip()
+    if dsp_version:
+        spec["dspVersion"] = dsp_version
+
+    dspa_name = (resource_name or dspa_cfg.get("resource_name") or "dspa").strip()
+
+    managed_pipelines = dspa_cfg.get("managed_pipelines")
+    if managed_pipelines is not None:
+        api_server: dict[str, Any] = {
+            "enableSamplePipeline": False,
+            "managedPipelines": managed_pipelines,
+        }
+        if progress:
+            mp_image = managed_pipelines.get("image") if isinstance(managed_pipelines, dict) else None
+            mp_list = (
+                managed_pipelines.get("pipelines")
+                if isinstance(managed_pipelines, dict)
+                else None
+            )
+            if mp_image:
+                progress(f"DSPA managedPipelines image: {mp_image!r}")
+            elif mp_list:
+                names = [p.get("name") for p in mp_list if isinstance(p, dict)]
+                progress(f"DSPA managedPipelines: {names!r}")
+            else:
+                progress("DSPA managedPipelines enabled (operator default pipelines-components image).")
+        spec["apiServer"] = api_server
+    elif progress:
+        progress(
+            "DSPA spec has no apiServer.managedPipelines (managed_pipelines missing in dspa_cfg)."
+        )
+
+    if progress:
+        mp = (spec.get("apiServer") or {}).get("managedPipelines")
+        ost = spec.get("objectStorage") or {}
+        progress(
+            f"DSPA spec summary: dspVersion={spec.get('dspVersion')!r}, "
+            f"managedPipelines={mp!r}, objectStorage keys={list(ost.keys())!r}"
+        )
+
     body = {
         "apiVersion": f"{dspa_cfg['api_group']}/{dspa_cfg['api_version']}",
         "kind": "DataSciencePipelinesApplication",
         "metadata": {
-            "name": resource_name,
+            "name": dspa_name,
             "namespace": namespace,
         },
-        "spec": {
-            "objectStorage": object_storage,
-            "podToPodTLS": False,
-        },
+        "spec": spec,
     }
-    dspa_name = body["metadata"]["name"]
     try:
         if progress:
             progress(

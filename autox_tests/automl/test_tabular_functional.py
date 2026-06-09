@@ -48,7 +48,6 @@ AUTOML_FUNCTIONAL_CONFIG = get_automl_functional_config()
 TABULAR_POSITIVE_CONFIGS = get_tabular_configs_for_run(pass_type="positive")
 TABULAR_NEGATIVE_CONFIGS = get_tabular_configs_for_run(pass_type="negative")
 
-PIPELINE_DISPLAY_NAME = "autogluon-tabular-training-pipeline"
 _EXPECTED_FAIL_TIMEOUT_CAP = 600
 
 DEPLOY_AFTER_TRAINING: bool = os.environ.get(
@@ -60,7 +59,7 @@ DEPLOY_AFTER_TRAINING: bool = os.environ.get(
 @pytest.mark.positive
 @pytest.mark.skipif(
     AUTOML_FUNCTIONAL_CONFIG is None,
-    reason="AutoML functional test env not set (set RHOAI_KFP_URL, RHOAI_TOKEN, AUTOML_TRAIN_DATA_*; see .env)",
+    reason="AutoML env incomplete (RHOAI_URL, RHOAI_TOKEN, RHOAI_PROJECT_NAME, S3, RHOAI_TRAIN_DATA_*; see .env.ml.example)",
 )
 class TestAutoMLTabularFunctional:
     """Positive functional tests for AutoGluon tabular training pipeline."""
@@ -75,7 +74,7 @@ class TestAutoMLTabularFunctional:
         test_config: AutoMLTabularFunctionalConfig,
         automl_functional_config,
         kfp_client_automl_functional,
-        compiled_tabular_pipeline_path,
+        tabular_pipeline_run_target,
         pipeline_run_timeout,
         s3_client_automl_functional,
         s3_cleanup_tracker,
@@ -90,7 +89,7 @@ class TestAutoMLTabularFunctional:
         start = time.monotonic()
         run_id, detail = _run_pipeline_and_wait(
             kfp_client_automl_functional,
-            compiled_tabular_pipeline_path,
+            tabular_pipeline_run_target,
             arguments,
             pipeline_run_timeout,
         )
@@ -117,7 +116,7 @@ class TestAutoMLTabularFunctional:
         bucket = automl_functional_config.get("s3_bucket_artifacts")
         deployment_result: dict = {}
         if s3_client_automl_functional and bucket:
-            prefix = f"{PIPELINE_DISPLAY_NAME}/{run_id}"
+            prefix = f"{tabular_pipeline_run_target.artifact_prefix}/{run_id}"
             s3_cleanup_tracker.track_artifact_prefix(bucket, prefix)
 
             model_entries = collect_model_metrics_and_sizes(
@@ -257,7 +256,7 @@ class TestAutoMLTabularFunctional:
 @pytest.mark.negative
 @pytest.mark.skipif(
     AUTOML_FUNCTIONAL_CONFIG is None,
-    reason="AutoML functional test env not set (set RHOAI_KFP_URL, RHOAI_TOKEN, AUTOML_TRAIN_DATA_*; see .env)",
+    reason="AutoML env incomplete (RHOAI_URL, RHOAI_TOKEN, RHOAI_PROJECT_NAME, S3, RHOAI_TRAIN_DATA_*; see .env.ml.example)",
 )
 class TestAutoMLTabularFunctionalNegative:
     """Negative functional tests for AutoGluon tabular training pipeline."""
@@ -272,7 +271,7 @@ class TestAutoMLTabularFunctionalNegative:
         test_config: AutoMLTabularFunctionalConfig,
         automl_functional_config,
         kfp_client_automl_functional,
-        compiled_tabular_pipeline_path,
+        tabular_pipeline_run_target,
         pipeline_run_timeout,
         s3_client_automl_functional,
         s3_cleanup_tracker,
@@ -287,7 +286,7 @@ class TestAutoMLTabularFunctionalNegative:
         start = time.monotonic()
         run_id, detail = _run_pipeline_and_wait(
             kfp_client_automl_functional,
-            compiled_tabular_pipeline_path,
+            tabular_pipeline_run_target,
             arguments,
             timeout,
         )

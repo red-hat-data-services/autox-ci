@@ -1,0 +1,299 @@
+"""Resolve pipeline run targets: precompiled YAML package or KFP managed pipeline."""
+
+from __future__ import annotations
+
+import logging
+import os
+import time
+import warnings
+from dataclasses import dataclass
+from typing import Any, Literal
+
+from autox_tests.lib.env import load_tests_env
+from autox_tests.lib.pipeline_yaml_sources import (
+    PIPELINE_YAML_AUTORAG_ENV,
+    PIPELINE_YAML_TABULAR_ENV,
+    PIPELINE_YAML_TIMESERIES_ENV,
+    resolve_precompiled_pipeline_yaml,
+)
+
+logger = logging.getLogger(__name__)
+
+RHOAI_USE_MANAGED_PIPELINES_ENV = "RHOAI_USE_MANAGED_PIPELINES"
+RHOAI_MANAGED_PIPELINE_WAIT_TIMEOUT_ENV = "RHOAI_MANAGED_PIPELINE_WAIT_TIMEOUT"
+
+KFP_NAME_TABULAR_ENV = "RHOAI_MANAGED_PIPELINE_TABULAR"
+KFP_NAME_TIMESERIES_ENV = "RHOAI_MANAGED_PIPELINE_TIMESERIES"
+KFP_NAME_AUTORAG_ENV = "RHOAI_MANAGED_PIPELINE_AUTORAG"
+
+ARTIFACT_PREFIX_TABULAR_ENV = "RHOAI_TABULAR_PIPELINE_ARTIFACT_PREFIX"
+ARTIFACT_PREFIX_TIMESERIES_ENV = "RHOAI_TIMESERIES_PIPELINE_ARTIFACT_PREFIX"
+ARTIFACT_PREFIX_AUTORAG_ENV = "RHOAI_AUTORAG_PIPELINE_ARTIFACT_PREFIX"
+
+_LEGACY_PACKAGE_PATH_ENVS = (
+    PIPELINE_YAML_TABULAR_ENV,
+    PIPELINE_YAML_TIMESERIES_ENV,
+    PIPELINE_YAML_AUTORAG_ENV,
+)
+
+_FALSE_VALUES = frozenset({"0", "false", "no", "off"})
+_TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
+
+
+def _legacy_pipeline_package_configured() -> bool:
+    """Return True when any legacy ``*_PIPELINE_PATH`` env var is set."""
+    return any((os.environ.get(name) or "").strip() for name in _LEGACY_PACKAGE_PATH_ENVS)
+
+
+def use_managed_pipelines_from_env() -> bool:
+    """Return whether tests submit runs from KFP-managed pipelines.
+
+    Default is **managed** (no ``pipeline.yaml`` required). Set
+    ``RHOAI_USE_MANAGED_PIPELINES=false`` or provide ``AUTOML_*`` / ``AUTORAG_PIPELINE_PATH``
+    for legacy package upload mode.
+    """
+    load_tests_env()
+    raw = (os.environ.get(RHOAI_USE_MANAGED_PIPELINES_ENV) or "").strip().lower()
+    if raw in _FALSE_VALUES:
+        return False
+    if raw in _TRUE_VALUES:
+        return True
+    if _legacy_pipeline_package_configured():
+        return False
+    return True
+
+
+def _env_or_default(env_var: str, default: str) -> str:
+    raw = (os.environ.get(env_var) or "").strip()
+    return raw or default
+
+
+def get_managed_kfp_pipeline_name(kind: Literal["tabular", "timeseries", "autorag"]) -> str:
+    """Return the KFP display name for a managed pipeline (from env)."""
+    env_by_kind = {
+        "tabular": KFP_NAME_TABULAR_ENV,
+        "timeseries": KFP_NAME_TIMESERIES_ENV,
+        "autorag": KFP_NAME_AUTORAG_ENV,
+    }
+    default_by_kind = {
+        "tabular": "autogluon_tabular_training_pipeline",
+        "timeseries": "autogluon_timeseries_training_pipeline",
+        "autorag": "documents_rag_optimization_pipeline",
+    }
+    return _env_or_default(env_by_kind[kind], default_by_kind[kind])
+
+
+def get_pipeline_artifact_prefix(kind: Literal["tabular", "timeseries", "autorag"]) -> str:
+    """Return the S3 artifact path prefix segment for a pipeline run."""
+    env_by_kind = {
+        "tabular": ARTIFACT_PREFIX_TABULAR_ENV,
+        "timeseries": ARTIFACT_PREFIX_TIMESERIES_ENV,
+        "autorag": ARTIFACT_PREFIX_AUTORAG_ENV,
+    }
+    default_by_kind = {
+        "tabular": "autogluon-tabular-training-pipeline",
+        "timeseries": "autogluon-timeseries-training-pipeline",
+        "autorag": "documents-rag-optimization-pipeline",
+    }
+    return _env_or_default(env_by_kind[kind], default_by_kind[kind])
+
+
+@dataclass(frozen=True)
+class PipelineRunTarget:
+    """How to start a pipeline run and which name to use for artifact paths."""
+
+    mode: Literal["package", "managed"]
+    artifact_prefix: str
+    package_path: str | None = None
+    pipeline_id: str | None = None
+    pipeline_version_id: str | None = None
+    kfp_pipeline_name: str | None = None
+
+
+def _resolve_latest_pipeline_version_id(client: Any, pipeline_id: str) -> str:
+    """Return the newest pipeline version id, or ``""`` if none are listed."""
+    versions = client.list_pipeline_versions(
+        pipeline_id=pipeline_id,
+        page_size=10,
+        sort_by="created_at desc",
+    )
+    version_list = getattr(versions, "pipeline_versions", None) or []
+    if version_list:
+        vid = getattr(version_list[0], "pipeline_version_id", None)
+        if vid:
+            return vid
+    return ""
+
+
+def _find_pipeline_by_display_name(
+    client: Any,
+    display_name: str,
+    *,
+    page_size: int = 50,
+) -> tuple[str, str] | None:
+    """Return ``(pipeline_id, pipeline_version_id)`` or ``None``.
+
+    Uses :meth:`kfp.Client.get_pipeline_id` (KFP v2 JSON filter), not legacy
+    ``display_name="..."`` syntax which the API rejects with HTTP 400.
+    """
+    del page_size  # kept for backward-compatible call signature
+    get_pipeline_id = getattr(client, "get_pipeline_id", None)
+    if callable(get_pipeline_id):
+        try:
+            pipeline_id = get_pipeline_id(display_name)
+        except ValueError:
+            logger.warning("Multiple KFP pipelines named %r", display_name)
+            return None
+        if not pipeline_id:
+            return None
+        return pipeline_id, _resolve_latest_pipeline_version_id(client, pipeline_id)
+
+    # Fallback for older clients: list and match client-side (no server filter).
+    page_token = ""
+    while True:
+        resp = client.list_pipelines(page_token=page_token, page_size=50)
+        for pipeline in getattr(resp, "pipelines", None) or []:
+            name = (getattr(pipeline, "display_name", None) or "").strip()
+            if name == display_name:
+                pipeline_id = getattr(pipeline, "pipeline_id", None)
+                if not pipeline_id:
+                    continue
+                version_id = getattr(pipeline, "default_pipeline_version_id", None)
+                if version_id:
+                    return pipeline_id, version_id
+                return pipeline_id, _resolve_latest_pipeline_version_id(client, pipeline_id)
+        page_token = getattr(resp, "next_page_token", None) or ""
+        if not page_token:
+            break
+    return None
+
+
+def wait_for_managed_pipeline(
+    client: Any,
+    kfp_pipeline_name: str,
+    *,
+    timeout_seconds: int,
+    poll_interval_seconds: float = 10.0,
+) -> tuple[str, str]:
+    """Poll KFP until a managed pipeline is registered."""
+    deadline = time.monotonic() + timeout_seconds
+    last_names: list[str] = []
+    while time.monotonic() < deadline:
+        found = _find_pipeline_by_display_name(client, kfp_pipeline_name)
+        if found:
+            pipeline_id, version_id = found
+            logger.info(
+                "Managed pipeline %r available (pipeline_id=%s, version_id=%s)",
+                kfp_pipeline_name,
+                pipeline_id,
+                version_id or "(default)",
+            )
+            return found
+        try:
+            resp = client.list_pipelines(page_size=50)
+            last_names = [
+                (getattr(p, "display_name", None) or "").strip()
+                for p in (getattr(resp, "pipelines", None) or [])
+            ]
+        except Exception:
+            last_names = []
+        time.sleep(poll_interval_seconds)
+    hint = f" Known pipelines: {last_names!r}" if last_names else ""
+    raise TimeoutError(
+        f"Managed pipeline {kfp_pipeline_name!r} not found in KFP within {timeout_seconds}s.{hint}"
+    )
+
+
+def resolve_managed_pipeline_target(
+    client: Any,
+    *,
+    kind: Literal["tabular", "timeseries", "autorag"],
+    path_env_var: str,
+    cache_dir: Any,
+    cache_file_name: str,
+) -> PipelineRunTarget:
+    """Build a :class:`PipelineRunTarget` for managed KFP or legacy package upload."""
+    artifact_prefix = get_pipeline_artifact_prefix(kind)
+
+    if use_managed_pipelines_from_env():
+        kfp_name = get_managed_kfp_pipeline_name(kind)
+        wait_timeout = int(os.environ.get(RHOAI_MANAGED_PIPELINE_WAIT_TIMEOUT_ENV) or "300")
+        pipeline_id, version_id = wait_for_managed_pipeline(
+            client,
+            kfp_name,
+            timeout_seconds=wait_timeout,
+        )
+        return PipelineRunTarget(
+            mode="managed",
+            artifact_prefix=artifact_prefix,
+            pipeline_id=pipeline_id,
+            pipeline_version_id=version_id or None,
+            kfp_pipeline_name=kfp_name,
+        )
+
+    package_path = resolve_precompiled_pipeline_yaml(
+        path_env_var=path_env_var,
+        cache_dir=cache_dir,
+        cache_file_name=cache_file_name,
+    )
+    return PipelineRunTarget(
+        mode="package",
+        artifact_prefix=artifact_prefix,
+        package_path=package_path,
+    )
+
+
+_KF_DEFAULT_EXPERIMENT = "KF_PIPELINES_DEFAULT_EXPERIMENT_NAME"
+_KF_OVERRIDE_EXPERIMENT = "KF_PIPELINES_OVERRIDE_EXPERIMENT_NAME"
+
+
+def submit_pipeline_run_and_wait(
+    client: Any,
+    target: PipelineRunTarget,
+    arguments: dict[str, Any],
+    *,
+    run_name: str,
+    timeout: int,
+    experiment_name: str | None = None,
+    namespace: str | None = None,
+) -> tuple[str, Any]:
+    """Start a run and block until completion; return ``(run_id, run_detail)``."""
+    if target.mode == "package":
+        if not target.package_path:
+            raise ValueError("package mode requires package_path on PipelineRunTarget")
+        run = client.create_run_from_pipeline_package(
+            target.package_path,
+            arguments=arguments,
+            run_name=run_name,
+            enable_caching=False,
+            experiment_name=experiment_name,
+            namespace=namespace,
+        )
+        run_id = run.run_id
+    elif target.mode == "managed":
+        if not target.pipeline_id:
+            raise ValueError("managed mode requires pipeline_id on PipelineRunTarget")
+        exp_name = experiment_name
+        if exp_name is None:
+            exp_name = os.environ.get(_KF_DEFAULT_EXPERIMENT)
+            overridden = os.environ.get(_KF_OVERRIDE_EXPERIMENT, exp_name)
+            if overridden != exp_name:
+                warnings.warn(
+                    f'Changing experiment name from "{exp_name}" to "{overridden}".'
+                )
+            exp_name = overridden or "Default"
+        experiment = client.create_experiment(name=exp_name, namespace=namespace)
+        run = client.run_pipeline(
+            experiment_id=experiment.experiment_id,
+            job_name=run_name,
+            pipeline_id=target.pipeline_id,
+            version_id=target.pipeline_version_id,
+            params=arguments,
+            enable_caching=False,
+        )
+        run_id = run.run_id
+    else:
+        raise ValueError(f"Unknown pipeline run mode: {target.mode!r}")
+
+    detail = client.wait_for_run_completion(run_id, timeout=timeout)
+    return run_id, detail

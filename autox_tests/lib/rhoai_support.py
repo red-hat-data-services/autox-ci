@@ -9,6 +9,8 @@ import tempfile
 
 import pytest
 
+from autox_tests.lib.settings import should_overwrite_s3_secret_keys, should_skip_s3_secret_setup
+
 
 def build_temp_kubeconfig(
     server_url: str,
@@ -127,6 +129,47 @@ def _ensure_admin_role_for_sa_in_namespace(
             raise
 
 
+def _s3_connection_secret_metadata(secret_name: str, existing: object | None = None):
+    """Metadata so the RHOAI dashboard keeps recognizing an S3 data connection."""
+    from kubernetes import client
+
+    labels = {
+        "opendatahub.io/managed": "true",
+        "opendatahub.io/dashboard": "true",
+    }
+    annotations = {
+        "opendatahub.io/connection-type": "s3",
+        "opendatahub.io/connection-type-protocol": "s3",
+        "opendatahub.io/connection-type-ref": "s3",
+        "openshift.io/display-name": secret_name,
+    }
+    if existing is not None:
+        labels = {**(getattr(existing, "labels", None) or {}), **labels}
+        annotations = {**(getattr(existing, "annotations", None) or {}), **annotations}
+    return client.V1ObjectMeta(
+        name=secret_name,
+        labels=labels,
+        annotations=annotations,
+    )
+
+
+def _ensure_s3_connection_service_account(v1, namespace: str, secret_name: str) -> None:
+    """Create ``{secret_name}-sa`` when missing (expected for dashboard data connections)."""
+    from kubernetes import client
+    from kubernetes.client.rest import ApiException
+
+    sa_name = f"{secret_name}-sa"
+    sa = client.V1ServiceAccount(
+        metadata=client.V1ObjectMeta(name=sa_name, namespace=namespace),
+        secrets=[client.V1ObjectReference(name=secret_name)],
+    )
+    try:
+        v1.create_namespaced_service_account(namespace, sa)
+    except ApiException as e:
+        if e.status != 409:
+            raise
+
+
 def ensure_rhoai_project_and_s3_secret(
     rhoai_namespace_config: dict,
     temp_kubeconfig_path: str | None,
@@ -199,30 +242,52 @@ def ensure_rhoai_project_and_s3_secret(
         else:
             raise
 
+    if should_skip_s3_secret_setup():
+        return project_name
+
+    existing_meta = None
+    try:
+        existing_meta = v1.read_namespaced_secret(secret_name, project_name).metadata
+    except ApiException as e:
+        if e.status != 404:
+            raise
+
+    metadata = _s3_connection_secret_metadata(secret_name, existing_meta)
+    string_data = {
+        "AWS_ACCESS_KEY_ID": rhoai_namespace_config["s3_access_key"],
+        "AWS_SECRET_ACCESS_KEY": rhoai_namespace_config["s3_secret_key"],
+        "AWS_S3_ENDPOINT": rhoai_namespace_config["s3_endpoint"],
+        "AWS_DEFAULT_REGION": rhoai_namespace_config["s3_region"],
+    }
     secret = client.V1Secret(
-        metadata=client.V1ObjectMeta(name=secret_name),
+        metadata=metadata,
         type="Opaque",
-        string_data={
-            "AWS_ACCESS_KEY_ID": rhoai_namespace_config["s3_access_key"],
-            "AWS_SECRET_ACCESS_KEY": rhoai_namespace_config["s3_secret_key"],
-            "AWS_S3_ENDPOINT": rhoai_namespace_config["s3_endpoint"],
-            "AWS_DEFAULT_REGION": rhoai_namespace_config["s3_region"],
-        },
+        string_data=string_data,
     )
 
-    def _create_or_replace_secret() -> None:
+    def _metadata_patch_body() -> dict:
+        return {"metadata": client.ApiClient().sanitize_for_serialization(metadata)}
+
+    def _upsert_s3_secret() -> None:
+        if existing_meta is not None and not should_overwrite_s3_secret_keys():
+            v1.patch_namespaced_secret(secret_name, project_name, _metadata_patch_body())
+            return
         try:
             v1.create_namespaced_secret(project_name, secret)
         except ApiException as e:
             if e.status == 409:
-                v1.replace_namespaced_secret(secret_name, project_name, secret)
+                if should_overwrite_s3_secret_keys():
+                    v1.replace_namespaced_secret(secret_name, project_name, secret)
+                else:
+                    v1.patch_namespaced_secret(secret_name, project_name, _metadata_patch_body())
             elif e.status == 403:
                 raise
             else:
                 raise
 
     try:
-        _create_or_replace_secret()
+        _upsert_s3_secret()
+        _ensure_s3_connection_service_account(v1, project_name, secret_name)
     except ApiException as e:
         if e.status != 403:
             raise
@@ -249,7 +314,8 @@ def ensure_rhoai_project_and_s3_secret(
                 )
             raise
         try:
-            _create_or_replace_secret()
+            _upsert_s3_secret()
+            _ensure_s3_connection_service_account(v1, project_name, secret_name)
         except ApiException as e2:
             if e2.status == 403:
                 pytest.fail(
