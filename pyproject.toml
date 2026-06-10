@@ -21,7 +21,6 @@ dependencies = [
 [project.optional-dependencies]
 # Same runtime stack as `dependencies`; kept so `pip install -e ".[test_rhoai]"` / `test_automl` match docs.
 test_rhoai = []
-test_automl = []
 # AutoML and AutoRAG benchmarking orchestration + dataset generation
 benchmarks = [
   "pandas>=2.0",
