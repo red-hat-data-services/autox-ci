@@ -208,7 +208,6 @@ def wait_for_managed_pipeline(
     *,
     timeout_seconds: int,
     poll_interval_seconds: float = 10.0,
-    early_exit_checks: int = 3,
 ) -> tuple[str, str | None]:
     """Poll KFP until a managed pipeline is registered.
 
@@ -217,15 +216,18 @@ def wait_for_managed_pipeline(
         kfp_pipeline_name: Display name of the pipeline to wait for
         timeout_seconds: Maximum time to wait
         poll_interval_seconds: Seconds between poll attempts
-        early_exit_checks: Number of consecutive empty-list checks before raising EnvironmentError
 
     Raises:
-        EnvironmentError: If pipeline list remains empty after early_exit_checks attempts
+        EnvironmentError: If pipeline list remains empty for >90s (DSPA may be misconfigured)
         TimeoutError: If pipeline not found within timeout_seconds
     """
-    deadline = time.monotonic() + timeout_seconds
+    # Early-exit threshold: wait at least 90s before concluding DSPA is misconfigured
+    # (DSPA can report Ready=True while still registering managed pipelines)
+    _EARLY_EXIT_EMPTY_THRESHOLD_SECONDS = 90
+
+    start = time.monotonic()
+    deadline = start + timeout_seconds
     last_names: list[str] = []
-    checks = 0
     consecutive_empty = 0
 
     while time.monotonic() < deadline:
@@ -240,13 +242,12 @@ def wait_for_managed_pipeline(
             )
             return found
 
-        checks += 1
-
         # Early exit: if pipeline list is consistently empty, DSPA may not be creating pipelines
+        # Use wall-clock time to avoid false positives when API calls are slow
         if not last_names:
             consecutive_empty += 1
-            if consecutive_empty >= early_exit_checks:
-                elapsed = checks * poll_interval_seconds
+            elapsed = time.monotonic() - start
+            if elapsed > _EARLY_EXIT_EMPTY_THRESHOLD_SECONDS:
                 raise EnvironmentError(
                     f"No managed pipelines registered in KFP after {elapsed:.0f}s "
                     f"({consecutive_empty} consecutive empty checks). "

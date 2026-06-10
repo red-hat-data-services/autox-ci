@@ -20,14 +20,25 @@ _ROUTE_PLURAL = "routes"
 
 
 def _brief_dsp_conditions(conditions: list[Any]) -> str:
-    """Format DSPA status conditions for progress (type and status only; no API messages)."""
+    """Format DSPA status conditions for progress.
+
+    Includes error messages for failed conditions (status != "True") to aid debugging
+    without exposing sensitive credential data.
+    """
     if not conditions:
         return "no conditions in status yet"
     parts: list[str] = []
     for c in conditions[:8]:
         t = c.get("type") or "?"
         st = c.get("status") or "?"
-        parts.append(f"{t}={st}")
+        extra = ""
+        # Include failure reason for non-True conditions (e.g., ObjectStoreAvailable=False)
+        if st != "True":
+            msg = (c.get("message") or c.get("reason") or "").strip()
+            if msg:
+                # Truncate long messages but keep actionable S3/endpoint errors visible
+                extra = f" ({msg[:100]}{'…' if len(msg) > 100 else ''})"
+        parts.append(f"{t}={st}{extra}")
     return "; ".join(parts)
 
 
@@ -368,6 +379,12 @@ def verify_kfp_api_health(
 
     endpoint = f"{kfp_url.rstrip('/')}/apis/"
     deadline = time.monotonic() + timeout_seconds
+
+    if not verify_ssl:
+        logger.warning(
+            "KFP health check: TLS verification disabled (verify_ssl=False) for %s",
+            endpoint,
+        )
 
     while time.monotonic() < deadline:
         try:

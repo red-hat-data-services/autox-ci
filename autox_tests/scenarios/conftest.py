@@ -364,12 +364,8 @@ def kfp_client_automl(
     import kfp
 
     host: str | None = None
-    dspa_cfg = get_dspa_config_from_env()
-    if (
-        datascience_pipelines_application is not None
-        and dspa_cfg
-        and dspa_cfg.get("create")
-    ):
+    if datascience_pipelines_application is not None and should_create_dspa_from_env():
+        dspa_cfg = get_dspa_config_from_env() or {}
         ns = (datascience_pipelines_application.get("metadata") or {}).get("namespace")
         if ns:
             host = get_dspa_route_kfp_base_url(
@@ -412,12 +408,8 @@ def kfp_client_autorag(
     import kfp
 
     host: str | None = None
-    dspa_cfg = get_dspa_config_from_env()
-    if (
-        datascience_pipelines_application is not None
-        and dspa_cfg
-        and dspa_cfg.get("create")
-    ):
+    if datascience_pipelines_application is not None and should_create_dspa_from_env():
+        dspa_cfg = get_dspa_config_from_env() or {}
         ns = (datascience_pipelines_application.get("metadata") or {}).get("namespace")
         if ns:
             host = get_dspa_route_kfp_base_url(

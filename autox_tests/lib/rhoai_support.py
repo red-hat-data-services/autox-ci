@@ -157,7 +157,13 @@ def _ensure_admin_role_for_sa_in_namespace(
 
 
 def _s3_connection_secret_metadata(secret_name: str, existing: object | None = None):
-    """Metadata so the RHOAI dashboard keeps recognizing an S3 data connection."""
+    """Metadata so the RHOAI dashboard keeps recognizing an S3 data connection.
+
+    Note: The dashboard no longer requires a dedicated ServiceAccount for S3 data connections.
+    The previous `_ensure_s3_connection_service_account` function was removed as RHOAI 2.8+
+    manages ServiceAccounts automatically via the operator. Tests only need to ensure the
+    secret has correct labels/annotations (opendatahub.io/managed, opendatahub.io/dashboard).
+    """
     from kubernetes import client
 
     labels = {

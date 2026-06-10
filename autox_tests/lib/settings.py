@@ -215,8 +215,8 @@ def parse_timeout_seconds_from_env(
             f"{env_var}={raw!r}: expected an integer (seconds)"
         ) from exc
 
-    if value < 0:
-        raise ValueError(f"{env_var}={value}: timeout cannot be negative")
+    if value <= 0:
+        raise ValueError(f"{env_var}={value}: timeout must be a positive integer (seconds)")
 
     if max_seconds is not None and value > max_seconds:
         logger.warning(
