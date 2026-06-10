@@ -57,7 +57,7 @@
     },
     {
         "id": "TC-P-2",
-        "description": "Run scenario using remote milvus instance, with models defined in .env.",
+        "description": "Run scenario using remote milvus instance, with defined embedding models.",
         "tags": ["smoke", "remote::milvus", "faithfulness"],
         "expected_result": "pass",
         "embedding_models": ["vllm-embedding/bge-m3"],
@@ -65,6 +65,18 @@
         "optimization_max_rag_patterns": 4,
         "vector_io_provider_id": "milvus-remote",
         "optimization_metric": "faithfulness",
+        "input_data_key": "datasets/rag/rh_summit_2026/documents",
+        "test_data_key": "datasets/rag/rh_summit_2026/benchmark_data.json"
+    },
+    {
+        "id": "TC-P-3",
+        "description": "Run scenario using pgvector with all available embedding and foundation models.",
+        "tags": ["remote::pgvector", "answer_correctness"],
+        "expected_result": "pass",
+        "vector_io_provider_type": "remote::pgvector",
+        "optimization_max_rag_patterns": 6,
+        "vector_io_provider_id": "pgvector",
+        "optimization_metric": "answer_correctness",
         "input_data_key": "datasets/rag/rh_summit_2026/documents",
         "test_data_key": "datasets/rag/rh_summit_2026/benchmark_data.json"
     }
