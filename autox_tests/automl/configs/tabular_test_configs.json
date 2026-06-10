@@ -69,6 +69,86 @@
     ]
   },
   {
+    "id": "TC-A-4_energy_regression",
+    "label_column": "Heating.Load",
+    "task_type": "regression",
+    "top_n": 5,
+    "train_data_file_key": "functional-test/tabular/regression/energy_efficiency_regression.csv",
+    "tags": ["tabular", "regression"],
+    "inference_sample": [
+      {
+        "Relative.Compactness": [0.98],
+        "Surface.Area":         [514.5],
+        "Wall.Area":            [294.0],
+        "Roof.Area":            [110.25],
+        "Overall.Height":       [7.0],
+        "Orientation":          [2],
+        "Glazing.Area":         [0.0],
+        "Glazing.Area.Dist":    [0],
+        "Cooling.Load":         [21.33]
+      }
+    ]
+  },
+  {
+    "id": "TC-A-5_credit_default_binary",
+    "label_column": "default.payment.next.month",
+    "task_type": "binary",
+    "top_n": 3,
+    "train_data_file_key": "functional-test/tabular/classification_binary/credit_default_binary.csv",
+    "tags": ["tabular", "classification", "binary"],
+    "inference_sample": [
+      {
+        "ID":        [1],
+        "LIMIT_BAL": [20000],
+        "SEX":       [2],
+        "EDUCATION": [2],
+        "MARRIAGE":  [1],
+        "AGE":       [24],
+        "PAY_0":     [2],
+        "PAY_2":     [2],
+        "PAY_3":     [-1],
+        "PAY_4":     [-1],
+        "PAY_5":     [-2],
+        "PAY_6":     [-2],
+        "BILL_AMT1": [3913],
+        "BILL_AMT2": [3102],
+        "BILL_AMT3": [689],
+        "BILL_AMT4": [0],
+        "BILL_AMT5": [0],
+        "BILL_AMT6": [0],
+        "PAY_AMT1":  [0],
+        "PAY_AMT2":  [689],
+        "PAY_AMT3":  [0],
+        "PAY_AMT4":  [0],
+        "PAY_AMT5":  [0],
+        "PAY_AMT6":  [0]
+      }
+    ]
+  },
+  {
+    "id": "TC-A-6_wine_multiclass",
+    "label_column": "quality",
+    "task_type": "multiclass",
+    "top_n": 1,
+    "train_data_file_key": "functional-test/tabular/classification_multiclass/wine_quality_multiclass_limited_classes.csv",
+    "tags": ["tabular", "classification", "multiclass"],
+    "inference_sample": [
+      {
+        "fixed acidity":        [7.4],
+        "volatile acidity":     [0.7],
+        "citric acid":          [0.0],
+        "residual sugar":       [1.9],
+        "chlorides":            [0.076],
+        "free sulfur dioxide":  [11.0],
+        "total sulfur dioxide": [34.0],
+        "density":              [0.9978],
+        "pH":                   [3.51],
+        "sulphates":            [0.56],
+        "alcohol":              [9.4]
+      }
+    ]
+  },
+  {
     "id": "TC-NA-1_invalid_task_type",
     "label_column": "price",
     "task_type": "not_a_valid_task",

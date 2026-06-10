@@ -178,17 +178,20 @@ pytest autox_tests/automl/ -k "TC-A-1_regression" -v
 
 #### Tabular (`tabular_test_configs.json`)
 
-| ID | Task | Dataset | Tags |
-|---|---|---|---|
-| TC-A-1_regression | regression | housing pricing | smoke |
-| TC-A-2_binary_classification | binary | Titanic | smoke |
-| TC-A-3_multiclass | multiclass | car rental | — |
-| TC-NA-1_invalid_task_type | — | — | negative, validation |
-| TC-NA-2_invalid_top_n_zero | — | — | negative, validation |
-| TC-NA-3_label_column_absent | — | — | negative, data |
-| TC-NA-4_missing_s3_object | — | — | negative, storage |
-| TC-NA-5_task_data_mismatch | — | — | negative, data |
-| TC-NA-6_bad_credentials | — | — | negative, credentials |
+| ID | Task | Dataset | Label column | top_n | Tags |
+|---|---|---|---|---|---|
+| TC-A-1_regression | regression | housing pricing | `price` | 1 | smoke |
+| TC-A-2_binary_classification | binary | Titanic | `Survived` | 3 | smoke |
+| TC-A-3_multiclass | multiclass | car rental | `Action` | 2 | — |
+| TC-A-4_energy_regression | regression | UCI Energy Efficiency | `Heating.Load` | 5 | — |
+| TC-A-5_credit_default_binary | binary | UCI Credit Default | `default.payment.next.month` | 3 | — |
+| TC-A-6_wine_multiclass | multiclass | UCI Wine Quality (red+white) | `quality` | 1 | — |
+| TC-NA-1_invalid_task_type | — | — | — | — | negative, validation |
+| TC-NA-2_invalid_top_n_zero | — | — | — | — | negative, validation |
+| TC-NA-3_label_column_absent | — | — | — | — | negative, data |
+| TC-NA-4_missing_s3_object | — | — | — | — | negative, storage |
+| TC-NA-5_task_data_mismatch | — | — | — | — | negative, data |
+| TC-NA-6_bad_credentials | — | — | — | — | negative, credentials |
 
 #### Time series (`timeseries_test_configs.json`)
 
@@ -201,6 +204,18 @@ pytest autox_tests/automl/ -k "TC-A-1_regression" -v
 | TC-NB-3_missing_s3_object | — | — | negative, storage |
 | TC-NB-4_bad_credentials | — | — | negative, credentials |
 | TC-NB-5_invalid_top_n_zero | — | — | negative, validation |
+
+### Test data sources
+
+Training datasets used by the positive scenarios are stored in the S3 bucket defined by `RHOAI_TRAIN_DATA_BUCKET`. The files for the original scenarios ship in `automl/data/` for local reference; the three datasets added for RHAIENG-4179 pairwise coverage are described below.
+
+#### Tabular datasets
+
+| Scenario | S3 key | Origin | Preparation |
+|---|---|---|---|
+| TC-A-4 | `functional-test/tabular/regression/energy_efficiency_regression.csv` | [UCI Energy Efficiency](https://archive.ics.uci.edu/dataset/242/energy+efficiency) — Tsanas & Xifara (2012) | Exported from the original `.xlsx`; columns renamed with dot notation: `X1`→`Relative.Compactness`, `Y1`→`Heating.Load`, etc. Target is `Heating.Load`; `Cooling.Load` is retained as a feature. Source file: `automl/data/regression/energy_efficiency_regression.xlsx`. |
+| TC-A-5 | `functional-test/tabular/classification_binary/credit_default_binary.csv` | [UCI Default of Credit Card Clients](https://archive.ics.uci.edu/dataset/350/default+of+credit+card+clients) — Yeh & Lien (2009) | Read with `header=1` to skip the secondary `X1…X24` header row present in the original XLS. Label column renamed from `default payment next month` (spaces) to `default.payment.next.month` (dots) to exercise the dot-style label path. Source file: `automl/data/regression/default of credit card clients.xls`. |
+| TC-A-6 | `functional-test/tabular/classification_multiclass/wine_quality_multiclass_limited_classes.csv` | [UCI Wine Quality](https://archive.ics.uci.edu/dataset/186/wine+quality) — Cortez et al. (2009) | Red (`winequality-red.csv`) and white (`winequality-white.csv`) files merged with `pd.concat`. Classes with fewer than 50 samples removed (`quality=3` with 30 rows, `quality=9` with 5 rows) to avoid NaN pseudo-labels during AutoGluon's stacking full-refit. Final dataset: 6,462 rows, classes 4–8. Source files: `automl/data/classification_multi/winequality-red.csv`, `automl/data/classification_multi/winequality-white.csv`. |
 
 #### `inference_sample` format
 
