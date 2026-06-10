@@ -12,6 +12,6 @@ run:
   poll_interval_seconds: 30
   timeout_seconds: 86400
   enable_caching: false
-  run_name_prefix: "multilingual-rag-v2"
+  run_name_prefix: "rag-benchmark-multilingual"
 
 dataset_manifest_path: "dataset_manifest_multilingual.yaml"
