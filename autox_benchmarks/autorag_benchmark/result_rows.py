@@ -15,10 +15,14 @@ def base_row_for_dataset(
     dataset: dict[str, Any],
     dataset_index: int,
     run_name: str,
+    suite: str = "",
+    rhoai_version: str = "",
 ) -> dict[str, Any]:
     ds_id = str(dataset.get("id", dataset.get("name", f"dataset_{dataset_index}")))
     name = str(dataset.get("name", ds_id))
     return {
+        "suite": suite,
+        "rhoai_version": rhoai_version,
         "dataset_id": ds_id,
         "dataset_name": name,
         "input_data_key": dataset.get("input_data_key", ""),

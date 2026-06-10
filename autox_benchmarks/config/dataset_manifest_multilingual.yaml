@@ -6,6 +6,8 @@ datasets:
     optimization_metric: "faithfulness"
     embedding_models:
       - "vllm-embedding/bge-m3"
+    generation_models:
+      - "vllm-inference-gpu-llama/llama-31-8b-instruct"
 
   - id: mkqa-de-50-txt
     name: "MKQA DE (50) TXT"
@@ -14,6 +16,8 @@ datasets:
     optimization_metric: "faithfulness"
     embedding_models:
       - "vllm-embedding/bge-m3"
+    generation_models:
+      - "vllm-inference-gpu-llama/llama-31-8b-instruct"
 
   - id: mkqa-ja-50-txt
     name: "MKQA JA (50) TXT"
@@ -22,3 +26,5 @@ datasets:
     optimization_metric: "faithfulness"
     embedding_models:
       - "vllm-embedding/bge-m3"
+    generation_models:
+      - "vllm-inference-gpu-llama/llama-31-8b-instruct"

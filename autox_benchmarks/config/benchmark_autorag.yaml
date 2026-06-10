@@ -1,4 +1,4 @@
-suite: multilingual
+suite: base
 
 pipeline:
   compile: {}
@@ -12,6 +12,7 @@ run:
   poll_interval_seconds: 30
   timeout_seconds: 86400
   enable_caching: false
-  run_name_prefix: "rag-benchmark-multilingual"
+  run_name_prefix: "rag-benchmark-base"
 
-dataset_manifest_path: "dataset_manifest_multilingual.yaml"
+# Reference the dataset manifest file
+dataset_manifest_path: "dataset_manifest_autorag_base.yaml"

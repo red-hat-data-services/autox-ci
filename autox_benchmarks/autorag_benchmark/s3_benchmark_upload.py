@@ -53,6 +53,8 @@ def _build_run_metadata(
 ) -> dict[str, Any]:
     """Build metadata dict for a single dataset run."""
     return {
+        "suite": settings.suite,
+        "rhoai_version": settings.rhoai_version,
         "dataset_id": dataset.get("id"),
         "dataset_name": dataset.get("name"),
         "run_id": row.get("run_id"),
@@ -92,6 +94,8 @@ def _build_batch_metadata(
 ) -> dict[str, Any]:
     """Build metadata dict for entire batch."""
     return {
+        "suite": settings.suite,
+        "rhoai_version": settings.rhoai_version,
         "batch_id": batch_id,
         "started_at": started_at,
         "finished_at": finished_at,

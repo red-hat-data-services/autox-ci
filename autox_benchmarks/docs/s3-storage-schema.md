@@ -46,14 +46,22 @@ flowchart TB
 
 Default `benchmark_s3_prefix` is `benchmarks` (configurable in `[storage]`).
 
+## Suite identification
+
+Each benchmark config declares a **`suite`** field (e.g. `base`, `multilingual`, `multilingual-v2`). The suite name is appended to the base `benchmark_s3_prefix` to form the effective prefix: `{benchmark_s3_prefix}/{suite}/`. This means results from different suites are stored in separate S3 paths and maintain independent `joined_results.csv` files.
+
+The `suite` value also appears in:
+- `batch_metadata.json` and per-dataset `metadata.json`
+- Every row of the results CSV (`suite` column)
+
 ## Orchestrator upload tree
 
 For each orchestrator invocation, a **`batch_id`** is generated (UTC compact timestamp, e.g. `20260424T061410Z`).
 
 ```text
-{benchmark_s3_prefix}/experiment_index/v1/{sha256}.json   # Dedupe index → prior results.csv (+ aggregated merged key)
-{benchmark_s3_prefix}/joined_results.csv                   # Rolling long-form join across batches (deduped on write)
-{benchmark_s3_prefix}/{batch_id}/
+{benchmark_s3_prefix}/{suite}/experiment_index/v1/{sha256}.json   # Dedupe index → prior results.csv
+{benchmark_s3_prefix}/{suite}/joined_results.csv                   # Rolling long-form join (per suite)
+{benchmark_s3_prefix}/{suite}/{batch_id}/
   aggregated/
     merged_leaderboards.csv   # Long-form table: benchmark columns + parsed leaderboard HTML (this batch only)
     autogluon-tabular-training-pipeline.yaml   # Compiled IR used for tabular runs (same path as settings when shared)
