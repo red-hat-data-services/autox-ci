@@ -90,16 +90,9 @@ def get_functional_config():
     )
     bucket_artifacts = (os.environ.get("RHOAI_TEST_ARTIFACTS_BUCKET") or "").strip()
 
-    project = (
-        (os.environ.get("RHOAI_PROJECT_NAME") or os.environ.get("KFP_NAMESPACE") or "")
-        .strip()
-        or base["rhoai_project"]
-    )
-
     return {
         **base,
         "rhoai_kfp_url": kfp_url.rstrip("/") if kfp_url else None,
-        "rhoai_project": project,
         "test_data_secret_name": t_secret,
         "test_data_bucket_name": t_bucket,
         "input_data_secret_name": i_secret,

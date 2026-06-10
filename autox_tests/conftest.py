@@ -21,6 +21,9 @@ from autox_tests.lib.rhoai_support import (
     ensure_rhoai_project_and_s3_secret,
 )
 from autox_tests.lib.settings import (
+    RHOAI_TRAIN_DATA_BUCKET_ENV,
+    S3_BUCKET_ARTIFACTS_ENV,
+    S3_BUCKET_DATA_ENV,
     get_dspa_config_from_env,
     get_rhoai_integration_https_verify,
     get_rhoai_namespace_setup_config,
@@ -43,15 +46,21 @@ def _ensure_datascience_pipelines_application(
         return None
 
     bucket = (
-        (os.environ.get("RHOAI_TEST_ARTIFACTS_BUCKET") or "").strip()
-        or (os.environ.get("RHOAI_TRAIN_DATA_BUCKET") or "").strip()
-        or (os.environ.get("RHOAI_TEST_DATA_BUCKET") or "").strip()
+        (os.environ.get(S3_BUCKET_ARTIFACTS_ENV) or "").strip()
+        or (os.environ.get(RHOAI_TRAIN_DATA_BUCKET_ENV) or "").strip()
+        or (os.environ.get(S3_BUCKET_DATA_ENV) or "").strip()
         or (os.environ.get("AUTOML_TRAIN_DATA_BUCKET_NAME") or "").strip()
     )
     secret_name = namespace_config.get("s3_secret_name")
     endpoint = namespace_config.get("s3_endpoint")
     region = namespace_config.get("s3_region")
     endpoint_for_dspa = (endpoint or "").strip()
+
+    if bucket and not endpoint_for_dspa:
+        raise RuntimeError(
+            "DSPA external S3 requires AWS_S3_ENDPOINT when a data bucket is configured. "
+            "Set AWS_S3_ENDPOINT in the env file."
+        )
 
     if progress:
         progress("Creating DataSciencePipelinesApplication...")

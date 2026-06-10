@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 import os
 import time
-import warnings
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -119,8 +118,8 @@ class PipelineRunTarget:
     kfp_pipeline_name: str | None = None
 
 
-def _resolve_latest_pipeline_version_id(client: Any, pipeline_id: str) -> str:
-    """Return the newest pipeline version id, or ``""`` if none are listed."""
+def _resolve_latest_pipeline_version_id(client: Any, pipeline_id: str) -> str | None:
+    """Return the newest pipeline version id, or ``None`` if none are listed."""
     versions = client.list_pipeline_versions(
         pipeline_id=pipeline_id,
         page_size=10,
@@ -131,7 +130,7 @@ def _resolve_latest_pipeline_version_id(client: Any, pipeline_id: str) -> str:
         vid = getattr(version_list[0], "pipeline_version_id", None)
         if vid:
             return vid
-    return ""
+    return None
 
 
 def _list_pipeline_display_names(client: Any, *, page_size: int = 50) -> list[str]:
@@ -149,7 +148,7 @@ def _list_pipeline_display_names(client: Any, *, page_size: int = 50) -> list[st
 def _find_pipeline_by_display_name(
     client: Any,
     display_name: str,
-) -> tuple[tuple[str, str] | None, list[str]]:
+) -> tuple[tuple[str, str | None] | None, list[str]]:
     """Return ``(result_or_None, list_of_known_names)``.
 
     Uses :meth:`kfp.Client.get_pipeline_id` (KFP v2 JSON filter), not legacy
@@ -204,7 +203,7 @@ def wait_for_managed_pipeline(
     *,
     timeout_seconds: int,
     poll_interval_seconds: float = 10.0,
-) -> tuple[str, str]:
+) -> tuple[str, str | None]:
     """Poll KFP until a managed pipeline is registered."""
     deadline = time.monotonic() + timeout_seconds
     last_names: list[str] = []
@@ -251,7 +250,7 @@ def resolve_managed_pipeline_target(
             mode="managed",
             artifact_prefix=artifact_prefix,
             pipeline_id=pipeline_id,
-            pipeline_version_id=version_id or None,
+            pipeline_version_id=version_id,
             kfp_pipeline_name=kfp_name,
         )
 
@@ -302,8 +301,10 @@ def submit_pipeline_run_and_wait(
             exp_name = os.environ.get(_KF_DEFAULT_EXPERIMENT)
             overridden = os.environ.get(_KF_OVERRIDE_EXPERIMENT, exp_name)
             if overridden != exp_name:
-                warnings.warn(
-                    f'Changing experiment name from "{exp_name or "(default)"}" to "{overridden}".'
+                logger.warning(
+                    "Changing experiment name from %r to %r.",
+                    exp_name or "(default)",
+                    overridden,
                 )
             exp_name = overridden or "Default"
         experiment = client.create_experiment(name=exp_name, namespace=namespace)

@@ -370,11 +370,10 @@ def get_autorag_connection_config() -> dict[str, Any] | None:
     s3_secret = (os.environ.get(S3_SECRET_NAME_ENV) or "s3-connection").strip()
     ogx_secret = os.environ.get(OGX_SECRET_ENV)
     vector_io = os.environ.get(VECTOR_IO_PROVIDER_ENV)
-    dspa = get_dspa_config_from_env()
 
     if not all([token, s3_secret, ogx_secret, vector_io]):
         return None
-    if not kfp_url and not (dspa and dspa.get("create")):
+    if not kfp_url and not should_create_dspa_from_env():
         return None
 
     t_bucket = (os.environ.get(TEST_DATA_BUCKET_ENV) or "").strip()

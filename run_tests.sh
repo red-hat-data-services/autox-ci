@@ -217,7 +217,7 @@ if [[ "$LEGACY_PIPELINE_YAML" == true ]]; then
 elif [[ -n "${AUTOML_TABULAR_PIPELINE_PATH:-}" || -n "${AUTOML_TIMESERIES_PIPELINE_PATH:-}" || -n "${AUTORAG_PIPELINE_PATH:-}" ]]; then
     export RHOAI_USE_MANAGED_PIPELINES=false
     echo "pipeline: legacy package upload (pipeline path set in environment)"
-else
+elif [[ -z "${RHOAI_USE_MANAGED_PIPELINES:-}" ]]; then
     export RHOAI_USE_MANAGED_PIPELINES=true
     echo "pipeline: DSPA managed pipelines (default; no pipeline.yaml required)"
 fi

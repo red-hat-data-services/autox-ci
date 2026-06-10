@@ -282,8 +282,6 @@ def ensure_rhoai_project_and_s3_secret(
                     v1.patch_namespaced_secret(
                         secret_name, project_name, _metadata_patch_body()
                     )
-            elif e.status == 403:
-                raise
             else:
                 raise
 
