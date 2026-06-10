@@ -18,6 +18,10 @@ from autox_tests.lib.pipeline_yaml_sources import (
     PIPELINE_YAML_TIMESERIES_ENV,
 )
 from autox_tests.lib.settings import (
+    RHOAI_TRAIN_DATA_BUCKET_ENV,
+    RHOAI_TRAIN_S3_SECRET_NAME_ENV,
+    S3_BUCKET_DATA_ENV,
+    S3_SECRET_NAME_ENV,
     get_rhoai_namespace_setup_config,
     should_create_dspa_from_env,
 )
@@ -42,15 +46,15 @@ def get_automl_functional_config():
         logger.info("Set RHOAI_KFP_URL or enable DSPA auto-setup (default when KFP URL is unset).")
         return None
 
-    train_secret = (
-        (os.environ.get("RHOAI_TRAIN_S3_SECRET_NAME") or "").strip()
-        or (os.environ.get("RHOAI_TEST_S3_SECRET_NAME") or base.get("s3_secret_name") or "").strip()
-    )
-    train_bucket = (
-        (os.environ.get("RHOAI_TRAIN_DATA_BUCKET") or "").strip()
-        or (os.environ.get("RHOAI_TEST_DATA_BUCKET") or "").strip()
-        or (os.environ.get("AUTOML_TRAIN_DATA_BUCKET_NAME") or "").strip()
-    )
+    train_secret_name = (os.environ.get(RHOAI_TRAIN_S3_SECRET_NAME_ENV) or "").strip()
+    test_s3_secret = (os.environ.get(S3_SECRET_NAME_ENV) or "").strip()
+    default_secret = (base.get("s3_secret_name") or "").strip()
+    train_secret = train_secret_name or test_s3_secret or default_secret
+
+    train_data_bucket = (os.environ.get(RHOAI_TRAIN_DATA_BUCKET_ENV) or "").strip()
+    test_data_bucket = (os.environ.get(S3_BUCKET_DATA_ENV) or "").strip()
+    legacy_train_bucket = (os.environ.get("AUTOML_TRAIN_DATA_BUCKET_NAME") or "").strip()
+    train_bucket = train_data_bucket or test_data_bucket or legacy_train_bucket
     if not train_secret or not train_bucket:
         return None
 
@@ -117,7 +121,7 @@ def _resolve_automl_pipeline_target(
     cache_file_name: str,
 ) -> PipelineRunTarget:
     if not kfp_client_automl_functional:
-        pytest.fail("KFP client required to resolve pipeline run target")
+        pytest.skip("KFP client not available — skipping pipeline run target resolution")
     try:
         return resolve_managed_pipeline_target(
             kfp_client_automl_functional,

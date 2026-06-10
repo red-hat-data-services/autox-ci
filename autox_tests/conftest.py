@@ -54,7 +54,8 @@ def _ensure_datascience_pipelines_application(
     secret_name = namespace_config.get("s3_secret_name")
     endpoint = namespace_config.get("s3_endpoint")
     region = namespace_config.get("s3_region")
-    endpoint_for_dspa = (endpoint or "").strip()
+    incluster_endpoint = (dspa_cfg.get("object_storage_endpoint") or "").strip()
+    endpoint_for_dspa = incluster_endpoint or (endpoint or "").strip()
 
     if bucket and not endpoint_for_dspa:
         raise RuntimeError(
@@ -73,7 +74,6 @@ def _ensure_datascience_pipelines_application(
         object_storage_endpoint=endpoint_for_dspa if bucket else None,
         object_storage_region=region if bucket else None,
         object_storage_bucket=bucket if bucket else None,
-        resource_name=str(dspa_cfg.get("resource_name") or "dspa"),
         progress=progress,
     )
     if created is None and err:
@@ -152,7 +152,8 @@ def rhoai_cluster_kubeconfig(
 ) -> Generator[str | None, None, None]:
     """Minimal kubeconfig for OpenShift API (namespace, secrets, DSPA, routes)."""
     if rhoai_namespace_setup_config is None:
-        return None
+        yield None
+        return
     path = build_temp_kubeconfig(
         rhoai_namespace_setup_config["rhoai_url"],
         rhoai_namespace_setup_config["rhoai_token"],
@@ -210,6 +211,7 @@ def datascience_pipelines_application(
         )
 
     def _progress(msg: str) -> None:
+        print(f"\n{msg}", flush=True)
         logger.info(msg)
 
     _progress(

@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 from autox_tests.lib.env import load_tests_env
+from autox_tests.lib.settings import parse_timeout_seconds_from_env
 from autox_tests.lib.pipeline_yaml_sources import (
     PIPELINE_YAML_AUTORAG_ENV,
     PIPELINE_YAML_TABULAR_ENV,
@@ -137,7 +138,8 @@ def _list_pipeline_display_names(client: Any, *, page_size: int = 50) -> list[st
     """Return display names from the first page of ``list_pipelines`` (for timeout hints)."""
     try:
         resp = client.list_pipelines(page_size=page_size)
-    except Exception:
+    except Exception as exc:
+        logger.debug("list_pipelines failed (hint unavailable): %s", exc)
         return []
     return [
         (getattr(p, "display_name", None) or "").strip()
@@ -238,8 +240,8 @@ def resolve_managed_pipeline_target(
 
     if use_managed_pipelines_from_env():
         kfp_name = get_managed_kfp_pipeline_name(kind)
-        wait_timeout = int(
-            os.environ.get(RHOAI_MANAGED_PIPELINE_WAIT_TIMEOUT_ENV) or "300"
+        wait_timeout = parse_timeout_seconds_from_env(
+            RHOAI_MANAGED_PIPELINE_WAIT_TIMEOUT_ENV, 300
         )
         pipeline_id, version_id = wait_for_managed_pipeline(
             client,
@@ -307,7 +309,12 @@ def submit_pipeline_run_and_wait(
                     overridden,
                 )
             exp_name = overridden or "Default"
-        experiment = client.create_experiment(name=exp_name, namespace=namespace)
+        try:
+            experiment = client.create_experiment(name=exp_name, namespace=namespace)
+        except Exception:
+            experiment = client.get_experiment(
+                experiment_name=exp_name, namespace=namespace
+            )
         run = client.run_pipeline(
             experiment_id=experiment.experiment_id,
             job_name=run_name,

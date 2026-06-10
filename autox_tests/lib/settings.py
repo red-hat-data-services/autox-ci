@@ -54,6 +54,8 @@ RHOAI_DSPA_NAME_ENV = "RHOAI_DSPA_NAME"
 RHOAI_DSPA_DSP_VERSION_ENV = "RHOAI_DSPA_DSP_VERSION"
 RHOAI_DSPA_MANAGED_PIPELINES_IMAGE_ENV = "RHOAI_DSPA_MANAGED_PIPELINES_IMAGE"
 RHOAI_DSPA_MANAGED_PIPELINE_NAMES_ENV = "RHOAI_DSPA_MANAGED_PIPELINE_NAMES"
+# Optional DSPA object-storage endpoint override (e.g. in-cluster URL vs public ``AWS_S3_ENDPOINT``).
+INCLUSTER_AWS_S3_ENDPOINT_ENV = "INCLUSTER_AWS_S3_ENDPOINT"
 
 # Optional defaults for ``data_mode=existing_s3`` in JSON (AutoML + AutoRAG)
 TEST_DATA_SOURCE_BUCKET_ENV = "TEST_DATA_SOURCE_BUCKET"
@@ -183,8 +185,23 @@ def should_create_dspa_from_env() -> bool:
     return not kfp_url
 
 
+def parse_timeout_seconds_from_env(env_var: str, default: int) -> int:
+    """Parse an integer timeout (seconds) from the environment with a clear error message."""
+    raw = (os.environ.get(env_var) or "").strip() or str(default)
+    try:
+        return int(raw)
+    except ValueError as exc:
+        raise ValueError(
+            f"{env_var}={raw!r}: expected an integer (seconds)"
+        ) from exc
+
+
 def _build_managed_pipelines_spec_from_env() -> dict[str, Any]:
-    """Build ``spec.apiServer.managedPipelines`` from env (``{}`` = operator default)."""
+    """Build ``spec.apiServer.managedPipelines`` from env.
+
+    Returns ``{}`` when no image or pipeline names are set; the DSPA CR still gets
+    ``managedPipelines: {}`` so the operator can apply its default managed pipeline set.
+    """
     image = (os.environ.get(RHOAI_DSPA_MANAGED_PIPELINES_IMAGE_ENV) or "").strip()
     names_raw = (os.environ.get(RHOAI_DSPA_MANAGED_PIPELINE_NAMES_ENV) or "").strip()
     if not image and not names_raw:
@@ -216,18 +233,21 @@ def get_dspa_config_from_env() -> dict[str, Any] | None:
         or "datasciencepipelinesapplications",
         "route_name_prefix": os.environ.get(RHOAI_DSPA_ROUTE_NAME_PREFIX_ENV)
         or "ds-pipeline",
-        "route_wait_timeout": int(
-            os.environ.get(RHOAI_DSPA_ROUTE_WAIT_TIMEOUT_ENV) or "300"
+        "route_wait_timeout": parse_timeout_seconds_from_env(
+            RHOAI_DSPA_ROUTE_WAIT_TIMEOUT_ENV, 300
         ),
-        "ready_wait_timeout": int(
-            os.environ.get(RHOAI_DSPA_READY_WAIT_TIMEOUT_ENV) or "600"
+        "ready_wait_timeout": parse_timeout_seconds_from_env(
+            RHOAI_DSPA_READY_WAIT_TIMEOUT_ENV, 600
         ),
-        "ready_buffer_seconds": int(
-            os.environ.get(RHOAI_DSPA_READY_BUFFER_SECONDS_ENV) or "5"
+        "ready_buffer_seconds": parse_timeout_seconds_from_env(
+            RHOAI_DSPA_READY_BUFFER_SECONDS_ENV, 30
         ),
         "dsp_version": dsp_version,
         "resource_name": dspa_name,
         "managed_pipelines": _build_managed_pipelines_spec_from_env(),
+        "object_storage_endpoint": (
+            (os.environ.get(INCLUSTER_AWS_S3_ENDPOINT_ENV) or "").strip() or None
+        ),
     }
 
 

@@ -144,7 +144,7 @@ def s3_client_functional(functional_env_config):
 def autorag_pipeline_run_target(kfp_client_functional, tmp_path_factory):
     """AutoRAG pipeline: managed KFP registration or legacy ``AUTORAG_PIPELINE_PATH`` package."""
     if not kfp_client_functional:
-        pytest.fail("KFP client required to resolve pipeline run target")
+        pytest.skip("KFP client not available — skipping pipeline run target resolution")
     try:
         return resolve_managed_pipeline_target(
             kfp_client_functional,

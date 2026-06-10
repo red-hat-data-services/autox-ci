@@ -14,11 +14,8 @@ from typing import Any, Iterator
 
 import pytest
 
-from autox_tests.lib.dspa_support import (
-    create_datascience_pipelines_application,
-    get_dspa_route_kfp_base_url,
-    wait_for_dspa_ready,
-)
+from autox_tests.conftest import _ensure_datascience_pipelines_application
+from autox_tests.lib.dspa_support import get_dspa_route_kfp_base_url
 from autox_tests.lib.env import load_tests_env, resolve_suite_asset_path
 from autox_tests.lib.pipeline_yaml_sources import (
     PIPELINE_YAML_AUTORAG_ENV,
@@ -39,6 +36,7 @@ from autox_tests.lib.settings import (
     get_rhoai_integration_https_verify,
     get_rhoai_namespace_setup_config,
     get_s3_boto_config_from_env,
+    should_create_dspa_from_env,
     get_s3_create_bucket_if_missing,
     rhoai_negative_pipeline_family_allowed,
 )
@@ -174,18 +172,15 @@ def rhoai_automl_project(
 
 @pytest.fixture(scope="session")
 def datascience_pipelines_application(
-    request: pytest.FixtureRequest,
     rhoai_namespace_setup_config: dict[str, Any] | None,
     rhoai_project_and_s3_secret: str | None,
     temp_kubeconfig_path: str | None,
 ) -> dict[str, Any] | None:
-    """Optionally create a DataSciencePipelinesApplication when ``RHOAI_CREATE_DSPA`` is set."""
-    dspa_cfg = get_dspa_config_from_env()
+    """Create DSPA with managed pipelines when auto-setup is enabled."""
     if (
         rhoai_namespace_setup_config is None
         or rhoai_project_and_s3_secret is None
-        or not dspa_cfg
-        or not dspa_cfg.get("create")
+        or not should_create_dspa_from_env()
     ):
         return None
     try:
@@ -196,59 +191,18 @@ def datascience_pipelines_application(
             "Install with: pip install kubernetes  (or pip install -e '.[test_rhoai]')."
         )
 
-    project = rhoai_project_and_s3_secret
-    bucket = (
-        os.environ.get("RHOAI_TEST_ARTIFACTS_BUCKET")
-        or os.environ.get("RHOAI_TEST_DATA_BUCKET")
-        or ""
-    ).strip()
-    secret_name = rhoai_namespace_setup_config.get("s3_secret_name")
-    endpoint = rhoai_namespace_setup_config.get("s3_endpoint")
-    region = rhoai_namespace_setup_config.get("s3_region")
-    endpoint_for_dspa = (dspa_cfg.get("object_storage_endpoint") or "").strip() or (
-        endpoint or ""
-    ).strip()
-
     def _dspa_progress(msg: str) -> None:
+        print(f"\n{msg}", flush=True)
         logger.info(msg)
 
     _dspa_progress("Starting DSPA setup...")
-    created, err = create_datascience_pipelines_application(
-        project,
-        dspa_cfg,
+
+    return _ensure_datascience_pipelines_application(
+        namespace=rhoai_project_and_s3_secret,
+        namespace_config=rhoai_namespace_setup_config,
         kubeconfig_path=temp_kubeconfig_path,
-        object_storage_secret_name=secret_name if bucket else None,
-        object_storage_endpoint=endpoint_for_dspa if bucket else None,
-        object_storage_region=region if bucket else None,
-        object_storage_bucket=bucket if bucket else None,
         progress=_dspa_progress,
     )
-    if created is None and err:
-        logging.getLogger(__name__).error("DSPA creation failed: %s", err)
-        pytest.fail(f"DataSciencePipelinesApplication creation failed: {err}")
-
-    if created is not None:
-        dspa_name = (created.get("metadata") or {}).get("name", "dspa")
-        namespace = (created.get("metadata") or {}).get("namespace", project)
-        ready_timeout = int(dspa_cfg.get("ready_wait_timeout", 600))
-        buffer_seconds = int(dspa_cfg.get("ready_buffer_seconds", 30))
-        if not wait_for_dspa_ready(
-            namespace,
-            dspa_name,
-            dspa_cfg,
-            kubeconfig_path=temp_kubeconfig_path,
-            timeout_seconds=ready_timeout,
-            progress=_dspa_progress,
-        ):
-            logger.warning(
-                "DSPA did not become Ready within %s s; continuing anyway",
-                ready_timeout,
-            )
-        _dspa_progress(
-            f"Post-ready buffer: sleeping {buffer_seconds}s before tests continue..."
-        )
-        time.sleep(buffer_seconds)
-    return created
 
 
 @pytest.fixture(scope="session")
