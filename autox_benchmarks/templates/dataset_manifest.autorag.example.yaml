@@ -1,0 +1,7 @@
+# Example manifest for AutoRAG. Keys point at objects in input/test buckets from .env.
+datasets:
+  - id: example_use_case
+    name: Example RAG use case
+    test_data_key: path/to/eval_questions.json
+    # Optional path to document corpus (omit if pipeline samples bucket root)
+    # input_data_key: path/to/documents/

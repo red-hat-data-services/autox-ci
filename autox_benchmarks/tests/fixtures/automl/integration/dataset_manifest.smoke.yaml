@@ -1,0 +1,8 @@
+# Smallest practical tabular smoke: bundled breast-w_n200.csv (auto-uploaded in integration tests).
+
+datasets:
+  - id: breast-w-smoke
+    name: breast-w-smoke
+    train_data_file_key: "benchmark/smoke/breast-w_n200.csv"
+    label_column: "Class"
+    task_type: "binary"

@@ -1,0 +1,20 @@
+# AutoRAG layout (non-secret). Cluster / buckets / secrets live in .env.
+#
+# Run with: python scripts/autorag_benchmark_orchestrator.py --config config/benchmark.yaml
+
+pipeline:
+  compile: {}
+  # Optional: same keys as AutoML (git_url, git_ref) plus:
+  # autorag_entrypoint: "pipelines/training/autorag/documents_rag_optimization_pipeline/pipeline.py"
+  # Static IR (optional). If set and the file exists, Git compile is skipped.
+  # package_path: "../pipelines/documents-rag-optimization-pipeline.yaml"
+
+run:
+  optimization_metric: faithfulness
+  optimization_max_rag_patterns: 8
+  poll_interval_seconds: 30
+  timeout_seconds: 86400
+  enable_caching: false
+  run_name_prefix: "rag-benchmark"
+
+dataset_manifest_path: "dataset_manifest.autorag.example.yaml"

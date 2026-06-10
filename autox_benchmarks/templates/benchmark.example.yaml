@@ -1,0 +1,36 @@
+# Non-secret benchmark layout only. Cluster / S3 / KFP API identity lives exclusively in
+# .env (required — copy from .env.example).
+#
+# Merge order: this file (and optional kubernetes_configmap), then .env on top.
+# Do not put host, namespace, bucket, or Kubernetes secret names here.
+
+pipeline:
+  # Default: compile pipeline IR from Git (opendatahub-io/pipelines-components). Requires git,
+  # network, and Python 3.11+ for an isolated compile venv. Override any key below.
+  compile: {}
+  # Optional compile overrides:
+  # git_url: "https://github.com/opendatahub-io/pipelines-components.git"
+  # git_ref: "main"
+  # tabular_entrypoint: "pipelines/training/automl/autogluon_tabular_training_pipeline/pipeline.py"
+  # timeseries_entrypoint: "pipelines/training/automl/autogluon_timeseries_training_pipeline/pipeline.py"
+  #
+  # Static compiled YAML (optional). If set and the file exists, Git compile is skipped for that slot.
+  # package_path: "../pipelines/autogluon-tabular-training-pipeline.yaml"
+  # timeseries_package_path: "../pipelines/autogluon-timeseries-training-pipeline.yaml"
+
+run:
+  top_n: 3
+  poll_interval_seconds: 30
+  timeout_seconds: 86400
+  enable_caching: false
+  run_name_prefix: "benchmark"
+
+# Resolved relative to this file's directory
+dataset_manifest_path: "dataset_manifest.example.yaml"
+
+# Optional: merge non-secret keys from an in-cluster ConfigMap (same schema as this file;
+# do not store credentials in the ConfigMap — use .env).
+# kubernetes_configmap:
+#   name: "automl-benchmark-config"
+#   namespace: "your-data-science-project"
+#   key: "benchmark.yaml"

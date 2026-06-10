@@ -1,0 +1,18 @@
+# pipeline:
+#   compile: {}
+#   git_url: "https://github.com/opendatahub-io/pipelines-components.git"
+#   git_ref: "main"
+#   autorag_entrypoint: "pipelines/training/autorag/documents_rag_optimization_pipeline/pipeline.py"
+
+pipeline:
+  package_path: "../pipelines/autorag-pipeline-ogx.yaml"
+
+run:
+  optimization_metric: "faithfulness"
+  optimization_max_rag_patterns: 8
+  poll_interval_seconds: 30
+  timeout_seconds: 86400
+  enable_caching: false
+  run_name_prefix: "multilingual-rag"
+
+dataset_manifest_path: "dataset_manifest_multilingual.yaml"

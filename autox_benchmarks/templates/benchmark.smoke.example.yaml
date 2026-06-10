@@ -1,0 +1,15 @@
+# Smoke test layout (non-secret). Set kfp / storage / pipeline secret name in .env only.
+# Uses checked-in pipeline YAML for fast offline runs (override with compile: {} like benchmark.example.yaml).
+
+pipeline:
+  package_path: "../pipelines/autogluon-tabular-training-pipeline.yaml"
+  timeseries_package_path: "../pipelines/autogluon-timeseries-training-pipeline.yaml"
+
+run:
+  top_n: 2
+  poll_interval_seconds: 15
+  timeout_seconds: 7200
+  enable_caching: false
+  run_name_prefix: "smoke"
+
+dataset_manifest_path: "dataset_manifest.smoke.yaml"

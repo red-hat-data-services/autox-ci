@@ -1,0 +1,13 @@
+# Test fixture: static pipeline IR (no Git compile). Paths relative to this file.
+pipeline:
+  package_path: "../../../pipelines/autogluon-tabular-training-pipeline.yaml"
+  timeseries_package_path: "../../../pipelines/autogluon-timeseries-training-pipeline.yaml"
+
+run:
+  top_n: 2
+  poll_interval_seconds: 15
+  timeout_seconds: 3600
+  enable_caching: false
+  run_name_prefix: "test-benchmark"
+
+dataset_manifest_path: "dataset_manifest.yaml"

@@ -1,0 +1,14 @@
+# Online integration tests: single smoke dataset, minimal top_n.
+# Requires .env only; see tests/integration/README.md.
+
+pipeline:
+  package_path: "../../../pipelines/autogluon-tabular-training-pipeline.yaml"
+
+run:
+  top_n: 1
+  poll_interval_seconds: 30
+  timeout_seconds: 7200
+  enable_caching: false
+  run_name_prefix: "pytest-integ"
+
+dataset_manifest_path: "dataset_manifest.smoke.yaml"
