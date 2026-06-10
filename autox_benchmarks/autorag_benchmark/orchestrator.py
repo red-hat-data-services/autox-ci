@@ -131,7 +131,7 @@ class BenchmarkOrchestrator:
             pipeline_file = pipeline_file_for_dataset(ds, settings)
             arguments = filter_pipeline_arguments(arguments, pipeline_file)
             run_name = run_name_for_dataset(settings.run_name_prefix, ds_id)
-            base = base_row_for_dataset(ds, i, run_name)
+            base = base_row_for_dataset(ds, i, run_name, suite=settings.suite, rhoai_version=settings.rhoai_version)
 
             if dry_run:
                 rows.append(dry_run_row(base, arguments))
