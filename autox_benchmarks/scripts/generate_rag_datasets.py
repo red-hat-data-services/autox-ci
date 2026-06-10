@@ -23,7 +23,7 @@ Usage:
   #   aws_secret_access_key = YOUR_SECRET
   #   aws_default_region = us-east-1
 
-  # Upload to default structure: s3://ai-eng-cracow/datasets/rag/open_ragbench/arxiv/txt/50/
+  # Upload to: s3://<your-bucket>/datasets/rag/open_ragbench/arxiv/txt/50/
   # Local output: ./generated_datasets/open_ragbench/txt/
   python scripts/generate_rag_datasets.py --dataset open_ragbench --num-samples 50 \
     --upload-to-s3
@@ -160,8 +160,8 @@ def main():
     )
     parser.add_argument(
         "--s3-bucket",
-        default="ai-eng-cracow",
-        help="S3 bucket name (default: ai-eng-cracow)",
+        default=None,
+        help="S3 bucket for upload (default: BENCHMARK_INPUT_DATA_BUCKET_NAME from .env)",
     )
     parser.add_argument(
         "--s3-prefix",
@@ -273,6 +273,13 @@ def main():
             ensure_s3_bucket_exists,
             get_s3_boto_config,
         )
+        from autorag_benchmark.storage_buckets import resolve_dataset_upload_bucket_from_env
+
+        try:
+            upload_bucket = resolve_dataset_upload_bucket_from_env(args.env_file, args.s3_bucket)
+        except ValueError as exc:
+            print(f"\nError: {exc}", file=sys.stderr)
+            sys.exit(1)
 
         s3_config = get_s3_boto_config(args.env_file)
         if not s3_config:
@@ -288,7 +295,7 @@ def main():
         # Ensure bucket exists
         region = s3_config.get("region_name", "us-east-1")
         try:
-            ensure_s3_bucket_exists(s3_client, args.s3_bucket, region=region)
+            ensure_s3_bucket_exists(s3_client, upload_bucket, region=region)
         except Exception as e:
             print(f"\nError ensuring S3 bucket exists: {e}", file=sys.stderr)
             sys.exit(1)
@@ -324,7 +331,7 @@ def main():
         print(f"\n{'='*60}")
         print(f"Uploading to S3")
         print(f"{'='*60}")
-        print(f"Bucket: {args.s3_bucket}")
+        print(f"Bucket: {upload_bucket}")
         print(f"Prefix: {args.s3_prefix}")
         print()
 
@@ -333,7 +340,7 @@ def main():
                 s3_client,
                 local_kb_dir=kb_dir,
                 local_bench_path=bench_path,
-                bucket=args.s3_bucket,
+                bucket=upload_bucket,
                 prefix=args.s3_prefix,
             )
         except Exception as e:

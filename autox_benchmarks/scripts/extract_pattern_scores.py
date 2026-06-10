@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from autorag_benchmark.config_loader import load_merged_benchmark_config
 from autorag_benchmark.pattern_scores import extract_pattern_scores
+from autorag_benchmark.storage_buckets import resolve_pattern_artifacts_bucket
 
 
 def main():
@@ -33,8 +34,8 @@ def main():
     )
     parser.add_argument(
         "--bucket",
-        default="ai-eng-cracow",
-        help="S3 bucket name (default: ai-eng-cracow)",
+        default=None,
+        help="S3 bucket for pipeline artifacts (default: storage.test_data_bucket_name from .env)",
     )
     args = parser.parse_args()
 
@@ -44,14 +45,21 @@ def main():
         args.env_file.resolve() if args.env_file else None,
     )
 
+    try:
+        bucket = resolve_pattern_artifacts_bucket(cfg, explicit=args.bucket)
+    except ValueError as exc:
+        print(exc, file=sys.stderr)
+        sys.exit(1)
+
     print(f"Extracting pattern scores for run: {args.run_id}")
+    print(f"Bucket: {bucket}")
     print("=" * 80)
 
     # Extract pattern scores
     pattern_scores = extract_pattern_scores(
         run_id=args.run_id,
         config=cfg,
-        bucket=args.bucket,
+        bucket=bucket,
     )
 
     # Check for errors

@@ -7,7 +7,7 @@ This module provides dataset generation for AutoRAG benchmarking, supporting BEI
 Generated datasets are organized in S3 with the following structure:
 
 ```
-s3://ai-eng-cracow/datasets/rag/
+s3://<your-input-bucket>/datasets/rag/
 ├── beir/
 │   ├── scifact/
 │   │   ├── 50/
@@ -83,13 +83,13 @@ cp .env.example .env
 #### OpenRAGBench (50 samples)
 
 ```bash
-# Generate and upload (uses ai-eng-cracow bucket by default)
+# Generate and upload (uses BENCHMARK_INPUT_DATA_BUCKET_NAME from .env)
 python scripts/generate_rag_datasets.py \
   --dataset open_ragbench \
   --num-samples 50 \
   --upload-to-s3
 
-# Result: s3://ai-eng-cracow/datasets/rag/open_ragbench/arxiv/50/
+# Result: s3://<your-bucket>/datasets/rag/open_ragbench/arxiv/50/
 ```
 
 #### BEIR SciFact (100 samples)
@@ -101,7 +101,7 @@ python scripts/generate_rag_datasets.py \
   --num-samples 100 \
   --upload-to-s3
 
-# Result: s3://ai-eng-cracow/datasets/rag/beir/scifact/100/
+# Result: s3://<your-bucket>/datasets/rag/beir/scifact/100/
 ```
 
 #### BEIR NFCorpus (50 samples)
@@ -113,7 +113,7 @@ python scripts/generate_rag_datasets.py \
   --num-samples 50 \
   --upload-to-s3
 
-# Result: s3://ai-eng-cracow/datasets/rag/beir/nfcorpus/50/
+# Result: s3://<your-bucket>/datasets/rag/beir/nfcorpus/50/
 ```
 
 #### SlideVQA Validation (50 samples)
@@ -126,7 +126,7 @@ python scripts/generate_rag_datasets.py \
   --output-format png \
   --upload-to-s3
 
-# Result: s3://ai-eng-cracow/datasets/rag/slidevqa/val/png/50/
+# Result: s3://<your-bucket>/datasets/rag/slidevqa/val/png/50/
 ```
 
 > **Note:** SlideVQA requires accepting the dataset license at [HuggingFace](https://huggingface.co/datasets/NTT-hil-insight/SlideVQA) and authenticating with `huggingface-cli login`.

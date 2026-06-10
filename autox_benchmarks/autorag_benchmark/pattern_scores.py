@@ -9,6 +9,8 @@ from typing import Any
 import boto3
 from botocore.exceptions import ClientError
 
+from autorag_benchmark.storage_buckets import resolve_pattern_artifacts_bucket
+
 logger = logging.getLogger(__name__)
 
 
@@ -36,7 +38,7 @@ def create_s3_client(config: dict[str, Any]):
 def extract_pattern_scores(
     run_id: str,
     config: dict[str, Any],
-    bucket: str = "ai-eng-cracow",
+    bucket: str | None = None,
     pipeline_name: str = "documents-rag-optimization-pipeline",
 ) -> dict[str, Any]:
     """
@@ -51,6 +53,8 @@ def extract_pattern_scores(
     Returns:
         Dict with pattern scores and metadata
     """
+    bucket = resolve_pattern_artifacts_bucket(config, explicit=bucket)
+
     try:
         s3_client = create_s3_client(config)
     except Exception as e:
@@ -177,7 +181,7 @@ def extract_pattern_scores(
 def extract_pattern_scores_tabular(
     run_id: str,
     config: dict[str, Any],
-    bucket: str = "ai-eng-cracow",
+    bucket: str | None = None,
     pipeline_name: str = "documents-rag-optimization-pipeline",
     optimization_metric: str | None = None,
 ) -> list[dict[str, Any]]:
