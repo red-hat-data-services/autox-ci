@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import time
 from collections.abc import Callable
@@ -10,6 +11,8 @@ from urllib.parse import urlparse
 
 from kubernetes import client, config
 from kubernetes.client.rest import ApiException
+
+logger = logging.getLogger(__name__)
 
 _ROUTE_GROUP = "route.openshift.io"
 _ROUTE_VERSION = "v1"
@@ -64,6 +67,17 @@ def create_datascience_pipelines_application(
 
     If ``progress`` is set, it is called with short human-readable status lines (for terminal output).
     """
+    # Validate required parameters
+    if not namespace or not isinstance(namespace, str):
+        return (None, "namespace must be a non-empty string")
+    if not dspa_cfg or not isinstance(dspa_cfg, dict):
+        return (None, "dspa_cfg must be a non-empty dict")
+
+    required_keys = ["api_group", "api_version", "plural"]
+    missing = [k for k in required_keys if k not in dspa_cfg]
+    if missing:
+        return (None, f"dspa_cfg missing required keys: {missing}")
+
     if progress:
         progress("Loading Kubernetes config (kubeconfig or in-cluster)...")
     try:
@@ -81,7 +95,19 @@ def create_datascience_pipelines_application(
             )
 
     if object_storage_secret_name and object_storage_bucket and object_storage_endpoint:
-        scheme, host, port = _parse_object_storage_endpoint(object_storage_endpoint)
+        # Validate endpoint is not empty before parsing
+        if not object_storage_endpoint.strip():
+            return (
+                None,
+                "object_storage_endpoint is empty; provide a valid S3 API URL or omit for internal storage",
+            )
+
+        # Parse endpoint and validate structure
+        try:
+            scheme, host, port = _parse_object_storage_endpoint(object_storage_endpoint)
+        except ValueError as e:
+            return (None, f"Invalid S3 endpoint: {e}")
+
         if not host:
             return (
                 None,
@@ -152,10 +178,12 @@ def create_datascience_pipelines_application(
         },
         "spec": spec,
     }
+    # Create API client once and reuse for create and potential get
+    co = client.CustomObjectsApi()
+
     try:
         if progress:
             progress("Creating DataSciencePipelinesApplication...")
-        co = client.CustomObjectsApi()
         created = co.create_namespaced_custom_object(
             group=dspa_cfg["api_group"],
             version=dspa_cfg["api_version"],
@@ -173,7 +201,6 @@ def create_datascience_pipelines_application(
             if progress:
                 progress("DSPA already exists (409); reusing existing CR")
             try:
-                co = client.CustomObjectsApi()
                 existing = co.get_namespaced_custom_object(
                     group=dspa_cfg["api_group"],
                     version=dspa_cfg["api_version"],
@@ -321,3 +348,37 @@ def get_dspa_route_kfp_base_url(
                 return f"https://{host}".rstrip("/") + "/"
         time.sleep(5)
     return None
+
+
+def verify_kfp_api_health(
+    kfp_url: str,
+    *,
+    timeout_seconds: int = 30,
+    verify_ssl: bool = False,
+) -> bool:
+    """Verify KFP API is responsive by checking /apis/ endpoint.
+
+    Returns True if the API responds with HTTP 200, False otherwise.
+    """
+    try:
+        import requests
+    except ImportError:
+        logger.warning("requests module not available; skipping KFP health check")
+        return True
+
+    endpoint = f"{kfp_url.rstrip('/')}/apis/"
+    deadline = time.monotonic() + timeout_seconds
+
+    while time.monotonic() < deadline:
+        try:
+            resp = requests.get(endpoint, verify=verify_ssl, timeout=10)
+            if resp.status_code == 200:
+                logger.info("KFP API health check passed: %s", endpoint)
+                return True
+            logger.debug("KFP API returned status %d (retrying)", resp.status_code)
+        except requests.exceptions.RequestException as e:
+            logger.debug("KFP API health check failed: %s (retrying)", e)
+        time.sleep(2)
+
+    logger.warning("KFP API health check timed out after %ds: %s", timeout_seconds, endpoint)
+    return False

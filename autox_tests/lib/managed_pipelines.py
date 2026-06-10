@@ -120,17 +120,20 @@ class PipelineRunTarget:
 
 
 def _resolve_latest_pipeline_version_id(client: Any, pipeline_id: str) -> str | None:
-    """Return the newest pipeline version id, or ``None`` if none are listed."""
-    versions = client.list_pipeline_versions(
-        pipeline_id=pipeline_id,
-        page_size=10,
-        sort_by="created_at desc",
-    )
-    version_list = getattr(versions, "pipeline_versions", None) or []
-    if version_list:
-        vid = getattr(version_list[0], "pipeline_version_id", None)
-        if vid:
-            return vid
+    """Return the newest pipeline version id, or ``None`` if none are listed or on error."""
+    try:
+        versions = client.list_pipeline_versions(
+            pipeline_id=pipeline_id,
+            page_size=10,
+            sort_by="created_at desc",
+        )
+        version_list = getattr(versions, "pipeline_versions", None) or []
+        if version_list:
+            vid = getattr(version_list[0], "pipeline_version_id", None)
+            if vid:
+                return vid
+    except Exception as exc:
+        logger.debug("list_pipeline_versions failed for %s: %s", pipeline_id, exc)
     return None
 
 
@@ -205,10 +208,26 @@ def wait_for_managed_pipeline(
     *,
     timeout_seconds: int,
     poll_interval_seconds: float = 10.0,
+    early_exit_checks: int = 3,
 ) -> tuple[str, str | None]:
-    """Poll KFP until a managed pipeline is registered."""
+    """Poll KFP until a managed pipeline is registered.
+
+    Args:
+        client: KFP client instance
+        kfp_pipeline_name: Display name of the pipeline to wait for
+        timeout_seconds: Maximum time to wait
+        poll_interval_seconds: Seconds between poll attempts
+        early_exit_checks: Number of consecutive empty-list checks before raising EnvironmentError
+
+    Raises:
+        EnvironmentError: If pipeline list remains empty after early_exit_checks attempts
+        TimeoutError: If pipeline not found within timeout_seconds
+    """
     deadline = time.monotonic() + timeout_seconds
     last_names: list[str] = []
+    checks = 0
+    consecutive_empty = 0
+
     while time.monotonic() < deadline:
         found, last_names = _find_pipeline_by_display_name(client, kfp_pipeline_name)
         if found:
@@ -220,7 +239,25 @@ def wait_for_managed_pipeline(
                 version_id or "(default)",
             )
             return found
+
+        checks += 1
+
+        # Early exit: if pipeline list is consistently empty, DSPA may not be creating pipelines
+        if not last_names:
+            consecutive_empty += 1
+            if consecutive_empty >= early_exit_checks:
+                elapsed = checks * poll_interval_seconds
+                raise EnvironmentError(
+                    f"No managed pipelines registered in KFP after {elapsed:.0f}s "
+                    f"({consecutive_empty} consecutive empty checks). "
+                    "Verify DSPA spec.apiServer.managedPipelines configuration and check "
+                    "DSPA pod logs for reconciliation errors."
+                )
+        else:
+            consecutive_empty = 0
+
         time.sleep(poll_interval_seconds)
+
     hint = f" Known pipelines: {last_names!r}" if last_names else ""
     raise TimeoutError(
         f"Managed pipeline {kfp_pipeline_name!r} not found in KFP within {timeout_seconds}s.{hint}"
@@ -241,7 +278,7 @@ def resolve_managed_pipeline_target(
     if use_managed_pipelines_from_env():
         kfp_name = get_managed_kfp_pipeline_name(kind)
         wait_timeout = parse_timeout_seconds_from_env(
-            RHOAI_MANAGED_PIPELINE_WAIT_TIMEOUT_ENV, 300
+            RHOAI_MANAGED_PIPELINE_WAIT_TIMEOUT_ENV, 300, max_seconds=600
         )
         pipeline_id, version_id = wait_for_managed_pipeline(
             client,
@@ -311,10 +348,16 @@ def submit_pipeline_run_and_wait(
             exp_name = overridden or "Default"
         try:
             experiment = client.create_experiment(name=exp_name, namespace=namespace)
-        except Exception:
-            experiment = client.get_experiment(
-                experiment_name=exp_name, namespace=namespace
-            )
+        except Exception as e:
+            # Only catch conflict (experiment already exists) - let other errors propagate
+            # KFP SDK doesn't expose specific exception types, so we check the message
+            if "already exists" in str(e).lower() or "conflict" in str(e).lower():
+                experiment = client.get_experiment(
+                    experiment_name=exp_name, namespace=namespace
+                )
+            else:
+                logger.error("Failed to create experiment %r: %s", exp_name, e)
+                raise
         run = client.run_pipeline(
             experiment_id=experiment.experiment_id,
             job_name=run_name,

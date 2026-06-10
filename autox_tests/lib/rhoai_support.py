@@ -63,25 +63,45 @@ def build_temp_kubeconfig(
     }
     fd, path = tempfile.mkstemp(suffix=".kubeconfig", prefix="rhoai-root-tests-")
     os.close(fd)
-    with open(path, "w", encoding="utf-8") as f:
-        yaml.dump(cfg, f, default_flow_style=False, sort_keys=False)
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            yaml.dump(cfg, f, default_flow_style=False, sort_keys=False)
+    except Exception:
+        # Clean up temp file on write failure
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+        raise
     return path
 
 
 def _decode_jwt_sub(token: str) -> str | None:
-    """Extract the ``sub`` claim from a JWT without signature verification."""
+    """Extract the ``sub`` claim from a JWT without signature verification.
+
+    Note: Does not validate token - only extracts payload for ServiceAccount detection.
+    Returns None on any parsing error without exposing token in exception.
+    """
     try:
+        # Validate basic structure before processing to avoid token exposure in exceptions
+        if not token or not isinstance(token, str):
+            return None
+
         parts = token.strip().split(".")
         if len(parts) != 3:
             return None
+
+        # Safe: only the payload is processed, not the full token
         payload_b64 = parts[1]
         padding = 4 - len(payload_b64) % 4
         if padding != 4:
             payload_b64 += "=" * padding
+
         payload = base64.urlsafe_b64decode(payload_b64)
         data = json.loads(payload)
         return data.get("sub")
-    except (ValueError, json.JSONDecodeError, KeyError):
+    except (ValueError, json.JSONDecodeError, KeyError, UnicodeDecodeError):
+        # Return None without re-raising - avoids token appearing in stack traces
         return None
 
 
@@ -258,6 +278,7 @@ def ensure_rhoai_project_and_s3_secret(
     )
 
     def _metadata_patch_body() -> dict:
+        """Build patch body that updates only labels/annotations, not credentials."""
         return {
             "metadata": {
                 "name": metadata.name,
@@ -267,23 +288,29 @@ def ensure_rhoai_project_and_s3_secret(
         }
 
     def _upsert_s3_secret() -> None:
-        if existing_meta is not None and not should_overwrite_s3_secret_keys():
-            v1.patch_namespaced_secret(
-                secret_name, project_name, _metadata_patch_body()
-            )
-            return
-        try:
-            v1.create_namespaced_secret(project_name, secret)
-        except ApiException as e:
-            if e.status == 409:
-                if should_overwrite_s3_secret_keys():
-                    v1.replace_namespaced_secret(secret_name, project_name, secret)
-                else:
-                    v1.patch_namespaced_secret(
-                        secret_name, project_name, _metadata_patch_body()
-                    )
+        """Create or update S3 secret; respect RHOAI_S3_SECRET_OVERWRITE_KEYS setting."""
+        should_overwrite = should_overwrite_s3_secret_keys()
+
+        if existing_meta is not None:
+            # Secret exists - either replace with new credentials or patch metadata only
+            if should_overwrite:
+                v1.replace_namespaced_secret(secret_name, project_name, secret)
             else:
-                raise
+                # Patch labels/annotations only; keep existing credentials from UI/dashboard
+                v1.patch_namespaced_secret(secret_name, project_name, _metadata_patch_body())
+        else:
+            # Secret doesn't exist - create it
+            try:
+                v1.create_namespaced_secret(project_name, secret)
+            except ApiException as e:
+                if e.status == 409:
+                    # Race condition: another process created it between our read and create
+                    if should_overwrite:
+                        v1.replace_namespaced_secret(secret_name, project_name, secret)
+                    else:
+                        v1.patch_namespaced_secret(secret_name, project_name, _metadata_patch_body())
+                else:
+                    raise
 
     try:
         _upsert_s3_secret()

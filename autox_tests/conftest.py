@@ -14,6 +14,7 @@ import pytest
 from autox_tests.lib.dspa_support import (
     create_datascience_pipelines_application,
     get_dspa_route_kfp_base_url,
+    verify_kfp_api_health,
     wait_for_dspa_ready,
 )
 from autox_tests.lib.rhoai_support import (
@@ -100,6 +101,24 @@ def _ensure_datascience_pipelines_application(
                 f"Post-ready buffer: sleeping {buffer_seconds}s before tests continue..."
             )
         time.sleep(buffer_seconds)
+
+        # Verify KFP API is responsive after buffer
+        route_prefix = dspa_cfg.get("route_name_prefix", "ds-pipeline")
+        kfp_url = get_dspa_route_kfp_base_url(
+            namespace,
+            route_name_prefix=route_prefix,
+            timeout_seconds=60,
+            kubeconfig_path=kubeconfig_path,
+        )
+        if kfp_url:
+            verify_ssl = namespace_config.get("kfp_verify_ssl", False)
+            if not verify_kfp_api_health(kfp_url, timeout_seconds=30, verify_ssl=verify_ssl):
+                logger.warning("KFP API not responding after DSPA Ready; tests may fail")
+                if progress:
+                    progress("Warning: KFP API health check failed - tests may be unstable")
+        else:
+            logger.warning("Could not resolve KFP route URL for health check")
+
     return created
 
 

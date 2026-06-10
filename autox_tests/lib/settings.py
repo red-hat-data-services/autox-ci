@@ -7,11 +7,14 @@ Call :func:`load_tests_env` from ``tests/lib/env.py`` before reading configurati
 from __future__ import annotations
 
 import base64
+import logging
 import os
 from pathlib import Path
 from typing import Any
 
 from autox_tests.lib.env import load_tests_env
+
+logger = logging.getLogger(__name__)
 
 # --- AutoML (tabular + timeseries) shared storage / cluster ---
 
@@ -185,15 +188,44 @@ def should_create_dspa_from_env() -> bool:
     return not kfp_url
 
 
-def parse_timeout_seconds_from_env(env_var: str, default: int) -> int:
-    """Parse an integer timeout (seconds) from the environment with a clear error message."""
+def parse_timeout_seconds_from_env(
+    env_var: str,
+    default: int,
+    max_seconds: int | None = None,
+) -> int:
+    """Parse an integer timeout (seconds) from the environment with validation.
+
+    Args:
+        env_var: Environment variable name to read
+        default: Default value if env var is unset or empty
+        max_seconds: Maximum allowed timeout (None for no limit). Values above this
+                     trigger a warning and are capped to max_seconds.
+
+    Returns:
+        Validated timeout in seconds
+
+    Raises:
+        ValueError: If the value is not a valid integer or is negative
+    """
     raw = (os.environ.get(env_var) or "").strip() or str(default)
     try:
-        return int(raw)
+        value = int(raw)
     except ValueError as exc:
         raise ValueError(
             f"{env_var}={raw!r}: expected an integer (seconds)"
         ) from exc
+
+    if value < 0:
+        raise ValueError(f"{env_var}={value}: timeout cannot be negative")
+
+    if max_seconds is not None and value > max_seconds:
+        logger.warning(
+            "%s=%d exceeds recommended maximum %ds; capping to %ds",
+            env_var, value, max_seconds, max_seconds
+        )
+        return max_seconds
+
+    return value
 
 
 def _build_managed_pipelines_spec_from_env() -> dict[str, Any]:
@@ -234,13 +266,13 @@ def get_dspa_config_from_env() -> dict[str, Any] | None:
         "route_name_prefix": os.environ.get(RHOAI_DSPA_ROUTE_NAME_PREFIX_ENV)
         or "ds-pipeline",
         "route_wait_timeout": parse_timeout_seconds_from_env(
-            RHOAI_DSPA_ROUTE_WAIT_TIMEOUT_ENV, 300
+            RHOAI_DSPA_ROUTE_WAIT_TIMEOUT_ENV, 300, max_seconds=600
         ),
         "ready_wait_timeout": parse_timeout_seconds_from_env(
-            RHOAI_DSPA_READY_WAIT_TIMEOUT_ENV, 600
+            RHOAI_DSPA_READY_WAIT_TIMEOUT_ENV, 600, max_seconds=1800
         ),
         "ready_buffer_seconds": parse_timeout_seconds_from_env(
-            RHOAI_DSPA_READY_BUFFER_SECONDS_ENV, 30
+            RHOAI_DSPA_READY_BUFFER_SECONDS_ENV, 30, max_seconds=300
         ),
         "dsp_version": dsp_version,
         "resource_name": dspa_name,
