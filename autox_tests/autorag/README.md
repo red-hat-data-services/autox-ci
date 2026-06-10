@@ -18,19 +18,20 @@ autorag/
 ## Prerequisites
 
 - A RHOAI cluster with Data Science Pipelines enabled.
-- Environment variables for KFP API, bearer token, and pipeline parameters. See `autox_tests/.env.rag.example` for the full template.
-- (Optional) S3 credentials for post-run artifact and notebook validation.
+- An **S3 Data Connection** created in the dashboard for your namespace (see [Running tests (cluster setup)](../README.md#running-tests-cluster-setup) in the parent README). **DSPA is created automatically** when `RHOAI_KFP_URL` is unset.
+- Environment variables for cluster API, bearer token, and pipeline parameters. See `autox_tests/.env.rag.example` for the full template.
+- Do not leave duplicate empty `AWS_*` entries at the bottom of `.env.rag` — they overwrite the S3 Storage block when the file is sourced.
 
 ## Running tests
 
 All tests are run via the repository-level `run_tests.sh` wrapper:
 
 ```bash
-# 1. Copy and fill the env template
+# 1. Copy and fill the env template (RHOAI_URL + AWS_* in S3 Storage; match your UI connection name)
 cp autox_tests/.env.rag.example autox_tests/.env.rag
 
 # 2. Run all AutoRAG functional tests
-./run_tests.sh --env-file autox_tests/.env.rag "autorag"
+./run_tests.sh --suite autorag --env-file autox_tests/.env.rag
 
 # 3. Run only positive scenarios
 ./run_tests.sh --env-file autox_tests/.env.rag "autorag and positive"

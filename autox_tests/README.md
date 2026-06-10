@@ -11,6 +11,39 @@ Two independent suites live here, each with its own env file, config JSON, and p
 
 ---
 
+## Running tests (cluster setup)
+
+### Before the first run
+
+1. **S3 Data Connection (manual, once per namespace)** — In the RHOAI dashboard, create an S3 connection in your project (e.g. name `minio`). Set the same name in `.env` as `RHOAI_TRAIN_S3_SECRET_NAME` (AutoML) or `RHOAI_TEST_S3_SECRET_NAME` / `TEST_DATA_SECRET_NAME` (AutoRAG). Tests only ensure labels on that secret; they do not replace credentials from the UI by default.
+2. **DSPA (automatic)** — You do **not** need `oc apply` for a pipeline server. Leave `RHOAI_KFP_URL` empty: pytest creates a `DataSciencePipelinesApplication` (`RHOAI_DSPA_NAME`, default `dspa`) with `managedPipelines`, waits for it to become Ready, and uses the `ds-pipeline` route. If a DSPA with that name already exists, tests reuse it (HTTP 409).
+
+To use an existing pipeline server instead: set `RHOAI_KFP_URL` and `RHOAI_CREATE_DSPA=false`.
+
+### Commands
+
+```bash
+# AutoML
+cp autox_tests/.env.ml.example autox_tests/.env.ml   # edit cluster + S3 + buckets
+./run_tests.sh --suite automl --env-file autox_tests/.env.ml -t smoke
+
+# AutoRAG
+cp autox_tests/.env.rag.example autox_tests/.env.rag
+./run_tests.sh --suite autorag --env-file autox_tests/.env.rag -t smoke
+```
+
+Container (same flow):
+
+```bash
+podman run --rm -it -v "$(pwd):/workspace:z" -w /workspace \
+  --env-file autox_tests/.env.ml python:3.12 \
+  bash -c 'pip install uv && ./run_tests.sh --suite automl --env-file autox_tests/.env.ml -t smoke'
+```
+
+Managed pipelines are the default (no `pipeline.yaml`). Legacy YAML upload: `RHOAI_USE_MANAGED_PIPELINES=false` or `./run_tests.sh --legacy-pipeline-yaml`.
+
+---
+
 ## Custom test configurations
 
 When `autox-ci` is used as a submodule, downstream repos can supply their own test config JSON files to define different datasets, models, or scenario definitions. Override the built-in configs via environment variables or CLI flags:

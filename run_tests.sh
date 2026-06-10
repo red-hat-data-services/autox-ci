@@ -26,13 +26,14 @@ Options:
                            take precedence (dotenv override=False semantics).
   --extras NAME            uv extras to install (overrides suite default).
                            Comma-separated for multiple, e.g. "test_automl,other".
-  --tabular-pipeline PATH  Path to compiled tabular pipeline YAML
-                           (sets AUTOML_TABULAR_PIPELINE_PATH; AutoML only).
+  --legacy-pipeline-yaml   Upload pipeline.yaml per run (sets RHOAI_USE_MANAGED_PIPELINES=false).
+                           Default: use pipelines from DSPA managedPipelines (no YAML paths).
+  --tabular-pipeline PATH  With --legacy-pipeline-yaml: tabular package path
+                           (sets AUTOML_TABULAR_PIPELINE_PATH).
   --timeseries-pipeline PATH
-                           Path to compiled timeseries pipeline YAML
-                           (sets AUTOML_TIMESERIES_PIPELINE_PATH; AutoML only).
-                           AutoRAG pipeline path is set via AUTORAG_PIPELINE_PATH
-                           in the env file.
+                           With --legacy-pipeline-yaml: timeseries package path
+                           (sets AUTOML_TIMESERIES_PIPELINE_PATH).
+                           AutoRAG legacy: AUTORAG_PIPELINE_PATH in the env file.
   --rag-configs PATH       Custom test_configs.json for AutoRAG scenarios
                            (sets AUTORAG_TEST_CONFIGS_PATH).
   --tabular-configs PATH   Custom tabular_test_configs.json for AutoML tabular
@@ -91,6 +92,7 @@ EXTRAS=""
 DRY_RUN=false
 MARKER_EXPR=""
 TESTS_TAGS=""
+LEGACY_PIPELINE_YAML=false
 TABULAR_PIPELINE=""
 TIMESERIES_PIPELINE=""
 RAG_CONFIGS=""
@@ -119,6 +121,14 @@ while [[ $# -gt 0 ]]; do
         --extras)
             EXTRAS="$2"
             shift 2
+            ;;
+        --legacy-pipeline-yaml)
+            LEGACY_PIPELINE_YAML=true
+            shift
+            ;;
+        --managed-pipelines)
+            echo "warning: --managed-pipelines is deprecated (managed mode is the default)" >&2
+            shift
             ;;
         --tabular-pipeline)
             TABULAR_PIPELINE="$2"
@@ -189,13 +199,35 @@ if [[ ${#ENV_FILES[@]} -gt 0 ]]; then
     done
 fi
 
-# ── Apply pipeline path overrides (automl) ───────────────────────────────────
+# ── DSPA auto-setup (default when RHOAI_KFP_URL is unset in .env) ───────────
 
+if [[ -z "${RHOAI_KFP_URL:-}" && -z "${KFP_HOST:-}" ]]; then
+    case "${RHOAI_CREATE_DSPA:-}" in
+        false|0|no|off) ;;  # user explicitly disabled
+        *) export RHOAI_CREATE_DSPA=true
+           echo "cluster: will create DSPA (RHOAI_KFP_URL unset; set RHOAI_CREATE_DSPA=false to disable)" ;;
+    esac
+fi
+
+# ── Pipeline source: managed KFP (default) vs legacy YAML paths ───────────────
+
+if [[ "$LEGACY_PIPELINE_YAML" == true ]]; then
+    export RHOAI_USE_MANAGED_PIPELINES=false
+    echo "pipeline: legacy package upload (RHOAI_USE_MANAGED_PIPELINES=false)"
+elif [[ -n "${AUTOML_TABULAR_PIPELINE_PATH:-}" || -n "${AUTOML_TIMESERIES_PIPELINE_PATH:-}" || -n "${AUTORAG_PIPELINE_PATH:-}" ]]; then
+    export RHOAI_USE_MANAGED_PIPELINES=false
+    echo "pipeline: legacy package upload (pipeline path set in environment)"
+elif [[ -z "${RHOAI_USE_MANAGED_PIPELINES:-}" ]]; then
+    export RHOAI_USE_MANAGED_PIPELINES=true
+    echo "pipeline: DSPA managed pipelines (default; no pipeline.yaml required)"
+fi
 if [[ -n "$TABULAR_PIPELINE" ]]; then
     export AUTOML_TABULAR_PIPELINE_PATH="$TABULAR_PIPELINE"
+    export RHOAI_USE_MANAGED_PIPELINES=false
 fi
 if [[ -n "$TIMESERIES_PIPELINE" ]]; then
     export AUTOML_TIMESERIES_PIPELINE_PATH="$TIMESERIES_PIPELINE"
+    export RHOAI_USE_MANAGED_PIPELINES=false
 fi
 
 # ── Apply custom test config overrides ───────────────────────────────────────

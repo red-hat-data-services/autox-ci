@@ -7,11 +7,14 @@ Call :func:`load_tests_env` from ``tests/lib/env.py`` before reading configurati
 from __future__ import annotations
 
 import base64
+import logging
 import os
 from pathlib import Path
 from typing import Any
 
 from autox_tests.lib.env import load_tests_env
+
+logger = logging.getLogger(__name__)
 
 # --- AutoML (tabular + timeseries) shared storage / cluster ---
 
@@ -26,6 +29,11 @@ S3_REGION_ENV = "AWS_DEFAULT_REGION"
 S3_BUCKET_DATA_ENV = "RHOAI_TEST_DATA_BUCKET"
 S3_BUCKET_ARTIFACTS_ENV = "RHOAI_TEST_ARTIFACTS_BUCKET"
 S3_SECRET_NAME_ENV = "RHOAI_TEST_S3_SECRET_NAME"
+# AutoML functional tests (rhoai-3.5-ea.2 naming; preferred over legacy TEST_* names)
+RHOAI_TRAIN_DATA_BUCKET_ENV = "RHOAI_TRAIN_DATA_BUCKET"
+RHOAI_TRAIN_S3_SECRET_NAME_ENV = "RHOAI_TRAIN_S3_SECRET_NAME"
+S3_SKIP_SECRET_SETUP_ENV = "RHOAI_SKIP_S3_SECRET_SETUP"
+S3_SECRET_OVERWRITE_KEYS_ENV = "RHOAI_S3_SECRET_OVERWRITE_KEYS"
 S3_CREATE_BUCKET_IF_MISSING_ENV = "RHOAI_TEST_S3_CREATE_BUCKET_IF_MISSING"
 
 # OpenShift API TLS for the Kubernetes client (``RHOAI_URL`` / kubeconfig)
@@ -45,7 +53,11 @@ RHOAI_DSPA_ROUTE_NAME_PREFIX_ENV = "RHOAI_DSPA_ROUTE_NAME_PREFIX"
 RHOAI_DSPA_ROUTE_WAIT_TIMEOUT_ENV = "RHOAI_DSPA_ROUTE_WAIT_TIMEOUT"
 RHOAI_DSPA_READY_WAIT_TIMEOUT_ENV = "RHOAI_DSPA_READY_WAIT_TIMEOUT"
 RHOAI_DSPA_READY_BUFFER_SECONDS_ENV = "RHOAI_DSPA_READY_BUFFER_SECONDS"
-# Optional: in-cluster S3 API URL for DSPA externalStorage only (e.g. HTTP when the public endpoint uses untrusted TLS).
+RHOAI_DSPA_NAME_ENV = "RHOAI_DSPA_NAME"
+RHOAI_DSPA_DSP_VERSION_ENV = "RHOAI_DSPA_DSP_VERSION"
+RHOAI_DSPA_MANAGED_PIPELINES_IMAGE_ENV = "RHOAI_DSPA_MANAGED_PIPELINES_IMAGE"
+RHOAI_DSPA_MANAGED_PIPELINE_NAMES_ENV = "RHOAI_DSPA_MANAGED_PIPELINE_NAMES"
+# Optional DSPA object-storage endpoint override (e.g. in-cluster URL vs public ``AWS_S3_ENDPOINT``).
 INCLUSTER_AWS_S3_ENDPOINT_ENV = "INCLUSTER_AWS_S3_ENDPOINT"
 
 # Optional defaults for ``data_mode=existing_s3`` in JSON (AutoML + AutoRAG)
@@ -130,7 +142,9 @@ def _kube_tls_for_namespace_config() -> tuple[bool, str | None]:
     load_tests_env()
     ca_path = (os.environ.get(RHOAI_OPENSHIFT_CA_BUNDLE_PATH_ENV) or "").strip()
     ca_data = (os.environ.get(RHOAI_OPENSHIFT_CA_DATA_ENV) or "").strip()
-    insecure_raw = (os.environ.get(RHOAI_OPENSHIFT_API_INSECURE_TLS_ENV) or "").strip().lower()
+    insecure_raw = (
+        (os.environ.get(RHOAI_OPENSHIFT_API_INSECURE_TLS_ENV) or "").strip().lower()
+    )
 
     if ca_path:
         p = Path(ca_path).expanduser()
@@ -152,23 +166,120 @@ def _kube_tls_for_namespace_config() -> tuple[bool, str | None]:
     return True, None
 
 
-def get_dspa_config_from_env() -> dict[str, Any] | None:
-    """Return DSPA creation options when ``RHOAI_CREATE_DSPA`` is truthy; else ``None``."""
+_DSPA_CREATE_FALSE = frozenset({"0", "false", "no", "off"})
+_DSPA_CREATE_TRUE = frozenset({"1", "true", "yes", "on"})
+
+
+def should_create_dspa_from_env() -> bool:
+    """Whether the test session should create a DataSciencePipelinesApplication.
+
+    Default: **yes** when ``RHOAI_KFP_URL`` is unset (one-command bootstrap from ``.env``).
+    Set ``RHOAI_CREATE_DSPA=false`` to disable, or set ``RHOAI_KFP_URL`` to use an existing server.
+    """
     load_tests_env()
     raw = (os.environ.get(RHOAI_CREATE_DSPA_ENV) or "").strip().lower().strip("'\"")
-    if raw not in ("1", "true", "yes", "on"):
+    if raw in _DSPA_CREATE_FALSE:
+        return False
+    if raw in _DSPA_CREATE_TRUE:
+        return True
+    kfp_url = (os.environ.get(RHOAI_KFP_URL_ENV) or "").strip() or (
+        os.environ.get(RHOAI_KFP_URL_ENV_ALT) or ""
+    ).strip()
+    return not kfp_url
+
+
+def parse_timeout_seconds_from_env(
+    env_var: str,
+    default: int,
+    max_seconds: int | None = None,
+) -> int:
+    """Parse an integer timeout (seconds) from the environment with validation.
+
+    Args:
+        env_var: Environment variable name to read
+        default: Default value if env var is unset or empty
+        max_seconds: Maximum allowed timeout (None for no limit). Values above this
+                     trigger a warning and are capped to max_seconds.
+
+    Returns:
+        Validated timeout in seconds
+
+    Raises:
+        ValueError: If the value is not a valid integer or is negative
+    """
+    raw = (os.environ.get(env_var) or "").strip() or str(default)
+    try:
+        value = int(raw)
+    except ValueError as exc:
+        raise ValueError(
+            f"{env_var}={raw!r}: expected an integer (seconds)"
+        ) from exc
+
+    if value <= 0:
+        raise ValueError(f"{env_var}={value}: timeout must be a positive integer (seconds)")
+
+    if max_seconds is not None and value > max_seconds:
+        logger.warning(
+            "%s=%d exceeds recommended maximum %ds; capping to %ds",
+            env_var, value, max_seconds, max_seconds
+        )
+        return max_seconds
+
+    return value
+
+
+def _build_managed_pipelines_spec_from_env() -> dict[str, Any]:
+    """Build ``spec.apiServer.managedPipelines`` from env.
+
+    Returns ``{}`` when no image or pipeline names are set; the DSPA CR still gets
+    ``managedPipelines: {}`` so the operator can apply its default managed pipeline set.
+    """
+    image = (os.environ.get(RHOAI_DSPA_MANAGED_PIPELINES_IMAGE_ENV) or "").strip()
+    names_raw = (os.environ.get(RHOAI_DSPA_MANAGED_PIPELINE_NAMES_ENV) or "").strip()
+    if not image and not names_raw:
+        return {}
+    spec: dict[str, Any] = {}
+    if image:
+        spec["image"] = image
+    if names_raw:
+        spec["pipelines"] = [
+            {"name": n.strip()} for n in names_raw.split(",") if n.strip()
+        ]
+    return spec
+
+
+def get_dspa_config_from_env() -> dict[str, Any] | None:
+    """Return DSPA creation options when auto-setup is enabled; else ``None``."""
+    if not should_create_dspa_from_env():
         return None
-    dspa_s3 = (os.environ.get(INCLUSTER_AWS_S3_ENDPOINT_ENV) or "").strip()
+    load_tests_env()
+
+    dsp_version = (os.environ.get(RHOAI_DSPA_DSP_VERSION_ENV) or "").strip() or "v2"
+    dspa_name = (os.environ.get(RHOAI_DSPA_NAME_ENV) or "dspa").strip()
     return {
         "create": True,
-        "api_group": os.environ.get(RHOAI_DSPA_API_GROUP_ENV) or "datasciencepipelinesapplications.opendatahub.io",
+        "api_group": os.environ.get(RHOAI_DSPA_API_GROUP_ENV)
+        or "datasciencepipelinesapplications.opendatahub.io",
         "api_version": os.environ.get(RHOAI_DSPA_API_VERSION_ENV) or "v1",
-        "plural": os.environ.get(RHOAI_DSPA_PLURAL_ENV) or "datasciencepipelinesapplications",
-        "route_name_prefix": os.environ.get(RHOAI_DSPA_ROUTE_NAME_PREFIX_ENV) or "ds-pipeline",
-        "route_wait_timeout": int(os.environ.get(RHOAI_DSPA_ROUTE_WAIT_TIMEOUT_ENV) or "300"),
-        "ready_wait_timeout": int(os.environ.get(RHOAI_DSPA_READY_WAIT_TIMEOUT_ENV) or "600"),
-        "ready_buffer_seconds": int(os.environ.get(RHOAI_DSPA_READY_BUFFER_SECONDS_ENV) or "30"),
-        "object_storage_endpoint": dspa_s3 or None,
+        "plural": os.environ.get(RHOAI_DSPA_PLURAL_ENV)
+        or "datasciencepipelinesapplications",
+        "route_name_prefix": os.environ.get(RHOAI_DSPA_ROUTE_NAME_PREFIX_ENV)
+        or "ds-pipeline",
+        "route_wait_timeout": parse_timeout_seconds_from_env(
+            RHOAI_DSPA_ROUTE_WAIT_TIMEOUT_ENV, 300, max_seconds=600
+        ),
+        "ready_wait_timeout": parse_timeout_seconds_from_env(
+            RHOAI_DSPA_READY_WAIT_TIMEOUT_ENV, 600, max_seconds=1800
+        ),
+        "ready_buffer_seconds": parse_timeout_seconds_from_env(
+            RHOAI_DSPA_READY_BUFFER_SECONDS_ENV, 30, max_seconds=300
+        ),
+        "dsp_version": dsp_version,
+        "resource_name": dspa_name,
+        "managed_pipelines": _build_managed_pipelines_spec_from_env(),
+        "object_storage_endpoint": (
+            (os.environ.get(INCLUSTER_AWS_S3_ENDPOINT_ENV) or "").strip() or None
+        ),
     }
 
 
@@ -186,7 +297,11 @@ def get_rhoai_namespace_setup_config() -> dict[str, Any] | None:
     access = os.environ.get(S3_ACCESS_KEY_ENV)
     secret = os.environ.get(S3_SECRET_KEY_ENV)
     region = os.environ.get(S3_REGION_ENV, "us-east-1")
-    secret_name = os.environ.get(S3_SECRET_NAME_ENV, "s3-connection")
+    secret_name = (
+        (os.environ.get(RHOAI_TRAIN_S3_SECRET_NAME_ENV) or "").strip()
+        or (os.environ.get(S3_SECRET_NAME_ENV) or "").strip()
+        or "s3-connection"
+    )
 
     if not all([url, token, endpoint, access, secret]):
         return None
@@ -218,10 +333,9 @@ def get_rhoai_automl_config() -> dict[str, Any] | None:
     kfp_url = os.environ.get(RHOAI_KFP_URL_ENV)
     bucket_data = os.environ.get(S3_BUCKET_DATA_ENV)
     bucket_artifacts = os.environ.get(S3_BUCKET_ARTIFACTS_ENV)
-    dspa = get_dspa_config_from_env()
     if not bucket_data:
         return None
-    if not kfp_url and not (dspa and dspa.get("create")):
+    if not kfp_url and not should_create_dspa_from_env():
         return None
     return {
         **base,
@@ -240,6 +354,20 @@ def get_test_data_source_defaults() -> dict[str, str | None]:
         "bucket": b.strip() if b else None,
         "prefix": p.strip().strip("/") if p else None,
     }
+
+
+def should_skip_s3_secret_setup() -> bool:
+    """Return whether pytest must not create or modify the S3 connection secret."""
+    load_tests_env()
+    raw = (os.environ.get(S3_SKIP_SECRET_SETUP_ENV) or "").strip().lower()
+    return raw in ("1", "true", "yes", "on")
+
+
+def should_overwrite_s3_secret_keys() -> bool:
+    """Replace credential keys in an existing secret (default: keep UI/dashboard keys)."""
+    load_tests_env()
+    raw = (os.environ.get(S3_SECRET_OVERWRITE_KEYS_ENV) or "").strip().lower()
+    return raw in ("1", "true", "yes", "on")
 
 
 def get_s3_create_bucket_if_missing() -> bool:
@@ -271,7 +399,11 @@ def get_s3_boto_config_from_env() -> dict[str, Any] | None:
 def get_default_upload_bucket_name() -> str | None:
     """Default bucket for uploading test fixtures (AutoRAG / shared uploads)."""
     load_tests_env()
-    raw = (os.environ.get(S3_BUCKET_DATA_ENV) or os.environ.get(TEST_DATA_SOURCE_BUCKET_ENV) or "").strip()
+    raw = (
+        os.environ.get(S3_BUCKET_DATA_ENV)
+        or os.environ.get(TEST_DATA_SOURCE_BUCKET_ENV)
+        or ""
+    ).strip()
     return raw or None
 
 
@@ -290,11 +422,10 @@ def get_autorag_connection_config() -> dict[str, Any] | None:
     s3_secret = (os.environ.get(S3_SECRET_NAME_ENV) or "s3-connection").strip()
     ogx_secret = os.environ.get(OGX_SECRET_ENV)
     vector_io = os.environ.get(VECTOR_IO_PROVIDER_ENV)
-    dspa = get_dspa_config_from_env()
 
     if not all([token, s3_secret, ogx_secret, vector_io]):
         return None
-    if not kfp_url and not (dspa and dspa.get("create")):
+    if not kfp_url and not should_create_dspa_from_env():
         return None
 
     t_bucket = (os.environ.get(TEST_DATA_BUCKET_ENV) or "").strip()
@@ -336,7 +467,12 @@ def get_autorag_config() -> dict[str, Any] | None:
     c = get_autorag_connection_config()
     if c is None:
         return None
-    if not (c["test_data_bucket_name"] and c["test_data_key"] and c["input_data_bucket_name"] and c["input_data_key"]):
+    if not (
+        c["test_data_bucket_name"]
+        and c["test_data_key"]
+        and c["input_data_bucket_name"]
+        and c["input_data_key"]
+    ):
         return None
     return c
 
@@ -351,9 +487,16 @@ def describe_rhoai_automl_config_failure() -> str | None:
         (S3_ACCESS_KEY_ENV, "S3 access key"),
         (S3_SECRET_KEY_ENV, "S3 secret key"),
     ]
-    missing_ns = [f"  - {name} ({why})" for name, why in required_ns if not (os.environ.get(name) or "").strip()]
+    missing_ns = [
+        f"  - {name} ({why})"
+        for name, why in required_ns
+        if not (os.environ.get(name) or "").strip()
+    ]
     if missing_ns:
-        return "Missing environment variables for cluster namespace and S3 secret setup:\n" + "\n".join(missing_ns)
+        return (
+            "Missing environment variables for cluster namespace and S3 secret setup:\n"
+            + "\n".join(missing_ns)
+        )
 
     try:
         ns_probe = get_rhoai_namespace_setup_config()
@@ -391,19 +534,29 @@ def describe_rhoai_automl_config_failure() -> str | None:
 def describe_autorag_connection_config_failure() -> str | None:
     """Return ``None`` if :func:`get_autorag_connection_config` works; else explain gaps."""
     load_tests_env()
-    kfp_url = (os.environ.get(RHOAI_KFP_URL_ENV) or os.environ.get(RHOAI_KFP_URL_ENV_ALT) or "").strip()
-    token = (os.environ.get(RHOAI_TOKEN_ENV) or os.environ.get(RHOAI_TOKEN_ENV_ALT) or "").strip()
+    kfp_url = (
+        os.environ.get(RHOAI_KFP_URL_ENV) or os.environ.get(RHOAI_KFP_URL_ENV_ALT) or ""
+    ).strip()
+    token = (
+        os.environ.get(RHOAI_TOKEN_ENV) or os.environ.get(RHOAI_TOKEN_ENV_ALT) or ""
+    ).strip()
     ogx_secret = (os.environ.get(OGX_SECRET_ENV) or "").strip()
     vector_io = (os.environ.get(VECTOR_IO_PROVIDER_ENV) or "").strip()
     dspa = get_dspa_config_from_env()
 
     lines: list[str] = []
     if not token:
-        lines.append(f"  - {RHOAI_TOKEN_ENV} or {RHOAI_TOKEN_ENV_ALT} (KFP / cluster token)")
+        lines.append(
+            f"  - {RHOAI_TOKEN_ENV} or {RHOAI_TOKEN_ENV_ALT} (KFP / cluster token)"
+        )
     if not ogx_secret:
-        lines.append(f"  - {OGX_SECRET_ENV} (Kubernetes secret with OGX client settings)")
+        lines.append(
+            f"  - {OGX_SECRET_ENV} (Kubernetes secret with OGX client settings)"
+        )
     if not vector_io:
-        lines.append(f"  - {VECTOR_IO_PROVIDER_ENV} (registered vector I/O provider id)")
+        lines.append(
+            f"  - {VECTOR_IO_PROVIDER_ENV} (registered vector I/O provider id)"
+        )
     if not kfp_url and not (dspa and dspa.get("create")):
         lines.append(
             f"  - {RHOAI_KFP_URL_ENV} or {RHOAI_KFP_URL_ENV_ALT} (pipeline API URL), "
@@ -454,8 +607,16 @@ def describe_autorag_integration_failure() -> str | None:
         for c in configs:
             if c.data_mode != "existing_s3":
                 continue
-            tb = c.test_data_bucket or tds.get("bucket") or conn.get("test_data_bucket_name")
-            ib = c.input_data_bucket or tds.get("bucket") or conn.get("input_data_bucket_name")
+            tb = (
+                c.test_data_bucket
+                or tds.get("bucket")
+                or conn.get("test_data_bucket_name")
+            )
+            ib = (
+                c.input_data_bucket
+                or tds.get("bucket")
+                or conn.get("input_data_bucket_name")
+            )
             if not c.test_data_key or not c.input_data_key:
                 return (
                     f"Config {c.id!r} (existing_s3): set test_data_key and input_data_key in "

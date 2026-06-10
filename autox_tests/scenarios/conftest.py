@@ -14,20 +14,19 @@ from typing import Any, Iterator
 
 import pytest
 
-from autox_tests.lib.dspa_support import (
-    create_datascience_pipelines_application,
-    get_dspa_route_kfp_base_url,
-    wait_for_dspa_ready,
-)
+from autox_tests.conftest import _ensure_datascience_pipelines_application
+from autox_tests.lib.dspa_support import get_dspa_route_kfp_base_url
 from autox_tests.lib.env import load_tests_env, resolve_suite_asset_path
-from autox_tests.lib.pytest_terminal import emit_terminal_line
 from autox_tests.lib.pipeline_yaml_sources import (
     PIPELINE_YAML_AUTORAG_ENV,
     PIPELINE_YAML_TABULAR_ENV,
     PIPELINE_YAML_TIMESERIES_ENV,
     resolve_precompiled_pipeline_yaml,
 )
-from autox_tests.lib.rhoai_support import build_temp_kubeconfig, ensure_rhoai_project_and_s3_secret
+from autox_tests.lib.rhoai_support import (
+    build_temp_kubeconfig,
+    ensure_rhoai_project_and_s3_secret,
+)
 from autox_tests.lib.s3_data import ensure_s3_bucket_exists
 from autox_tests.lib.settings import (
     get_autorag_connection_config,
@@ -37,9 +36,12 @@ from autox_tests.lib.settings import (
     get_rhoai_integration_https_verify,
     get_rhoai_namespace_setup_config,
     get_s3_boto_config_from_env,
+    should_create_dspa_from_env,
     get_s3_create_bucket_if_missing,
     rhoai_negative_pipeline_family_allowed,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def pytest_configure(config: pytest.Config) -> None:
@@ -47,7 +49,9 @@ def pytest_configure(config: pytest.Config) -> None:
     load_tests_env()
 
 
-def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+def pytest_collection_modifyitems(
+    config: pytest.Config, items: list[pytest.Item]
+) -> None:
     """Deselect tests that should not run given ``RHOAI_TEST_CONFIG_TAGS``.
 
     * **Positive** ``test_*_rhoai.py`` classes: if JSON tag filtering yields no scenarios for that
@@ -116,7 +120,9 @@ def rhoai_namespace_setup_config() -> dict[str, Any] | None:
 
 
 @pytest.fixture(scope="session")
-def temp_kubeconfig_path(rhoai_namespace_setup_config: dict[str, Any] | None) -> str | None:
+def temp_kubeconfig_path(
+    rhoai_namespace_setup_config: dict[str, Any] | None,
+) -> str | None:
     """Minimal kubeconfig for OpenShift API access (S3 secret + optional ProjectRequest)."""
     if rhoai_namespace_setup_config is None:
         return None
@@ -124,8 +130,12 @@ def temp_kubeconfig_path(rhoai_namespace_setup_config: dict[str, Any] | None) ->
         rhoai_namespace_setup_config["rhoai_url"],
         rhoai_namespace_setup_config["rhoai_token"],
         rhoai_namespace_setup_config["rhoai_project"],
-        insecure_skip_tls_verify=rhoai_namespace_setup_config.get("kube_insecure_skip_tls", True),
-        certificate_authority_data=rhoai_namespace_setup_config.get("kube_certificate_authority_data"),
+        insecure_skip_tls_verify=rhoai_namespace_setup_config.get(
+            "kube_insecure_skip_tls", True
+        ),
+        certificate_authority_data=rhoai_namespace_setup_config.get(
+            "kube_certificate_authority_data"
+        ),
     )
     try:
         yield path
@@ -144,7 +154,9 @@ def rhoai_project_and_s3_secret(
     """Create OpenShift project (if needed) and apply ``RHOAI_TEST_S3_SECRET_NAME`` in ``RHOAI_PROJECT_NAME``."""
     if rhoai_namespace_setup_config is None:
         return None
-    return ensure_rhoai_project_and_s3_secret(rhoai_namespace_setup_config, temp_kubeconfig_path)
+    return ensure_rhoai_project_and_s3_secret(
+        rhoai_namespace_setup_config, temp_kubeconfig_path
+    )
 
 
 @pytest.fixture(scope="session")
@@ -160,18 +172,15 @@ def rhoai_automl_project(
 
 @pytest.fixture(scope="session")
 def datascience_pipelines_application(
-    request: pytest.FixtureRequest,
     rhoai_namespace_setup_config: dict[str, Any] | None,
     rhoai_project_and_s3_secret: str | None,
     temp_kubeconfig_path: str | None,
 ) -> dict[str, Any] | None:
-    """Optionally create a DataSciencePipelinesApplication when ``RHOAI_CREATE_DSPA`` is set."""
-    dspa_cfg = get_dspa_config_from_env()
+    """Create DSPA with managed pipelines when auto-setup is enabled."""
     if (
         rhoai_namespace_setup_config is None
         or rhoai_project_and_s3_secret is None
-        or not dspa_cfg
-        or not dspa_cfg.get("create")
+        or not should_create_dspa_from_env()
     ):
         return None
     try:
@@ -182,58 +191,18 @@ def datascience_pipelines_application(
             "Install with: pip install kubernetes  (or pip install -e '.[test_rhoai]')."
         )
 
-    project = rhoai_project_and_s3_secret
-    bucket = (
-        os.environ.get("RHOAI_TEST_ARTIFACTS_BUCKET") or os.environ.get("RHOAI_TEST_DATA_BUCKET") or ""
-    ).strip()
-    secret_name = rhoai_namespace_setup_config.get("s3_secret_name")
-    endpoint = rhoai_namespace_setup_config.get("s3_endpoint")
-    region = rhoai_namespace_setup_config.get("s3_region")
-    endpoint_for_dspa = (dspa_cfg.get("object_storage_endpoint") or "").strip() or (endpoint or "").strip()
-
     def _dspa_progress(msg: str) -> None:
-        emit_terminal_line(request.config, msg)
+        print(f"\n{msg}", flush=True)
+        logger.info(msg)
 
-    emit_terminal_line(request.config, f"Starting DSPA setup for namespace {project!r}...")
-    created, err = create_datascience_pipelines_application(
-        project,
-        dspa_cfg,
+    _dspa_progress("Starting DSPA setup...")
+
+    return _ensure_datascience_pipelines_application(
+        namespace=rhoai_project_and_s3_secret,
+        namespace_config=rhoai_namespace_setup_config,
         kubeconfig_path=temp_kubeconfig_path,
-        object_storage_secret_name=secret_name if bucket else None,
-        object_storage_endpoint=endpoint_for_dspa if bucket else None,
-        object_storage_region=region if bucket else None,
-        object_storage_bucket=bucket if bucket else None,
         progress=_dspa_progress,
     )
-    if created is None and err:
-        logging.getLogger(__name__).error("DSPA creation failed: %s", err)
-        pytest.fail(f"DataSciencePipelinesApplication creation failed: {err}")
-
-    if created is not None:
-        dspa_name = (created.get("metadata") or {}).get("name", "dspa")
-        namespace = (created.get("metadata") or {}).get("namespace", project)
-        ready_timeout = int(dspa_cfg.get("ready_wait_timeout", 600))
-        buffer_seconds = int(dspa_cfg.get("ready_buffer_seconds", 30))
-        if not wait_for_dspa_ready(
-            namespace,
-            dspa_name,
-            dspa_cfg,
-            kubeconfig_path=temp_kubeconfig_path,
-            timeout_seconds=ready_timeout,
-            progress=_dspa_progress,
-        ):
-            logging.getLogger(__name__).warning(
-                "DSPA %s/%s did not become Ready within %s s; continuing anyway",
-                namespace,
-                dspa_name,
-                ready_timeout,
-            )
-        emit_terminal_line(
-            request.config,
-            f"Post-ready buffer: sleeping {buffer_seconds}s before session tests continue...",
-        )
-        time.sleep(buffer_seconds)
-    return created
 
 
 @pytest.fixture(scope="session")
@@ -292,7 +261,9 @@ def _upload_unique_datasets(
             continue
         full_path = resolve_suite_asset_path(rel_path)
         if not full_path.is_file():
-            pytest.fail(f"Test dataset file is missing from the repository: {full_path}")
+            pytest.fail(
+                f"Test dataset file is missing from the repository: {full_path}"
+            )
         body = full_path.read_bytes()
         key = f"{prefix}/{rel_path}"
         try:
@@ -303,7 +274,9 @@ def _upload_unique_datasets(
                 ContentType="text/csv",
             )
         except Exception as e:
-            pytest.fail(f"Failed to upload test dataset {rel_path!r} to S3 bucket {bucket!r}: {e}")
+            pytest.fail(
+                f"Failed to upload test dataset {rel_path!r} to S3 bucket {bucket!r}: {e}"
+            )
         result[rel_path] = {"bucket": bucket, "key": key}
     return result
 
@@ -366,7 +339,9 @@ def uploaded_autorag_by_config_id(
             pytest.fail(f"AutoRAG benchmark JSON is missing: {bench}")
         input_prefix = f"{base}/input_docs/"
         test_key = f"{base}/benchmark.json"
-        upload_tree_to_s3_prefix(s3_client, bucket=bucket, key_prefix=input_prefix, local_root=doc_dir)
+        upload_tree_to_s3_prefix(
+            s3_client, bucket=bucket, key_prefix=input_prefix, local_root=doc_dir
+        )
         upload_file_to_s3(s3_client, bucket=bucket, key=test_key, local_path=bench)
         result[c.id] = {
             "test_data_bucket_name": bucket,
@@ -389,8 +364,8 @@ def kfp_client_automl(
     import kfp
 
     host: str | None = None
-    dspa_cfg = get_dspa_config_from_env()
-    if datascience_pipelines_application is not None and dspa_cfg and dspa_cfg.get("create"):
+    if datascience_pipelines_application is not None and should_create_dspa_from_env():
+        dspa_cfg = get_dspa_config_from_env() or {}
         ns = (datascience_pipelines_application.get("metadata") or {}).get("namespace")
         if ns:
             host = get_dspa_route_kfp_base_url(
@@ -433,8 +408,8 @@ def kfp_client_autorag(
     import kfp
 
     host: str | None = None
-    dspa_cfg = get_dspa_config_from_env()
-    if datascience_pipelines_application is not None and dspa_cfg and dspa_cfg.get("create"):
+    if datascience_pipelines_application is not None and should_create_dspa_from_env():
+        dspa_cfg = get_dspa_config_from_env() or {}
         ns = (datascience_pipelines_application.get("metadata") or {}).get("namespace")
         if ns:
             host = get_dspa_route_kfp_base_url(

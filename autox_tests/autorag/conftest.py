@@ -6,14 +6,25 @@ import os
 
 import pytest
 
-from autox_tests.lib.clients import make_kfp_client, make_s3_client
+from autox_tests.conftest import make_kfp_client_for_session
+from autox_tests.lib.clients import make_s3_client
 from autox_tests.lib.env import load_tests_env
+from autox_tests.lib.managed_pipelines import (
+    PipelineRunTarget,
+    resolve_managed_pipeline_target,
+    use_managed_pipelines_from_env,
+)
+from autox_tests.lib.pipeline_yaml_sources import PIPELINE_YAML_AUTORAG_ENV
+from autox_tests.lib.settings import (
+    get_rhoai_namespace_setup_config,
+    should_create_dspa_from_env,
+)
 
 logger = logging.getLogger(__name__)
 
 
 def pytest_configure(config: pytest.Config) -> None:
-    """Load env vars from ``autox_tests/.env`` before collection."""
+    """Load env vars from ``.env.rag`` before collection."""
     load_tests_env("autorag")
 
 
@@ -32,52 +43,67 @@ def _parse_json_list(env_name):
 
 
 def get_functional_config():
-    """Build functional test config from environment; None if not configured.
-
-    Relaxed guards compared to integration config (does not require
-    vector_io_provider_id or input_data_key since those are
-    overridden per-scenario). Adds milvus provider IDs and constrained model lists.
-    """
+    """Build functional test config from environment; None if not configured."""
     load_tests_env("autorag")
-
-    kfp_url = os.environ.get("RHOAI_KFP_URL") or os.environ.get("KFP_HOST")
-    token = os.environ.get("RHOAI_TOKEN") or os.environ.get("KFP_TOKEN")
-    project = os.environ.get("RHOAI_PROJECT_NAME") or os.environ.get("KFP_NAMESPACE")
-    t_secret = os.environ.get("TEST_DATA_SECRET_NAME")
-    t_bucket = os.environ.get("TEST_DATA_BUCKET_NAME")
-    i_secret = os.environ.get("INPUT_DATA_SECRET_NAME")
-    i_bucket = os.environ.get("INPUT_DATA_BUCKET_NAME")
-    ogx_secret = os.environ.get("OGX_SECRET_NAME")
-
-    if not all([kfp_url, token, t_secret, t_bucket, i_secret, i_bucket, ogx_secret]):
+    base = get_rhoai_namespace_setup_config()
+    if base is None:
         return None
 
-    endpoint = os.environ.get("ARTIFACTS_AWS_S3_ENDPOINT")
-    access = os.environ.get("ARTIFACTS_AWS_ACCESS_KEY_ID")
-    secret = os.environ.get("ARTIFACTS_AWS_SECRET_ACCESS_KEY")
-    region = os.environ.get("ARTIFACTS_AWS_DEFAULT_REGION", "us-east-1")
-    bucket_artifacts = os.environ.get("RHOAI_TEST_ARTIFACTS_BUCKET")
+    kfp_url = (os.environ.get("RHOAI_KFP_URL") or os.environ.get("KFP_HOST") or "").strip()
+    if not kfp_url and not should_create_dspa_from_env():
+        logger.info("Set RHOAI_KFP_URL or enable DSPA auto-setup (default when KFP URL is unset).")
+        return None
 
-    base = {
-        "rhoai_kfp_url": kfp_url.strip().rstrip("/"),
-        "rhoai_token": token.strip(),
-        "rhoai_project": (project or "").strip(),
-        "test_data_secret_name": t_secret.strip(),
-        "test_data_bucket_name": t_bucket.strip(),
-        "input_data_secret_name": i_secret.strip(),
-        "input_data_bucket_name": i_bucket.strip(),
-        "ogx_secret_name": ogx_secret.strip(),
-        "s3_endpoint": endpoint.strip() if endpoint else None,
-        "s3_access_key": access.strip() if access else None,
-        "s3_secret_key": secret.strip() if secret else None,
-        "s3_region": region.strip(),
-        "s3_bucket_artifacts": bucket_artifacts.strip() if bucket_artifacts else None,
+    default_secret = (
+        (os.environ.get("RHOAI_TRAIN_S3_SECRET_NAME") or "").strip()
+        or (os.environ.get("RHOAI_TEST_S3_SECRET_NAME") or base.get("s3_secret_name") or "").strip()
+    )
+    t_secret = (os.environ.get("TEST_DATA_SECRET_NAME") or default_secret).strip()
+    i_secret = (os.environ.get("INPUT_DATA_SECRET_NAME") or default_secret).strip()
+    t_bucket = (os.environ.get("TEST_DATA_BUCKET_NAME") or "").strip()
+    i_bucket = (os.environ.get("INPUT_DATA_BUCKET_NAME") or "").strip()
+    ogx_secret = (os.environ.get("OGX_SECRET_NAME") or "").strip()
+
+    if not all([base.get("rhoai_token"), t_secret, t_bucket, i_secret, i_bucket, ogx_secret]):
+        return None
+
+    if not use_managed_pipelines_from_env():
+        if not (os.environ.get(PIPELINE_YAML_AUTORAG_ENV) or "").strip():
+            return None
+
+    endpoint = (
+        (os.environ.get("ARTIFACTS_AWS_S3_ENDPOINT") or "").strip()
+        or base.get("s3_endpoint")
+    )
+    access = (
+        (os.environ.get("ARTIFACTS_AWS_ACCESS_KEY_ID") or "").strip()
+        or base.get("s3_access_key")
+    )
+    secret = (
+        (os.environ.get("ARTIFACTS_AWS_SECRET_ACCESS_KEY") or "").strip()
+        or base.get("s3_secret_key")
+    )
+    region = (
+        (os.environ.get("ARTIFACTS_AWS_DEFAULT_REGION") or "").strip()
+        or base.get("s3_region")
+        or "us-east-1"
+    )
+    bucket_artifacts = (os.environ.get("RHOAI_TEST_ARTIFACTS_BUCKET") or "").strip()
+
+    return {
+        **base,
+        "rhoai_kfp_url": kfp_url.rstrip("/") if kfp_url else None,
+        "test_data_secret_name": t_secret,
+        "test_data_bucket_name": t_bucket,
+        "input_data_secret_name": i_secret,
+        "input_data_bucket_name": i_bucket,
+        "ogx_secret_name": ogx_secret,
+        "s3_endpoint": endpoint,
+        "s3_access_key": access,
+        "s3_secret_key": secret,
+        "s3_region": region,
+        "s3_bucket_artifacts": bucket_artifacts or None,
     }
-    if not base["rhoai_project"]:
-        logger.info("Missing RHOAI_PROJECT_NAME. Functional config cannot be created.")
-        return None
-
-    return base
 
 
 @pytest.fixture(scope="session")
@@ -87,33 +113,47 @@ def functional_env_config():
 
 
 @pytest.fixture(scope="session")
-def kfp_client_functional(functional_env_config):
-    """Session-scoped KFP client for functional tests."""
-    return make_kfp_client(functional_env_config)
+def kfp_client_functional(
+    functional_env_config,
+    datascience_pipelines_application,
+    rhoai_cluster_kubeconfig,
+):
+    """KFP client: ``RHOAI_KFP_URL`` or route from auto-created / existing DSPA."""
+    if functional_env_config is None:
+        return None
+    try:
+        return make_kfp_client_for_session(
+            namespace_config=functional_env_config,
+            configured_kfp_url=functional_env_config.get("rhoai_kfp_url"),
+            datascience_pipelines_application=datascience_pipelines_application,
+            kubeconfig_path=rhoai_cluster_kubeconfig,
+        )
+    except RuntimeError as e:
+        pytest.fail(str(e))
 
 
 @pytest.fixture(scope="session")
 def s3_client_functional(functional_env_config):
     """Session-scoped S3 client for functional test artifact checks (optional)."""
+    if functional_env_config is None:
+        return None
     return make_s3_client(functional_env_config)
 
 
 @pytest.fixture(scope="session")
-def compiled_pipeline_path(tmp_path_factory):
-    """Resolve AutoRAG pipeline YAML: local path, URL, or GitHub default.
-
-    Set ``AUTORAG_PIPELINE_PATH`` to a local file, an ``https://`` URL, or leave
-    unset to download from the default pipelines-components GitHub repo.
-    """
-    from autox_tests.lib.pipeline_yaml_sources import resolve_precompiled_pipeline_yaml
-
+def autorag_pipeline_run_target(kfp_client_functional, tmp_path_factory):
+    """AutoRAG pipeline: managed KFP registration or legacy ``AUTORAG_PIPELINE_PATH`` package."""
+    if not kfp_client_functional:
+        pytest.skip("KFP client not available — skipping pipeline run target resolution")
     try:
-        return resolve_precompiled_pipeline_yaml(
-            path_env_var="AUTORAG_PIPELINE_PATH",
-            cache_dir=tmp_path_factory.mktemp("pipeline-yaml"),
+        return resolve_managed_pipeline_target(
+            kfp_client_functional,
+            kind="autorag",
+            path_env_var=PIPELINE_YAML_AUTORAG_ENV,
+            cache_dir=tmp_path_factory.mktemp("pipeline-yaml-autorag"),
             cache_file_name="documents-rag-optimization-pipeline.yaml",
         )
-    except (FileNotFoundError, OSError, RuntimeError) as e:
+    except (FileNotFoundError, OSError, RuntimeError, TimeoutError, EnvironmentError) as e:
         pytest.fail(str(e))
 
 

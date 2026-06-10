@@ -24,14 +24,18 @@ pyproject.toml          Dependencies, extras, and pytest markers
 
 ## Quick start
 
-```bash
-# AutoRAG
-cp autox_tests/.env.rag.example autox_tests/.env.rag
-./run_tests.sh --env-file autox_tests/.env.rag "autorag and positive"
+1. In the RHOAI UI, create an **S3 Data Connection** in your test namespace (e.g. `minio`) and point `.env` at that secret name.
+2. Copy and fill the env template — leave **`RHOAI_KFP_URL` unset** so tests auto-create **DSPA** and import managed pipelines.
+3. Run via `run_tests.sh` (details: [autox_tests/README.md](autox_tests/README.md#running-tests-cluster-setup)).
 
+```bash
 # AutoML
 cp autox_tests/.env.ml.example autox_tests/.env.ml
-./run_tests.sh --env-file autox_tests/.env.ml --extras test_automl "tabular or timeseries"
+./run_tests.sh --suite automl --env-file autox_tests/.env.ml -t smoke
+
+# AutoRAG
+cp autox_tests/.env.rag.example autox_tests/.env.rag
+./run_tests.sh --suite autorag --env-file autox_tests/.env.rag -t smoke
 ```
 
 ## Test runner (`run_tests.sh`)

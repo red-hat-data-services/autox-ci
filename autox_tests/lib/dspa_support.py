@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+import os
 import time
 from collections.abc import Callable
 from typing import Any
@@ -10,40 +12,52 @@ from urllib.parse import urlparse
 from kubernetes import client, config
 from kubernetes.client.rest import ApiException
 
+logger = logging.getLogger(__name__)
+
 _ROUTE_GROUP = "route.openshift.io"
 _ROUTE_VERSION = "v1"
 _ROUTE_PLURAL = "routes"
 
 
 def _brief_dsp_conditions(conditions: list[Any]) -> str:
-    """Format DSPA status conditions into a compact summary string for progress output."""
+    """Format DSPA status conditions for progress.
+
+    Includes error messages for failed conditions (status != "True") to aid debugging
+    without exposing sensitive credential data.
+    """
     if not conditions:
         return "no conditions in status yet"
     parts: list[str] = []
     for c in conditions[:8]:
         t = c.get("type") or "?"
         st = c.get("status") or "?"
-        parts.append(f"{t}={st}")
+        extra = ""
+        # Include failure reason for non-True conditions (e.g., ObjectStoreAvailable=False)
+        if st != "True":
+            msg = (c.get("message") or c.get("reason") or "").strip()
+            if msg:
+                # Truncate long messages but keep actionable S3/endpoint errors visible
+                extra = f" ({msg[:100]}{'…' if len(msg) > 100 else ''})"
+        parts.append(f"{t}={st}{extra}")
     return "; ".join(parts)
 
 
 def _parse_object_storage_endpoint(endpoint: str) -> tuple[str, str, str]:
-    """Split an S3 API endpoint into ``(scheme, hostname, port)`` for DSPA ``externalStorage``.
-
-    Accepts a full URL (``http://`` or ``https://``) or a ``host[:port]`` string (treated as HTTPS).
-    """
+    """Split an S3 API endpoint into ``(scheme, hostname, port)`` for DSPA ``externalStorage``."""
     raw = (endpoint or "").strip()
     if not raw:
-        return ("https", "", "")
+        raise ValueError("S3 endpoint is empty")
     if "://" not in raw:
         raw = f"https://{raw}"
-    p = urlparse(raw)
-    scheme = (p.scheme or "https").lower()
+    parsed = urlparse(raw)
+    scheme = (parsed.scheme or "https").lower()
     if scheme not in ("http", "https"):
         scheme = "https"
-    host = p.hostname or ""
-    port = str(p.port) if p.port else ""
-    return (scheme, host, port)
+    host = parsed.hostname or ""
+    if not host:
+        raise ValueError(f"Could not parse host from S3 endpoint {endpoint!r}")
+    port = str(parsed.port) if parsed.port else ""
+    return scheme, host, port
 
 
 def create_datascience_pipelines_application(
@@ -55,7 +69,7 @@ def create_datascience_pipelines_application(
     object_storage_region: str | None = None,
     object_storage_secret_name: str | None = None,
     object_storage_bucket: str | None = None,
-    resource_name: str = "dspa",
+    resource_name: str | None = None,
     progress: Callable[[str], None] | None = None,
 ) -> tuple[dict[str, Any] | None, str | None]:
     """Create a DataSciencePipelinesApplication CR; on 409 return existing CR.
@@ -64,6 +78,17 @@ def create_datascience_pipelines_application(
 
     If ``progress`` is set, it is called with short human-readable status lines (for terminal output).
     """
+    # Validate required parameters
+    if not namespace or not isinstance(namespace, str):
+        return (None, "namespace must be a non-empty string")
+    if not dspa_cfg or not isinstance(dspa_cfg, dict):
+        return (None, "dspa_cfg must be a non-empty dict")
+
+    required_keys = ["api_group", "api_version", "plural"]
+    missing = [k for k in required_keys if k not in dspa_cfg]
+    if missing:
+        return (None, f"dspa_cfg missing required keys: {missing}")
+
     if progress:
         progress("Loading Kubernetes config (kubeconfig or in-cluster)...")
     try:
@@ -81,57 +106,95 @@ def create_datascience_pipelines_application(
             )
 
     if object_storage_secret_name and object_storage_bucket and object_storage_endpoint:
-        scheme, host, port = _parse_object_storage_endpoint(object_storage_endpoint)
+        # Validate endpoint is not empty before parsing
+        if not object_storage_endpoint.strip():
+            return (
+                None,
+                "object_storage_endpoint is empty; provide a valid S3 API URL or omit for internal storage",
+            )
+
+        # Parse endpoint and validate structure
+        try:
+            scheme, host, port = _parse_object_storage_endpoint(object_storage_endpoint)
+        except ValueError as e:
+            return (None, f"Invalid S3 endpoint: {e}")
+
         if not host:
             return (
                 None,
                 f"Invalid object storage endpoint {object_storage_endpoint!r}: could not determine hostname "
                 "(use a full URL, e.g. http://minio.minio.svc:9000)",
             )
-        object_storage: dict[str, Any] = {
-            "externalStorage": {
-                "basePath": "",
-                "bucket": object_storage_bucket,
-                "host": host,
-                "port": port,
-                "region": object_storage_region or "",
-                "s3CredentialsSecret": {
-                    "accessKey": "AWS_ACCESS_KEY_ID",
-                    "secretKey": "AWS_SECRET_ACCESS_KEY",
-                    "secretName": object_storage_secret_name,
-                },
-                "scheme": scheme,
-            }
+        external_storage: dict[str, Any] = {
+            "basePath": "",
+            "bucket": object_storage_bucket,
+            "host": host,
+            "region": object_storage_region or "",
+            "s3CredentialsSecret": {
+                "accessKey": "AWS_ACCESS_KEY_ID",
+                "secretKey": "AWS_SECRET_ACCESS_KEY",
+                "secretName": object_storage_secret_name,
+            },
+            "scheme": scheme,
         }
+        if port:
+            external_storage["port"] = port
+        disable_hc = (
+            (os.environ.get("RHOAI_DSPA_OBJECT_STORAGE_DISABLE_HEALTH_CHECK") or "")
+            .strip()
+            .lower()
+        )
+        if disable_hc in ("1", "true", "yes", "on"):
+            object_storage = {
+                "disableHealthCheck": True,
+                "externalStorage": external_storage,
+            }
+        else:
+            object_storage = {"externalStorage": external_storage}
         if progress:
-            port_s = f":{port}" if port else ""
-            progress(
-                f"DSPA will use external S3 storage ({scheme}://{host}{port_s}, bucket={object_storage_bucket!r})."
-            )
+            progress("Configuring external object storage for DSPA")
     else:
         object_storage = {"internal": {}}
         if progress:
-            progress("DSPA will use internal/default object storage (no external S3 block in CR).")
+            progress("Using internal/default object storage for DSPA")
+
+    spec: dict[str, Any] = {
+        "objectStorage": object_storage,
+        "podToPodTLS": False,
+    }
+    dsp_version = (dspa_cfg.get("dsp_version") or "").strip()
+    if dsp_version:
+        spec["dspVersion"] = dsp_version
+
+    dspa_name = (resource_name or dspa_cfg.get("resource_name") or "dspa").strip()
+
+    managed_pipelines = dspa_cfg.get("managed_pipelines")
+    if managed_pipelines is not None:
+        api_server: dict[str, Any] = {
+            "enableSamplePipeline": False,
+            "managedPipelines": managed_pipelines,
+        }
+        if progress:
+            progress("Managed pipelines enabled in DSPA spec")
+        spec["apiServer"] = api_server
+    elif progress:
+        progress("DSPA spec has no managedPipelines block")
 
     body = {
         "apiVersion": f"{dspa_cfg['api_group']}/{dspa_cfg['api_version']}",
         "kind": "DataSciencePipelinesApplication",
         "metadata": {
-            "name": resource_name,
+            "name": dspa_name,
             "namespace": namespace,
         },
-        "spec": {
-            "objectStorage": object_storage,
-            "podToPodTLS": False,
-        },
+        "spec": spec,
     }
-    dspa_name = body["metadata"]["name"]
+    # Create API client once and reuse for create and potential get
+    co = client.CustomObjectsApi()
+
     try:
         if progress:
-            progress(
-                f"Creating DataSciencePipelinesApplication {dspa_name!r} in namespace {namespace!r}..."
-            )
-        co = client.CustomObjectsApi()
+            progress("Creating DataSciencePipelinesApplication...")
         created = co.create_namespaced_custom_object(
             group=dspa_cfg["api_group"],
             version=dspa_cfg["api_version"],
@@ -140,16 +203,15 @@ def create_datascience_pipelines_application(
             body=body,
         )
         if progress:
-            progress("DataSciencePipelinesApplication created; cluster is reconciling the CR.")
+            progress(
+                "DataSciencePipelinesApplication created; cluster is reconciling the CR."
+            )
         return (created, None)
     except ApiException as e:
         if e.status == 409:
             if progress:
-                progress(
-                    f"DSPA {dspa_name!r} already exists (409); fetching existing CR from namespace {namespace!r}..."
-                )
+                progress("DSPA already exists (409); reusing existing CR")
             try:
-                co = client.CustomObjectsApi()
                 existing = co.get_namespaced_custom_object(
                     group=dspa_cfg["api_group"],
                     version=dspa_cfg["api_version"],
@@ -211,10 +273,7 @@ def wait_for_dspa_ready(
     deadline = start + timeout_seconds
     last_progress = start - progress_interval_seconds
     if progress:
-        progress(
-            f"Waiting for DSPA {dspa_name!r} Ready=True in namespace {namespace!r} "
-            f"(timeout {timeout_seconds}s)..."
-        )
+        progress(f"Waiting for DSPA Ready=True (timeout {timeout_seconds}s)...")
     while time.monotonic() < deadline:
         try:
             cr = co.get_namespaced_custom_object(
@@ -236,7 +295,7 @@ def wait_for_dspa_ready(
         for c in conditions:
             if (c.get("type") or "") == "Ready" and (c.get("status") or "") == "True":
                 if progress:
-                    progress(f"DSPA {dspa_name!r} reports Ready=True.")
+                    progress("DSPA reports Ready=True")
                 return True
         now = time.monotonic()
         if progress and now - last_progress >= progress_interval_seconds:
@@ -244,11 +303,11 @@ def wait_for_dspa_ready(
             elapsed = now - start
             brief = _brief_dsp_conditions(conditions)
             progress(
-                f"Still waiting for Ready... {elapsed:.0f}s / {timeout_seconds}s — {brief}"
+                f"Still waiting for DSPA Ready=True: {elapsed:.0f}s / {timeout_seconds}s ({brief})"
             )
         time.sleep(10)
     if progress:
-        progress(f"Timed out after {timeout_seconds}s; Ready=True not observed.")
+        progress(f"Timed out after {timeout_seconds}s waiting for DSPA Ready=True")
     return False
 
 
@@ -300,3 +359,43 @@ def get_dspa_route_kfp_base_url(
                 return f"https://{host}".rstrip("/") + "/"
         time.sleep(5)
     return None
+
+
+def verify_kfp_api_health(
+    kfp_url: str,
+    *,
+    timeout_seconds: int = 30,
+    verify_ssl: bool = False,
+) -> bool:
+    """Verify KFP API is responsive by checking /apis/ endpoint.
+
+    Returns True if the API responds with HTTP 200, False otherwise.
+    """
+    try:
+        import requests
+    except ImportError:
+        logger.warning("requests module not available; skipping KFP health check")
+        return True
+
+    endpoint = f"{kfp_url.rstrip('/')}/apis/"
+    deadline = time.monotonic() + timeout_seconds
+
+    if not verify_ssl:
+        logger.warning(
+            "KFP health check: TLS verification disabled (verify_ssl=False) for %s",
+            endpoint,
+        )
+
+    while time.monotonic() < deadline:
+        try:
+            resp = requests.get(endpoint, verify=verify_ssl, timeout=10)
+            if resp.status_code == 200:
+                logger.info("KFP API health check passed: %s", endpoint)
+                return True
+            logger.debug("KFP API returned status %d (retrying)", resp.status_code)
+        except requests.exceptions.RequestException as e:
+            logger.debug("KFP API health check failed: %s (retrying)", e)
+        time.sleep(2)
+
+    logger.warning("KFP API health check timed out after %ds: %s", timeout_seconds, endpoint)
+    return False

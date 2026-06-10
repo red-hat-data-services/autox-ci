@@ -46,9 +46,6 @@ DOCRAG_FUNCTIONAL_CONFIG = get_functional_config()
 POSITIVE_CONFIGS_FOR_RUN = get_test_configs_for_run(pass_type="positive")
 NEGATIVE_CONFIGS_FOR_RUN = get_test_configs_for_run(pass_type="negative")
 
-# Pipeline display name in KFP (from pipeline decorator)
-PIPELINE_DISPLAY_NAME = "documents-rag-optimization-pipeline"
-
 # Shorter timeout for expected-fail tests (failures should surface quickly)
 _EXPECTED_FAIL_TIMEOUT_CAP = 600
 
@@ -70,7 +67,7 @@ class TestAutoRAGFunctional:
         test_scenario_config: AutoRAGTestConfig,
         functional_env_config,
         kfp_client_functional,
-        compiled_pipeline_path,
+        autorag_pipeline_run_target,
         pipeline_run_timeout,
         s3_client_functional,
     ):
@@ -84,7 +81,7 @@ class TestAutoRAGFunctional:
 
         run_id, detail = _run_pipeline_and_wait(
             kfp_client_functional,
-            compiled_pipeline_path,
+            autorag_pipeline_run_target,
             arguments,
             timeout,
         )
@@ -107,7 +104,7 @@ class TestAutoRAGFunctional:
         test_scenario_config: AutoRAGTestConfig,
         functional_env_config,
         kfp_client_functional,
-        compiled_pipeline_path,
+        autorag_pipeline_run_target,
         pipeline_run_timeout,
         s3_client_functional,
     ):
@@ -125,7 +122,7 @@ class TestAutoRAGFunctional:
 
         run_id, detail = _run_pipeline_and_wait(
             kfp_client_functional,
-            compiled_pipeline_path,
+            autorag_pipeline_run_target,
             arguments,
             timeout,
         )
@@ -143,7 +140,7 @@ class TestAutoRAGFunctional:
             return
 
         artifact_bucket = functional_env_config["s3_bucket_artifacts"]
-        prefix = f"{PIPELINE_DISPLAY_NAME}/{run_id}"
+        prefix = f"{autorag_pipeline_run_target.artifact_prefix}/{run_id}"
         artifacts = _validate_artifacts_in_s3(s3_client_functional, artifact_bucket, prefix)
 
         assert len(artifacts["pattern_keys"]) >= 1, (
