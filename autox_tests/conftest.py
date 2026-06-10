@@ -30,9 +30,6 @@ from autox_tests.lib.settings import (
 logger = logging.getLogger(__name__)
 
 
-_DSPA_PROGRESS_LINE = "DSPA progress update emitted"
-
-
 def _ensure_datascience_pipelines_application(
     *,
     namespace: str,
@@ -57,9 +54,7 @@ def _ensure_datascience_pipelines_application(
     endpoint_for_dspa = (endpoint or "").strip()
 
     if progress:
-        progress(
-            f"Creating DataSciencePipelinesApplication in namespace {namespace!r}..."
-        )
+        progress("Creating DataSciencePipelinesApplication...")
 
     created, err = create_datascience_pipelines_application(
         namespace,
@@ -88,14 +83,12 @@ def _ensure_datascience_pipelines_application(
             progress=progress,
         ):
             logger.warning(
-                "DSPA %s/%s did not become Ready within %s s; continuing anyway",
-                namespace,
-                dspa_name,
+                "DSPA did not become Ready within %s s; continuing anyway",
                 ready_timeout,
             )
         if progress:
             progress(
-                f"DSPA ready buffer: sleeping {buffer_seconds}s before tests continue..."
+                f"Post-ready buffer: sleeping {buffer_seconds}s before tests continue..."
             )
         time.sleep(buffer_seconds)
     return created
@@ -207,18 +200,11 @@ def datascience_pipelines_application(
             "Install with: uv sync --extra test_automl"
         )
 
-    def _progress(_msg: str) -> None:
-        logger.info(_DSPA_PROGRESS_LINE)
-        try:
-            from autox_tests.lib.pytest_terminal import emit_terminal_line
-
-            emit_terminal_line(request.config, _DSPA_PROGRESS_LINE)
-        except Exception:
-            pass
+    def _progress(msg: str) -> None:
+        logger.info(msg)
 
     _progress(
-        f"Auto-setup: creating DSPA in project {rhoai_project_and_s3_secret!r} "
-        "(set RHOAI_KFP_URL to use an existing pipeline server instead)."
+        "Auto-setup: creating DSPA (leave RHOAI_KFP_URL unset or set RHOAI_CREATE_DSPA=true)"
     )
 
     return _ensure_datascience_pipelines_application(

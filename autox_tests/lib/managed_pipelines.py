@@ -30,6 +30,12 @@ ARTIFACT_PREFIX_TABULAR_ENV = "RHOAI_TABULAR_PIPELINE_ARTIFACT_PREFIX"
 ARTIFACT_PREFIX_TIMESERIES_ENV = "RHOAI_TIMESERIES_PIPELINE_ARTIFACT_PREFIX"
 ARTIFACT_PREFIX_AUTORAG_ENV = "RHOAI_AUTORAG_PIPELINE_ARTIFACT_PREFIX"
 
+_PIPELINE_DEFAULT_NAMES: dict[str, str] = {
+    "tabular": "autogluon-tabular-training-pipeline",
+    "timeseries": "autogluon-timeseries-training-pipeline",
+    "autorag": "documents-rag-optimization-pipeline",
+}
+
 _LEGACY_PACKAGE_PATH_ENVS = (
     PIPELINE_YAML_TABULAR_ENV,
     PIPELINE_YAML_TIMESERIES_ENV,
@@ -79,29 +85,26 @@ def get_managed_kfp_pipeline_name(
         "timeseries": KFP_NAME_TIMESERIES_ENV,
         "autorag": KFP_NAME_AUTORAG_ENV,
     }
-    default_by_kind = {
-        "tabular": "autogluon_tabular_training_pipeline",
-        "timeseries": "autogluon_timeseries_training_pipeline",
-        "autorag": "documents_rag_optimization_pipeline",
-    }
-    return _env_or_default(env_by_kind[kind], default_by_kind[kind])
+    return _env_or_default(env_by_kind[kind], _PIPELINE_DEFAULT_NAMES[kind])
 
 
 def get_pipeline_artifact_prefix(
     kind: Literal["tabular", "timeseries", "autorag"],
 ) -> str:
-    """Return the S3 artifact path prefix segment for a pipeline run."""
+    """Return the S3 artifact path prefix segment for a pipeline run.
+
+    Uses ``RHOAI_*_PIPELINE_ARTIFACT_PREFIX`` when set; otherwise the managed
+    pipeline display name (``RHOAI_MANAGED_PIPELINE_*`` or the built-in default).
+    """
     env_by_kind = {
         "tabular": ARTIFACT_PREFIX_TABULAR_ENV,
         "timeseries": ARTIFACT_PREFIX_TIMESERIES_ENV,
         "autorag": ARTIFACT_PREFIX_AUTORAG_ENV,
     }
-    default_by_kind = {
-        "tabular": "autogluon-tabular-training-pipeline",
-        "timeseries": "autogluon-timeseries-training-pipeline",
-        "autorag": "documents-rag-optimization-pipeline",
-    }
-    return _env_or_default(env_by_kind[kind], default_by_kind[kind])
+    override = (os.environ.get(env_by_kind[kind]) or "").strip()
+    if override:
+        return override
+    return get_managed_kfp_pipeline_name(kind)
 
 
 @dataclass(frozen=True)
