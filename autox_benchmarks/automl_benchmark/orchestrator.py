@@ -394,4 +394,15 @@ class BenchmarkOrchestrator:
                     dataset_filter=dataset_filter,
                     repo_root=repo_root,
                 )
+
+            from benchmark_common.mlflow_batch import log_batch_to_mlflow
+
+            log_batch_to_mlflow(
+                cfg=cfg,
+                bucket=settings.train_data_bucket_name,
+                benchmark_s3_prefix=settings.benchmark_s3_prefix,
+                batch_id=batch_id,
+                output_csv=output_csv.resolve(),
+                benchmark_kind="automl",
+            )
         return 0

@@ -54,8 +54,9 @@ Optional extras:
 ```bash
 pip install -e ".[compare]"    # Streamlit compare UI
 pip install -e ".[datasets]"   # RAG dataset generation (beir, huggingface-hub, etc.)
-pip install -e ".[all]"        # compare + datasets
+pip install -e ".[all]"        # compare + datasets + mlflow
 pip install -e ".[dev]"        # pytest
+pip install -e ".[mlflow]"     # automatic MLflow ingest after benchmarks
 ```
 
 ## Quick Start
@@ -460,6 +461,31 @@ pytest tests/ -v
 ```
 
 Dry-run integration tests use `tests/fixtures/automl/` (static pipeline YAML under `pipelines/`, no KFP or Git). They cover CLI flags, dataset filters, manifest `pipeline_arguments`, and package-path resolution.
+
+### MLflow (automatic after each batch)
+
+When enabled, the orchestrator ingests the batch CSV into MLflow with the same **4-level hierarchy** as `MLFlow.ipynb`:
+
+`benchmark → task_type → dataset → entity (model/pattern)`
+
+Add to `.env`:
+
+```bash
+BENCHMARK_UPLOAD_MLFLOW=true
+BENCHMARK_MLFLOW_KIND=automl          # or autorag
+MLFLOW_TRACKING_URI=https://rh-ai.apps.../mlflow
+MLFLOW_TRACKING_TOKEN=              # oc whoami -t
+MLFLOW_TRACKING_WORKSPACE=ns-automl-benchmarking
+BENCHMARK_MLFLOW_EXPERIMENT=automl-benchmarks
+```
+
+AutoML reads the merged leaderboard locally (same data as `merged_leaderboards.csv` on S3). AutoRAG uses `benchmark_runs.csv`.
+
+Re-ingest an existing batch from S3:
+
+```bash
+python scripts/log_benchmark_mlflow.py 20260529T120000Z --kind automl
+```
 
 ### Online integration tests (AutoML)
 

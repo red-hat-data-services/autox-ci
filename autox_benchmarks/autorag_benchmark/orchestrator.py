@@ -284,4 +284,16 @@ class BenchmarkOrchestrator:
             repo_root=repo_root,
         )
 
+        if not dry_run:
+            from benchmark_common.mlflow_batch import log_batch_to_mlflow
+
+            log_batch_to_mlflow(
+                cfg=cfg,
+                bucket=bucket,
+                benchmark_s3_prefix=settings.benchmark_s3_prefix,
+                batch_id=batch_id,
+                output_csv=output_csv,
+                benchmark_kind="autorag",
+            )
+
         return 0
