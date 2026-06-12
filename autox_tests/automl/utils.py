@@ -1318,7 +1318,10 @@ def run_deployment_test(
         if instances:
             try:
                 response = score_inference_service(
-                    external_url, isvc_name, instances, token,
+                    external_url,
+                    isvc_name,
+                    instances,
+                    token,
                     known_covariates=known_covariates,
                 )
                 result["scored"] = True
@@ -1406,6 +1409,45 @@ def run_deployment_test(
                 logger.warning("Failed to delete temporary ServiceAccount: %s", e)
 
     return result
+
+
+def upload_test_datasets(
+    s3_client,
+    bucket: str,
+    s3_keys: list[str],
+    local_data_dir: Path,
+) -> list[str]:
+    """Upload local CSV files to S3 for each key in s3_keys that has a matching local file.
+
+    Matching is done by filename only (basename), so local directory layout does not need
+    to mirror the S3 key prefix structure. Keys with no local match are skipped with a
+    debug log — this covers intentional negative-test keys like 'does-not-exist-*.csv'.
+
+    Returns the list of S3 keys that were actually uploaded.
+    """
+    local_index: dict[str, Path] = {f.name: f for f in local_data_dir.rglob("*.csv")}
+
+    uploaded_keys: list[str] = []
+    for s3_key in sorted(set(s3_keys)):
+        filename = Path(s3_key).name
+        local_path = local_index.get(filename)
+        if local_path is None:
+            logger.debug(
+                "No local file for key %r (filename=%r) — skipping upload",
+                s3_key,
+                filename,
+            )
+            continue
+        logger.info("Uploading %s → s3://%s/%s", local_path, bucket, s3_key)
+        s3_client.upload_file(str(local_path), bucket, s3_key)
+        uploaded_keys.append(s3_key)
+
+    logger.info(
+        "Dataset upload complete: %d file(s) uploaded to s3://%s",
+        len(uploaded_keys),
+        bucket,
+    )
+    return uploaded_keys
 
 
 def download_and_execute_automl_notebook(
