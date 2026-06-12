@@ -35,6 +35,7 @@ RHOAI_TRAIN_S3_SECRET_NAME_ENV = "RHOAI_TRAIN_S3_SECRET_NAME"
 S3_SKIP_SECRET_SETUP_ENV = "RHOAI_SKIP_S3_SECRET_SETUP"
 S3_SECRET_OVERWRITE_KEYS_ENV = "RHOAI_S3_SECRET_OVERWRITE_KEYS"
 S3_CREATE_BUCKET_IF_MISSING_ENV = "RHOAI_TEST_S3_CREATE_BUCKET_IF_MISSING"
+AUTOML_UPLOAD_TEST_DATASETS_ENV = "AUTOML_UPLOAD_TEST_DATASETS"
 
 # OpenShift API TLS for the Kubernetes client (``RHOAI_URL`` / kubeconfig)
 RHOAI_OPENSHIFT_CA_BUNDLE_PATH_ENV = "RHOAI_OPENSHIFT_CA_BUNDLE_PATH"
@@ -211,17 +212,20 @@ def parse_timeout_seconds_from_env(
     try:
         value = int(raw)
     except ValueError as exc:
-        raise ValueError(
-            f"{env_var}={raw!r}: expected an integer (seconds)"
-        ) from exc
+        raise ValueError(f"{env_var}={raw!r}: expected an integer (seconds)") from exc
 
     if value <= 0:
-        raise ValueError(f"{env_var}={value}: timeout must be a positive integer (seconds)")
+        raise ValueError(
+            f"{env_var}={value}: timeout must be a positive integer (seconds)"
+        )
 
     if max_seconds is not None and value > max_seconds:
         logger.warning(
             "%s=%d exceeds recommended maximum %ds; capping to %ds",
-            env_var, value, max_seconds, max_seconds
+            env_var,
+            value,
+            max_seconds,
+            max_seconds,
         )
         return max_seconds
 

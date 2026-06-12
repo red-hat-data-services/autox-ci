@@ -104,6 +104,11 @@ class TestAutoMLTabularFunctional:
             elapsed,
         )
 
+        bucket = automl_functional_config.get("s3_bucket_artifacts")
+        if s3_client_automl_functional and bucket:
+            prefix = f"{tabular_pipeline_run_target.artifact_prefix}/{run_id}"
+            s3_cleanup_tracker.track_artifact_prefix(bucket, prefix)
+
         if not _run_succeeded(detail):
             failure_info = _collect_failure_details(
                 kfp_client_automl_functional, run_id, config=automl_functional_config
@@ -113,11 +118,8 @@ class TestAutoMLTabularFunctional:
                 f"{state}{failure_info}"
             )
 
-        bucket = automl_functional_config.get("s3_bucket_artifacts")
         deployment_result: dict = {}
         if s3_client_automl_functional and bucket:
-            prefix = f"{tabular_pipeline_run_target.artifact_prefix}/{run_id}"
-            s3_cleanup_tracker.track_artifact_prefix(bucket, prefix)
 
             model_entries = collect_model_metrics_and_sizes(
                 s3_client_automl_functional, bucket, prefix
@@ -294,6 +296,11 @@ class TestAutoMLTabularFunctionalNegative:
 
         state = _get_run_state(detail)
         failed_task_names = _get_failed_task_names(kfp_client_automl_functional, run_id)
+
+        bucket = automl_functional_config.get("s3_bucket_artifacts")
+        if s3_client_automl_functional and bucket:
+            prefix = f"{tabular_pipeline_run_target.artifact_prefix}/{run_id}"
+            s3_cleanup_tracker.track_artifact_prefix(bucket, prefix)
 
         logger.info(
             "[%s] run_id=%s state=%s elapsed=%.1fs fault=%r category=%r failed_tasks=%s expected=%s",

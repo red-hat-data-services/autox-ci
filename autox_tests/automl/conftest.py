@@ -2,6 +2,7 @@
 
 import logging
 import os
+from pathlib import Path
 from typing import Literal
 
 import pytest
@@ -18,6 +19,7 @@ from autox_tests.lib.pipeline_yaml_sources import (
     PIPELINE_YAML_TIMESERIES_ENV,
 )
 from autox_tests.lib.settings import (
+    AUTOML_UPLOAD_TEST_DATASETS_ENV,
     RHOAI_TRAIN_DATA_BUCKET_ENV,
     RHOAI_TRAIN_S3_SECRET_NAME_ENV,
     S3_BUCKET_DATA_ENV,
@@ -41,9 +43,13 @@ def get_automl_functional_config():
     if base is None:
         return None
 
-    kfp_url = (os.environ.get("RHOAI_KFP_URL") or os.environ.get("KFP_HOST") or "").strip()
+    kfp_url = (
+        os.environ.get("RHOAI_KFP_URL") or os.environ.get("KFP_HOST") or ""
+    ).strip()
     if not kfp_url and not should_create_dspa_from_env():
-        logger.info("Set RHOAI_KFP_URL or enable DSPA auto-setup (default when KFP URL is unset).")
+        logger.info(
+            "Set RHOAI_KFP_URL or enable DSPA auto-setup (default when KFP URL is unset)."
+        )
         return None
 
     train_secret_name = (os.environ.get(RHOAI_TRAIN_S3_SECRET_NAME_ENV) or "").strip()
@@ -53,7 +59,9 @@ def get_automl_functional_config():
 
     train_data_bucket = (os.environ.get(RHOAI_TRAIN_DATA_BUCKET_ENV) or "").strip()
     test_data_bucket = (os.environ.get(S3_BUCKET_DATA_ENV) or "").strip()
-    legacy_train_bucket = (os.environ.get("AUTOML_TRAIN_DATA_BUCKET_NAME") or "").strip()
+    legacy_train_bucket = (
+        os.environ.get("AUTOML_TRAIN_DATA_BUCKET_NAME") or ""
+    ).strip()
     train_bucket = train_data_bucket or test_data_bucket or legacy_train_bucket
     if not train_secret or not train_bucket:
         return None
@@ -64,7 +72,9 @@ def get_automl_functional_config():
         if not (os.environ.get(PIPELINE_YAML_TIMESERIES_ENV) or "").strip():
             return None
 
-    bucket_artifacts = (os.environ.get("RHOAI_TEST_ARTIFACTS_BUCKET") or train_bucket).strip()
+    bucket_artifacts = (
+        os.environ.get("RHOAI_TEST_ARTIFACTS_BUCKET") or train_bucket
+    ).strip()
 
     return {
         **base,
@@ -104,7 +114,9 @@ def kfp_client_automl_functional(
 @pytest.fixture(scope="session")
 def s3_client_automl_functional(automl_functional_config):
     """Session-scoped S3 client for AutoML functional tests (None if S3 not configured)."""
-    if automl_functional_config is None or not automl_functional_config.get("s3_endpoint"):
+    if automl_functional_config is None or not automl_functional_config.get(
+        "s3_endpoint"
+    ):
         return None
     from autox_tests.lib.clients import make_s3_client
 
@@ -121,7 +133,9 @@ def _resolve_automl_pipeline_target(
     cache_file_name: str,
 ) -> PipelineRunTarget:
     if not kfp_client_automl_functional:
-        pytest.skip("KFP client not available — skipping pipeline run target resolution")
+        pytest.skip(
+            "KFP client not available — skipping pipeline run target resolution"
+        )
     try:
         return resolve_managed_pipeline_target(
             kfp_client_automl_functional,
@@ -130,7 +144,13 @@ def _resolve_automl_pipeline_target(
             cache_dir=tmp_path_factory.mktemp(cache_subdir),
             cache_file_name=cache_file_name,
         )
-    except (FileNotFoundError, OSError, RuntimeError, TimeoutError, EnvironmentError) as e:
+    except (
+        FileNotFoundError,
+        OSError,
+        RuntimeError,
+        TimeoutError,
+        EnvironmentError,
+    ) as e:
         pytest.fail(str(e))
 
 
@@ -191,6 +211,58 @@ class S3CleanupTracker:
 def s3_cleanup_tracker():
     """Session-scoped S3 cleanup tracker shared across all AutoML scenarios."""
     return S3CleanupTracker()
+
+
+@pytest.fixture(scope="session", autouse=True)
+def upload_datasets_if_requested(automl_functional_config, s3_client_automl_functional):
+    """Upload test datasets to S3 at session start when ``AUTOML_UPLOAD_TEST_DATASETS`` is set.
+
+    When set to ``1``, ``true``, or ``yes``, datasets referenced in tabular_test_configs.json
+    and timeseries_test_configs.json are uploaded from the local ``data/`` directory to S3
+    before any tests run. When unset, datasets are assumed to already be present in S3.
+    """
+    uploaded_keys: list[str] = []
+    bucket: str | None = None
+
+    raw = os.environ.get(AUTOML_UPLOAD_TEST_DATASETS_ENV, "").strip().lower()
+    if raw in ("1", "true", "yes"):
+        if automl_functional_config is None or s3_client_automl_functional is None:
+            pytest.skip(
+                f"{AUTOML_UPLOAD_TEST_DATASETS_ENV} is set but S3 client is not configured — "
+                "set AWS_* and RHOAI_TRAIN_DATA_BUCKET env vars"
+            )
+        else:
+            from .configs.configs import get_all_train_data_file_keys
+            from .utils import upload_test_datasets
+
+            local_data_dir = Path(__file__).parent / "data"
+            bucket = automl_functional_config["train_data_bucket_name"]
+            uploaded_keys = upload_test_datasets(
+                s3_client_automl_functional,
+                bucket,
+                get_all_train_data_file_keys(),
+                local_data_dir,
+            )
+
+    yield
+
+    if uploaded_keys and bucket:
+        from .utils import delete_s3_objects
+
+        deleted = delete_s3_objects(s3_client_automl_functional, bucket, uploaded_keys)
+        if deleted < len(uploaded_keys):
+            logger.warning(
+                "Dataset teardown: only %d of %d object(s) deleted from s3://%s — bucket may be dirty",
+                deleted,
+                len(uploaded_keys),
+                bucket,
+            )
+        else:
+            logger.info(
+                "Dataset teardown complete: %d file(s) removed from s3://%s",
+                deleted,
+                bucket,
+            )
 
 
 @pytest.fixture(scope="session", autouse=True)
