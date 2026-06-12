@@ -1425,7 +1425,21 @@ def upload_test_datasets(
 
     Returns the list of S3 keys that were actually uploaded.
     """
-    local_index: dict[str, Path] = {f.name: f for f in local_data_dir.rglob("*.csv")}
+    if not local_data_dir.is_dir():
+        raise FileNotFoundError(
+            f"AUTOML_UPLOAD_TEST_DATASETS is set but local data directory does not exist: {local_data_dir}"
+        )
+
+    local_index: dict[str, Path] = {}
+    for f in local_data_dir.rglob("*.csv"):
+        if f.name in local_index:
+            logger.warning(
+                "Duplicate local filename %r: %s shadows %s — using the latter",
+                f.name,
+                local_index[f.name],
+                f,
+            )
+        local_index[f.name] = f
 
     uploaded_keys: list[str] = []
     for s3_key in sorted(set(s3_keys)):
@@ -1438,9 +1452,14 @@ def upload_test_datasets(
                 filename,
             )
             continue
-        logger.info("Uploading %s → s3://%s/%s", local_path, bucket, s3_key)
-        s3_client.upload_file(str(local_path), bucket, s3_key)
-        uploaded_keys.append(s3_key)
+        try:
+            logger.info("Uploading %s → s3://%s/%s", local_path, bucket, s3_key)
+            s3_client.upload_file(str(local_path), bucket, s3_key)
+            uploaded_keys.append(s3_key)
+        except Exception as exc:
+            logger.error(
+                "Failed to upload %s → s3://%s/%s: %s", local_path, bucket, s3_key, exc
+            )
 
     logger.info(
         "Dataset upload complete: %d file(s) uploaded to s3://%s",

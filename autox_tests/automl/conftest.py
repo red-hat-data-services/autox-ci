@@ -19,6 +19,7 @@ from autox_tests.lib.pipeline_yaml_sources import (
     PIPELINE_YAML_TIMESERIES_ENV,
 )
 from autox_tests.lib.settings import (
+    AUTOML_UPLOAD_TEST_DATASETS_ENV,
     RHOAI_TRAIN_DATA_BUCKET_ENV,
     RHOAI_TRAIN_S3_SECRET_NAME_ENV,
     S3_BUCKET_DATA_ENV,
@@ -223,23 +224,24 @@ def upload_datasets_if_requested(automl_functional_config, s3_client_automl_func
     uploaded_keys: list[str] = []
     bucket: str | None = None
 
-    raw = os.environ.get("AUTOML_UPLOAD_TEST_DATASETS", "").strip().lower()
+    raw = os.environ.get(AUTOML_UPLOAD_TEST_DATASETS_ENV, "").strip().lower()
     if raw in ("1", "true", "yes"):
         if automl_functional_config is None or s3_client_automl_functional is None:
-            logger.warning(
-                "AUTOML_UPLOAD_TEST_DATASETS is set but S3 client is not available — skipping upload"
+            pytest.skip(
+                f"{AUTOML_UPLOAD_TEST_DATASETS_ENV} is set but S3 client is not configured — "
+                "set AWS_* and RHOAI_TRAIN_DATA_BUCKET env vars"
             )
         else:
-            from .configs.configs import _load_tabular_configs, _load_timeseries_configs
+            from .configs.configs import get_all_train_data_file_keys
             from .utils import upload_test_datasets
-
-            all_keys = [cfg.train_data_file_key for cfg in _load_tabular_configs()]
-            all_keys += [cfg.train_data_file_key for cfg in _load_timeseries_configs()]
 
             local_data_dir = Path(__file__).parent / "data"
             bucket = automl_functional_config["train_data_bucket_name"]
             uploaded_keys = upload_test_datasets(
-                s3_client_automl_functional, bucket, all_keys, local_data_dir
+                s3_client_automl_functional,
+                bucket,
+                get_all_train_data_file_keys(),
+                local_data_dir,
             )
 
     yield
@@ -247,11 +249,20 @@ def upload_datasets_if_requested(automl_functional_config, s3_client_automl_func
     if uploaded_keys and bucket:
         from .utils import delete_s3_objects
 
-        logger.info(
-            "Removing %d uploaded dataset(s) from s3://%s", len(uploaded_keys), bucket
-        )
-        delete_s3_objects(s3_client_automl_functional, bucket, uploaded_keys)
-        logger.info("Dataset teardown complete.")
+        deleted = delete_s3_objects(s3_client_automl_functional, bucket, uploaded_keys)
+        if deleted < len(uploaded_keys):
+            logger.warning(
+                "Dataset teardown: only %d of %d object(s) deleted from s3://%s — bucket may be dirty",
+                deleted,
+                len(uploaded_keys),
+                bucket,
+            )
+        else:
+            logger.info(
+                "Dataset teardown complete: %d file(s) removed from s3://%s",
+                deleted,
+                bucket,
+            )
 
 
 @pytest.fixture(scope="session", autouse=True)
