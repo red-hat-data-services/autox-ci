@@ -36,10 +36,13 @@ def make_s3_client(config):
     except ImportError:
         logger.info("Skipping S3 client creation due to missing 'boto3' package.")
         return None
+    verify_ssl = os.environ.get("S3_SSL_VERIFY", "true").strip().lower()
+    verify_ssl = verify_ssl not in ("0", "false", "no")
     return boto3.client(
         "s3",
         endpoint_url=config["s3_endpoint"],
         aws_access_key_id=config["s3_access_key"],
         aws_secret_access_key=config["s3_secret_key"],
         region_name=config["s3_region"],
+        verify=verify_ssl,
     )
