@@ -26,7 +26,7 @@ from .configs.configs import (
     AutoMLTimeseriesFunctionalConfig,
     get_timeseries_configs_for_run,
 )
-from .conftest import get_automl_functional_config
+from .conftest import add_kubeconfig_to_config, get_automl_functional_config
 from .utils import (
     TS_PRIMARY_METRIC,
     _collect_failure_details,
@@ -112,12 +112,12 @@ class TestAutoMLTimeseriesFunctional:
             s3_cleanup_tracker.track_artifact_prefix(bucket, prefix)
 
         if not _run_succeeded(detail):
-            config_with_kubeconfig = {
-                **automl_functional_config,
-                "temp_kubeconfig_path": temp_kubeconfig_path,
-            }
             failure_info = _collect_failure_details(
-                kfp_client_automl_functional, run_id, config=config_with_kubeconfig
+                kfp_client_automl_functional,
+                run_id,
+                config=add_kubeconfig_to_config(
+                    automl_functional_config, temp_kubeconfig_path
+                ),
             )
             pytest.fail(
                 f"[{test_config.id}] Pipeline run {run_id} expected SUCCEEDED but got "
@@ -319,13 +319,13 @@ class TestAutoMLTimeseriesFunctionalNegative:
             failed_task_names,
             test_config.expected_failing_task,
         )
-        config_with_kubeconfig = {
-            **automl_functional_config,
-            "temp_kubeconfig_path": temp_kubeconfig_path,
-        }
         logger.info(
             _collect_failure_details(
-                kfp_client_automl_functional, run_id, config=config_with_kubeconfig
+                kfp_client_automl_functional,
+                run_id,
+                config=add_kubeconfig_to_config(
+                    automl_functional_config, temp_kubeconfig_path
+                ),
             )
         )
 

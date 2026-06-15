@@ -89,54 +89,54 @@ def _run_failed(detail):
     return _get_run_state(detail) == "FAILED"
 
 
-def _derive_k8s_api_url(kfp_url):
-    """Derive OpenShift API server URL from a KFP route URL.
+def _fetch_and_append_pod_logs(lines: list[str], run_id: str, config: dict) -> None:
+    """Fetch Kubernetes pod logs for a failed pipeline run and append to lines.
 
-    Standard OCP: https://<route>.apps.<cluster-domain> -> https://api.<cluster-domain>:6443
-    ROSA:         https://<route>.apps.rosa.<cluster-domain> -> https://api.<cluster-domain>:443
+    Supports both kubeconfig-based auth (preferred) and token-based auth (fallback).
+    More lines are fetched (200 vs default 100) because Tekton task failures often
+    have lengthy stack traces that get truncated with fewer lines.
 
-    Override entirely with K8S_API_URL env var, or just the port with K8S_API_PORT.
+    Args:
+        lines: List to append log output to.
+        run_id: Pipeline run ID.
+        config: Config dict with 'rhoai_project', 'temp_kubeconfig_path',
+                or ('rhoai_token' + 'rhoai_kfp_url').
     """
-    override = os.environ.get("K8S_API_URL")
-    if override:
-        return override.strip().rstrip("/")
+    from autox_tests.lib.k8s_utils import make_k8s_core_api
 
-    from urllib.parse import urlparse
+    namespace = config.get("rhoai_project")
+    if not namespace:
+        lines.append("\n[Missing rhoai_project (namespace); skipping pod log fetch]")
+        return
 
-    hostname = urlparse(kfp_url).hostname or ""
-    apps_idx = hostname.find(".apps.")
-    if apps_idx < 0:
-        return None
-    base_domain = hostname[apps_idx + len(".apps.") :]
-    is_rosa = base_domain.startswith("rosa.")
-    if is_rosa:
-        base_domain = base_domain[len("rosa.") :]
-    default_port = 443 if is_rosa else 6443
-    port = os.environ.get("K8S_API_PORT", str(default_port)).strip()
-    return f"https://api.{base_domain}:{port}"
+    temp_kubeconfig_path = config.get("temp_kubeconfig_path")
 
+    # Try kubeconfig-based auth first (preferred for automl tests)
+    if temp_kubeconfig_path is not None:
+        from kubernetes import client as k8s_client
+        load_k8s_config(temp_kubeconfig_path)
+        v1 = k8s_client.CoreV1Api()
+    else:
+        # Fall back to token-based auth (for autorag compatibility)
+        token = config.get("rhoai_token")
+        kfp_url = config.get("rhoai_kfp_url")
 
-def _make_k8s_core_api(token, kfp_url):
-    """Create a Kubernetes CoreV1Api client authenticated with a bearer token."""
-    from kubernetes import client as k8s_client
+        if not token or not kfp_url:
+            lines.append(
+                "\n[Missing temp_kubeconfig_path or (rhoai_token + rhoai_kfp_url); "
+                "skipping pod log fetch]"
+            )
+            return
 
-    api_url = _derive_k8s_api_url(kfp_url)
-    if not api_url:
-        raise RuntimeError(f"Cannot derive K8S API URL from KFP URL: {kfp_url}")
+        v1 = make_k8s_core_api(token, kfp_url)
 
-    verify_ssl = os.environ.get("KFP_VERIFY_SSL", "true").strip().lower()
-    verify_ssl = verify_ssl not in ("0", "false", "no")
+    lines.append("\n\nPOD LOGS FOR FAILED TASKS:")
+    lines.append("-" * 80)
 
-    configuration = k8s_client.Configuration()
-    configuration.host = api_url
-    configuration.api_key = {"authorization": f"Bearer {token}"}
-    configuration.verify_ssl = verify_ssl
-    if not verify_ssl:
-        import urllib3
-
-        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
-    return k8s_client.CoreV1Api(api_client=k8s_client.ApiClient(configuration))
+    # Fetch logs using pipeline/runid label selector (Tekton convention)
+    label_selector = f"pipeline/runid={run_id}"
+    pod_logs = fetch_pod_logs_str(v1, namespace, label_selector, tail_lines=200)
+    lines.append(pod_logs)
 
 
 def _collect_failure_details(client, run_id, config=None):
@@ -148,8 +148,8 @@ def _collect_failure_details(client, run_id, config=None):
     Args:
         client: KFP client instance.
         run_id: The pipeline run ID.
-        config: Functional config dict with 'rhoai_project' (namespace), 'rhoai_token',
-                and 'rhoai_kfp_url' for Kubernetes API authentication.
+        config: Functional config dict with 'rhoai_project' (namespace), 'temp_kubeconfig_path',
+                or ('rhoai_token' + 'rhoai_kfp_url') for Kubernetes API authentication.
 
     Returns:
         Formatted string with failure details and pod logs.
@@ -197,38 +197,7 @@ def _collect_failure_details(client, run_id, config=None):
     # Fetch pod logs for failed tasks (Tekton-backed managed pipelines)
     if config and failed_task_names:
         try:
-            namespace = config.get("rhoai_project")
-            temp_kubeconfig_path = config.get("temp_kubeconfig_path")
-
-            # Support both kubeconfig-based and token-based authentication
-            # Prefer temp_kubeconfig_path if available, fall back to token auth
-            if temp_kubeconfig_path is not None:
-                # Use kubeconfig file authentication
-                from kubernetes import client as k8s_client
-
-                load_k8s_config(temp_kubeconfig_path)
-                v1 = k8s_client.CoreV1Api()
-            else:
-                # Fall back to token-based authentication (for autorag compatibility)
-                token = config.get("rhoai_token")
-                kfp_url = config.get("rhoai_kfp_url")
-
-                if not token or not kfp_url:
-                    lines.append("\n[Missing temp_kubeconfig_path or (rhoai_token + rhoai_kfp_url); skipping pod log fetch]")
-                    return "\n".join(lines + ["=" * 80])
-
-                v1 = _make_k8s_core_api(token, kfp_url)
-
-            if namespace:
-                lines.append(f"\n\nPOD LOGS FOR FAILED TASKS:")
-                lines.append("-" * 80)
-
-                # Fetch logs using pipeline/runid label selector (Tekton convention)
-                label_selector = f"pipeline/runid={run_id}"
-                pod_logs = fetch_pod_logs_str(v1, namespace, label_selector, tail_lines=200)
-                lines.append(pod_logs)
-            else:
-                lines.append("\n[Missing rhoai_project (namespace); skipping pod log fetch]")
+            _fetch_and_append_pod_logs(lines, run_id, config)
         except ImportError:
             lines.append("\n[kubernetes package not available for pod log fetch]")
         except Exception as e:
