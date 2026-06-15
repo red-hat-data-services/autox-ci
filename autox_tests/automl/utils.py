@@ -109,6 +109,8 @@ def _fetch_and_append_pod_logs(lines: list[str], run_id: str, config: dict) -> N
         lines.append("\n[Missing rhoai_project (namespace); skipping pod log fetch]")
         return
 
+    lines.append(f"\n[Querying pod logs in namespace: {namespace}]")
+
     temp_kubeconfig_path = config.get("temp_kubeconfig_path")
 
     # Try kubeconfig-based auth first (preferred for automl tests)
@@ -197,11 +199,17 @@ def _collect_failure_details(client, run_id, config=None):
     # Fetch pod logs for failed tasks (Tekton-backed managed pipelines)
     if config and failed_task_names:
         try:
-            _fetch_and_append_pod_logs(lines, run_id, config)
+            import kubernetes  # noqa: F401
         except ImportError:
-            lines.append("\n[kubernetes package not available for pod log fetch]")
-        except Exception as e:
-            lines.append(f"\n[Could not fetch pod logs: {e}]")
+            lines.append(
+                "\n[kubernetes package not available for pod log fetch. "
+                "Install with: pip install kubernetes]"
+            )
+        else:
+            try:
+                _fetch_and_append_pod_logs(lines, run_id, config)
+            except Exception as e:
+                lines.append(f"\n[Could not fetch pod logs: {e}]")
 
     lines.append("=" * 80)
     return "\n".join(lines)

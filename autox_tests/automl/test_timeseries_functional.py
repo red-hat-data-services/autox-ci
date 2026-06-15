@@ -319,14 +319,18 @@ class TestAutoMLTimeseriesFunctionalNegative:
             failed_task_names,
             test_config.expected_failing_task,
         )
-        logger.info(
-            _collect_failure_details(
-                kfp_client_automl_functional,
-                run_id,
-                config=add_kubeconfig_to_config(
-                    automl_functional_config, temp_kubeconfig_path
-                ),
-            )
+        failure_details = _collect_failure_details(
+            kfp_client_automl_functional,
+            run_id,
+            config=add_kubeconfig_to_config(
+                automl_functional_config, temp_kubeconfig_path
+            ),
+        )
+        logger.info(failure_details)
+
+        # Verify pod logs were fetched for managed pipeline diagnostics
+        assert "POD LOGS FOR FAILED TASKS:" in failure_details, (
+            "Expected pod logs in failure details for managed pipeline"
         )
 
         assert _run_failed(detail), (

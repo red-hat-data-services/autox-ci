@@ -135,24 +135,15 @@ def _collect_failure_details(client, run_id, config=None):
     return "\n".join(lines)
 
 
-def _is_pod_failed(pod):
-    """Return True if a pod is in a failed state."""
-    phase = pod.status.phase or ""
-    if phase.lower() == "failed":
-        return True
-    for cs in pod.status.container_statuses or []:
-        terminated = cs.state.terminated if cs.state else None
-        if terminated and terminated.exit_code != 0:
-            return True
-    return False
-
-
 def _append_failed_pod_logs(run_id, namespace, lines, token=None, kfp_url=None):
-    """Find failed pods for a pipeline run by label and append their logs.
+    """Find pods for a pipeline run by label and append their logs.
 
-    Lists pods matching ``pipeline/runid=<run_id>`` in the given namespace,
-    filters for failed pods, and fetches logs from each container.
+    Lists pods matching ``pipeline/runid=<run_id>`` in the given namespace
+    and fetches logs from all pods (not just failed ones) to ensure complete
+    diagnostic output. Uses the unified fetch_pod_logs_str helper for
+    consistent behavior with automl tests.
     """
+    from autox_tests.automl.utils import fetch_pod_logs_str
     from autox_tests.lib.k8s_utils import make_k8s_core_api
 
     if not token or not kfp_url:
@@ -168,43 +159,9 @@ def _append_failed_pod_logs(run_id, namespace, lines, token=None, kfp_url=None):
     ns = namespace or "default"
     api = make_k8s_core_api(token, kfp_url)
 
-    pod_list = api.list_namespaced_pod(
-        namespace=ns,
-        label_selector=f"pipeline/runid={run_id}",
-        _request_timeout=30,
-    )
-
-    if not pod_list.items:
-        lines.append(f"\n[No pods found with label pipeline/runid={run_id} in namespace {ns}]")
-        return
-
-    failed_pods = [p for p in pod_list.items if _is_pod_failed(p)]
-
-    if not failed_pods:
-        all_phases = ", ".join(f"{p.metadata.name}={p.status.phase}" for p in pod_list.items)
-        lines.append(f"\n[No failed pods among {len(pod_list.items)} pods: {all_phases}]")
-        return
-
-    lines.append(f"\nFound {len(failed_pods)} failed pod(s) out of {len(pod_list.items)} total")
-
-    for pod in failed_pods:
-        pod_name = pod.metadata.name
-        lines.append(f"\n--- Failed pod: {pod_name} (phase: {pod.status.phase}) ---")
-
-        containers = [c.name for c in (pod.spec.containers or [])]
-        for container_name in containers:
-            try:
-                log = api.read_namespaced_pod_log(
-                    name=pod_name,
-                    namespace=ns,
-                    container=container_name,
-                    tail_lines=100,
-                    _request_timeout=60,
-                )
-                lines.append(f"[container: {container_name}]")
-                lines.append(log if log else "(empty)")
-            except Exception as e:
-                lines.append(f"[container: {container_name}] error: {e}")
+    label_selector = f"pipeline/runid={run_id}"
+    pod_logs = fetch_pod_logs_str(api, ns, label_selector, tail_lines=200)
+    lines.append(pod_logs)
 
 
 def _validate_artifacts_in_s3(s3_client, bucket, prefix):
