@@ -110,8 +110,12 @@ class TestAutoMLTabularFunctional:
             s3_cleanup_tracker.track_artifact_prefix(bucket, prefix)
 
         if not _run_succeeded(detail):
+            config_with_kubeconfig = {
+                **automl_functional_config,
+                "temp_kubeconfig_path": temp_kubeconfig_path,
+            }
             failure_info = _collect_failure_details(
-                kfp_client_automl_functional, run_id, config=automl_functional_config
+                kfp_client_automl_functional, run_id, config=config_with_kubeconfig
             )
             pytest.fail(
                 f"[{test_config.id}] Pipeline run {run_id} expected SUCCEEDED but got "
@@ -277,6 +281,7 @@ class TestAutoMLTabularFunctionalNegative:
         pipeline_run_timeout,
         s3_client_automl_functional,
         s3_cleanup_tracker,
+        temp_kubeconfig_path,
     ):
         """Submit pipeline with injected fault; assert FAILED within capped timeout."""
         if not kfp_client_automl_functional:
@@ -313,9 +318,13 @@ class TestAutoMLTabularFunctionalNegative:
             failed_task_names,
             test_config.expected_failing_task,
         )
+        config_with_kubeconfig = {
+            **automl_functional_config,
+            "temp_kubeconfig_path": temp_kubeconfig_path,
+        }
         logger.info(
             _collect_failure_details(
-                kfp_client_automl_functional, run_id, config=automl_functional_config
+                kfp_client_automl_functional, run_id, config=config_with_kubeconfig
             )
         )
 
