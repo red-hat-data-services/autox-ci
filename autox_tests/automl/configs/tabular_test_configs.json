@@ -94,7 +94,7 @@
     "label_column": "default.payment.next.month",
     "task_type": "binary",
     "top_n": 3,
-    "train_data_file_key": "functional-test/tabular/classification_binary/credit_default_binary.csv",
+    "train_data_file_key": "functional-test/tabular/classification_binary/credit_default_binary_light.csv",
     "tags": ["tabular", "classification", "binary"],
     "inference_sample": [
       {
@@ -130,7 +130,7 @@
     "label_column": "quality",
     "task_type": "multiclass",
     "top_n": 1,
-    "train_data_file_key": "functional-test/tabular/classification_multiclass/wine_quality_multiclass_limited_classes.csv",
+    "train_data_file_key": "functional-test/tabular/classification_multiclass/wine_quality_multiclass_limited_classes_light.csv",
     "tags": ["tabular", "classification", "multiclass"],
     "inference_sample": [
       {
