@@ -41,14 +41,6 @@ TASK_PRIMARY_METRICS_TABULAR: dict[str, str] = {
 # Expected primary metric key for timeseries models (AutoGluon uses MASE by default).
 TS_PRIMARY_METRIC = "MASE"
 
-# Default tail for predictor/ISVC pod log helpers (failure diagnostics use k8s_utils).
-# Check if kubernetes package is available at module load time
-try:
-    import kubernetes  # noqa: F401
-    KUBERNETES_AVAILABLE = True
-except ImportError:
-    KUBERNETES_AVAILABLE = False
-
 
 def load_k8s_config(kubeconfig_path: str | None) -> None:
     """Load kubernetes config from a file or fall back to in-cluster config."""
@@ -102,23 +94,6 @@ def _run_succeeded(detail):
 def _run_failed(detail):
     """Return True if the run finished with FAILED state."""
     return _get_run_state(detail) == "FAILED"
-
-
-def _fetch_and_append_pod_logs(
-    lines: list[str],
-    run_id: str,
-    config: dict,
-    failed_task_names: list[str],
-) -> None:
-    """Fetch Kubernetes pod logs for failed pipeline tasks and append to lines."""
-    from autox_tests.lib.k8s_utils import append_failed_task_pod_logs
-
-    append_failed_task_pod_logs(
-        lines,
-        run_id,
-        config,
-        failed_task_names,
-    )
 
 
 def _collect_failure_details(client, run_id, config=None):
@@ -178,17 +153,11 @@ def _collect_failure_details(client, run_id, config=None):
 
     # Fetch logs from failed pods only (Tekton-backed managed pipelines)
     if config:
-        if not KUBERNETES_AVAILABLE:
-            lines.append(
-                "\n[kubernetes package not available for pod log fetch. "
-                "Install with: pip install kubernetes]"
-            )
-        else:
-            try:
-                _fetch_and_append_pod_logs(lines, run_id, config, failed_task_names)
-            except Exception as e:
-                lines.append(f"\n[Could not fetch pod logs: {e}]")
-                logger.exception("Failed to fetch pod logs for run %s", run_id)
+        from autox_tests.lib.k8s_utils import append_failed_task_pod_logs_safe
+
+        append_failed_task_pod_logs_safe(
+            lines, run_id, config, failed_task_names, logger=logger
+        )
 
     lines.append("=" * 80)
     return "\n".join(lines)

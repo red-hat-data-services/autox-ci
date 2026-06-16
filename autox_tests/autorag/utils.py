@@ -11,13 +11,6 @@ from autox_tests.lib.clients import make_kfp_client, make_s3_client  # noqa: F40
 
 logger = logging.getLogger(__name__)
 
-try:
-    import kubernetes  # noqa: F401
-
-    KUBERNETES_AVAILABLE = True
-except ImportError:
-    KUBERNETES_AVAILABLE = False
-
 
 def _make_docrag_run_name():
     """Return a run name: docrag-func-<6 hex chars>-<YYYYMMDD-HHMMSS>."""
@@ -134,24 +127,15 @@ def _collect_failure_details(client, run_id, config=None):
 
     # Fetch logs from failed pods only (Tekton-backed managed pipelines)
     if config:
-        if not KUBERNETES_AVAILABLE:
-            lines.append(
-                "\n[kubernetes package not available for pod log fetch. "
-                "Install with: pip install kubernetes]"
-            )
-        else:
-            try:
-                from autox_tests.lib.k8s_utils import append_failed_task_pod_logs
+        from autox_tests.lib.k8s_utils import append_failed_task_pod_logs_safe
 
-                append_failed_task_pod_logs(
-                    lines,
-                    run_id,
-                    config,
-                    failed_task_names,
-                )
-            except Exception as e:
-                lines.append(f"\n[Could not fetch pod logs: {e}]")
-                logger.exception("Failed to fetch pod logs for run %s", run_id)
+        append_failed_task_pod_logs_safe(
+            lines,
+            run_id,
+            config,
+            failed_task_names,
+            logger=logger,
+        )
 
     lines.append("=" * 80)
     return "\n".join(lines)
