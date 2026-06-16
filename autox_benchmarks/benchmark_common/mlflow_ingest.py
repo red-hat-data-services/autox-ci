@@ -222,6 +222,8 @@ def ingest_dataframe(
 
     apply_mlflow_env(settings)
     mlflow.set_tracking_uri(settings.tracking_uri)
+    if hasattr(mlflow, "set_workspace"):
+        mlflow.set_workspace(settings.workspace)
     mlflow.set_experiment(settings.experiment_name)
     client = MlflowClient()
 

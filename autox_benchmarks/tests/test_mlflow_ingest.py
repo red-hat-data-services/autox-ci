@@ -11,7 +11,9 @@ from benchmark_common.mlflow_ingest import (
     pick_primary_metric,
     prepare_work_frame,
 )
-from benchmark_common.mlflow_settings import MlflowSettings
+import os
+
+from benchmark_common.mlflow_settings import MlflowSettings, apply_mlflow_env
 
 
 def _settings(kind: str = "automl") -> MlflowSettings:
@@ -25,6 +27,13 @@ def _settings(kind: str = "automl") -> MlflowSettings:
         task_type_normalize=True,
         filter_parse_ok=False,
     )
+
+
+def test_apply_mlflow_env_sets_workspace(monkeypatch) -> None:
+    monkeypatch.delenv("MLFLOW_WORKSPACE", raising=False)
+    apply_mlflow_env(_settings())
+    assert os.environ["MLFLOW_WORKSPACE"] == "ns"
+    assert os.environ["MLFLOW_TRACKING_WORKSPACE"] == "ns"
 
 
 def test_normalize_task_type_binary_to_classification() -> None:

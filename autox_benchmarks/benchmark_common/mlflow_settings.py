@@ -29,8 +29,8 @@ def mlflow_settings_from_env() -> MlflowSettings | None:
     tracking_uri = _get_env("MLFLOW_TRACKING_URI", "BENCHMARK_MLFLOW_TRACKING_URI")
     token = _get_env("MLFLOW_TRACKING_TOKEN", "BENCHMARK_MLFLOW_TOKEN", "RHOAI_TOKEN")
     workspace = _get_env(
-        "MLFLOW_TRACKING_WORKSPACE",
         "MLFLOW_WORKSPACE",
+        "MLFLOW_TRACKING_WORKSPACE",
         "BENCHMARK_KFP_NAMESPACE",
         "RHOAI_PROJECT_NAME",
     )
@@ -80,4 +80,6 @@ def apply_mlflow_env(settings: MlflowSettings) -> None:
     """Configure process env for OpenShift AI / MLflow tracking API."""
     os.environ["MLFLOW_TRACKING_URI"] = settings.tracking_uri
     os.environ["MLFLOW_TRACKING_TOKEN"] = settings.token
+    # OpenShift AI / RHOAI expect MLFLOW_WORKSPACE (X-MLFLOW-WORKSPACE header).
+    os.environ["MLFLOW_WORKSPACE"] = settings.workspace
     os.environ["MLFLOW_TRACKING_WORKSPACE"] = settings.workspace

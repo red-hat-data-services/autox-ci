@@ -475,7 +475,7 @@ BENCHMARK_UPLOAD_MLFLOW=true
 BENCHMARK_MLFLOW_KIND=automl          # or autorag
 MLFLOW_TRACKING_URI=https://rh-ai.apps.../mlflow
 MLFLOW_TRACKING_TOKEN=              # oc whoami -t
-MLFLOW_TRACKING_WORKSPACE=ns-automl-benchmarking
+MLFLOW_WORKSPACE=ns-automl-benchmarking
 BENCHMARK_MLFLOW_EXPERIMENT=automl-benchmarks
 ```
 
