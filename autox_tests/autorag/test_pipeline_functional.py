@@ -21,6 +21,7 @@ import random
 import pytest
 
 from .conftest import (
+    add_kubeconfig_to_config,
     get_functional_config,
 )
 from autox_tests.autorag.configs.configs import (
@@ -70,6 +71,7 @@ class TestAutoRAGFunctional:
         autorag_pipeline_run_target,
         pipeline_run_timeout,
         s3_client_functional,
+        rhoai_cluster_kubeconfig,
     ):
         """Verify pipeline fails as expected for negative test scenarios."""
         if not kfp_client_functional:
@@ -93,7 +95,15 @@ class TestAutoRAGFunctional:
         )
 
         # Log failure details for observability even on expected failures
-        logger.info(_collect_failure_details(kfp_client_functional, run_id, config=functional_env_config))
+        logger.info(
+            _collect_failure_details(
+                kfp_client_functional,
+                run_id,
+                config=add_kubeconfig_to_config(
+                    functional_env_config, rhoai_cluster_kubeconfig
+                ),
+            )
+        )
 
     @pytest.mark.positive
     @pytest.mark.parametrize(
@@ -107,6 +117,7 @@ class TestAutoRAGFunctional:
         autorag_pipeline_run_target,
         pipeline_run_timeout,
         s3_client_functional,
+        rhoai_cluster_kubeconfig,
     ):
         """Run pipeline for one test config; validate based on expected result.
 
@@ -128,7 +139,13 @@ class TestAutoRAGFunctional:
         )
 
         if not _run_succeeded(detail):
-            failure_info = _collect_failure_details(kfp_client_functional, run_id, config=functional_env_config)
+            failure_info = _collect_failure_details(
+                kfp_client_functional,
+                run_id,
+                config=add_kubeconfig_to_config(
+                    functional_env_config, rhoai_cluster_kubeconfig
+                ),
+            )
             pytest.fail(
                 f"[{test_scenario_config.id}] Pipeline run {run_id} was expected to PASS but failed; "
                 f"state={_get_run_state(detail)}"

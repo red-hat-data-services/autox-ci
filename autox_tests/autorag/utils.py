@@ -11,6 +11,13 @@ from autox_tests.lib.clients import make_kfp_client, make_s3_client  # noqa: F40
 
 logger = logging.getLogger(__name__)
 
+try:
+    import kubernetes  # noqa: F401
+
+    KUBERNETES_AVAILABLE = True
+except ImportError:
+    KUBERNETES_AVAILABLE = False
+
 
 def _make_docrag_run_name():
     """Return a run name: docrag-func-<6 hex chars>-<YYYYMMDD-HHMMSS>."""
@@ -62,9 +69,9 @@ def _run_failed(detail):
 def _collect_failure_details(client, run_id, config=None):
     """Collect failure details from a failed pipeline run via the Kubernetes API.
 
-    Uses the Kubernetes client to find pods with label ``pipeline/runid=<run_id>``,
-    identifies failed pods, and fetches their logs.  Task-level metadata is still
-    pulled from the KFP v2 API for context.
+    Uses the Kubernetes client to find pods for failed pipeline tasks (via Tekton
+    labels such as ``tekton.dev/pipelineTask``) and fetches their logs. Task-level
+    metadata is still pulled from the KFP v2 API for context.
 
     Args:
         client: KFP client instance (used for run-level / task-level metadata).
@@ -76,6 +83,7 @@ def _collect_failure_details(client, run_id, config=None):
         Formatted string with failure details and pod logs.
     """
     lines = [f"\n{'=' * 80}", f"FAILURE DETAILS FOR RUN: {run_id}", "=" * 80]
+    failed_task_names: list[str] = []
 
     # --- Run-level and task-level details from KFP v2 API ---
     try:
@@ -111,6 +119,8 @@ def _collect_failure_details(client, run_id, config=None):
                         error_msg = getattr(task_error, "message", str(task_error))
                         lines.append(f"  Error: {error_msg}")
 
+                    failed_task_names.append(name)
+
                     start = getattr(task, "start_time", None)
                     end = getattr(task, "end_time", None)
                     if start and end:
@@ -122,46 +132,29 @@ def _collect_failure_details(client, run_id, config=None):
     except Exception as e:
         lines.append(f"\n[Could not fetch run details from KFP API: {e}]")
 
-    # --- Pod logs via Kubernetes API (label-based pod discovery) ---
-    try:
-        namespace = config.get("rhoai_project") if config else None
-        token = config.get("rhoai_token") if config else None
-        kfp_url = config.get("rhoai_kfp_url") if config else None
-        _append_failed_pod_logs(run_id, namespace, lines, token=token, kfp_url=kfp_url)
-    except Exception as e:
-        lines.append(f"\n[Could not fetch pod logs: {e}]")
+    # Fetch logs from failed pods only (Tekton-backed managed pipelines)
+    if config:
+        if not KUBERNETES_AVAILABLE:
+            lines.append(
+                "\n[kubernetes package not available for pod log fetch. "
+                "Install with: pip install kubernetes]"
+            )
+        else:
+            try:
+                from autox_tests.lib.k8s_utils import append_failed_task_pod_logs
+
+                append_failed_task_pod_logs(
+                    lines,
+                    run_id,
+                    config,
+                    failed_task_names,
+                )
+            except Exception as e:
+                lines.append(f"\n[Could not fetch pod logs: {e}]")
+                logger.exception("Failed to fetch pod logs for run %s", run_id)
 
     lines.append("=" * 80)
     return "\n".join(lines)
-
-
-def _append_failed_pod_logs(run_id, namespace, lines, token=None, kfp_url=None):
-    """Find pods for a pipeline run by label and append their logs.
-
-    Lists pods matching ``pipeline/runid=<run_id>`` in the given namespace
-    and fetches logs from all pods (not just failed ones) to ensure complete
-    diagnostic output. Uses the unified fetch_pod_logs_str helper for
-    consistent behavior with automl tests.
-    """
-    from autox_tests.automl.utils import fetch_pod_logs_str
-    from autox_tests.lib.k8s_utils import make_k8s_core_api
-
-    if not token or not kfp_url:
-        lines.append("\n[Missing RHOAI_TOKEN or RHOAI_KFP_URL; skipping pod log fetch]")
-        return
-
-    try:
-        import kubernetes  # noqa: F401
-    except ImportError:
-        lines.append("\n[kubernetes package not installed; skipping pod log fetch]")
-        return
-
-    ns = namespace or "default"
-    api = make_k8s_core_api(token, kfp_url)
-
-    label_selector = f"pipeline/runid={run_id}"
-    pod_logs = fetch_pod_logs_str(api, ns, label_selector, tail_lines=200)
-    lines.append(pod_logs)
 
 
 def _validate_artifacts_in_s3(s3_client, bucket, prefix):

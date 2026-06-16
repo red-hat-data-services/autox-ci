@@ -106,6 +106,15 @@ def get_functional_config():
     }
 
 
+def add_kubeconfig_to_config(
+    config: dict, kubeconfig_path: str | None
+) -> dict:
+    """Add temp_kubeconfig_path to config for _collect_failure_details."""
+    if kubeconfig_path is None:
+        return config
+    return {**config, "temp_kubeconfig_path": kubeconfig_path}
+
+
 @pytest.fixture(scope="session")
 def functional_env_config():
     """Session-scoped functional test config fixture."""

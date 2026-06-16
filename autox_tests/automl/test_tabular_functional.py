@@ -328,7 +328,7 @@ class TestAutoMLTabularFunctionalNegative:
         logger.info(failure_details)
 
         # Verify pod logs were fetched for managed pipeline diagnostics
-        assert "POD LOGS FOR FAILED TASKS:" in failure_details, (
+        assert "POD LOGS FOR FAILED PODS:" in failure_details, (
             "Expected pod logs in failure details for managed pipeline"
         )
 
