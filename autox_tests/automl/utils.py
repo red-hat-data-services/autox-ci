@@ -1246,9 +1246,9 @@ def run_deployment_test(
         result["isvc_ready"] = isvc_ready
 
         if blocking_reason or not isvc_ready:
-            from autox_tests.lib.k8s_utils import fetch_pod_logs_str, pod_log_tail_lines
+            from autox_tests.lib.k8s_utils import fetch_logs_by_selector, pod_log_tail_lines
 
-            pod_logs = fetch_pod_logs_str(
+            pod_logs = fetch_logs_by_selector(
                 v1,
                 namespace,
                 f"serving.kserve.io/inferenceservice={isvc_name}",
@@ -1283,9 +1283,9 @@ def run_deployment_test(
                 result["predictions"] = response.get("predictions")
                 result["v1_response"] = response
             except Exception as score_err:
-                from autox_tests.lib.k8s_utils import fetch_pod_logs_str, pod_log_tail_lines
+                from autox_tests.lib.k8s_utils import fetch_logs_by_selector, pod_log_tail_lines
 
-                pod_logs = fetch_pod_logs_str(
+                pod_logs = fetch_logs_by_selector(
                     v1,
                     namespace,
                     f"serving.kserve.io/inferenceservice={isvc_name}",

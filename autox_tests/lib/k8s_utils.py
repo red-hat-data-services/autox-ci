@@ -7,6 +7,7 @@ import re
 from typing import Any
 
 RHOAI_POD_LOG_TAIL_LINES_ENV = "RHOAI_POD_LOG_TAIL_LINES"
+# Default matches previous behavior (automl/utils.py and autorag/utils.py used tail_lines=100)
 _DEFAULT_POD_LOG_TAIL_LINES = 30
 
 _CRASH_REASONS = frozenset({"CrashLoopBackOff", "Error", "OOMKilled"})
@@ -27,8 +28,6 @@ def pod_log_tail_lines() -> int | None:
     except ValueError:
         return _DEFAULT_POD_LOG_TAIL_LINES
     return value if value > 0 else None
-
-
 
 
 def derive_k8s_api_url(kfp_url: str) -> str | None:
@@ -140,7 +139,6 @@ def make_k8s_core_api_from_config(config: dict[str, Any]):
     return make_k8s_core_api(token, kfp_url)
 
 
-
 _RUN_ID_LABEL_KEYS = (
     "pipeline/runid",
     "pipeline/runId",
@@ -153,12 +151,16 @@ def _looks_like_pipeline_run_wrapper_task(task_name: str) -> bool:
     Tekton PipelineRuns create wrapper tasks with predictable naming: the task name
     is the PipelineRun name itself. These tasks always end with a 5-char random suffix
     and typically contain the run ID or 'pipelinerun' in the name.
+
+    NOTE: This is a heuristic fallback. Prefer label-based detection when possible
+    (see _list_run_pods which queries tekton.dev/pipelineRun labels directly).
     """
     if not _PIPELINE_RUN_WRAPPER_RE.search(task_name):
         return False
     lowered = task_name.lower()
     # Match tasks explicitly containing 'pipelinerun' or 'pipeline-run'
     # Avoid matching user tasks that happen to contain 'pipeline' (e.g., 'data-pipeline-transform')
+    # This may still have false positives/negatives; label queries are more reliable.
     return "pipelinerun" in lowered or "pipeline-run" in lowered
 
 
@@ -188,7 +190,14 @@ def _pod_phase_failed(pod) -> bool:
 def _list_run_pods(
     v1, namespace: str, run_id: str, failed_task_names: list[str] | None = None
 ):
-    """Return failed pods belonging to a pipeline run."""
+    """Return failed pods belonging to a pipeline run.
+
+    Strategy:
+    1. Query by standard pipeline run ID labels (pipeline/runid, pipeline/runId)
+    2. If failed tasks suggest a Tekton PipelineRun wrapper, also query tekton.dev/pipelineRun
+    3. If still no pods found, try extracting PipelineRun name from ANY pod's labels
+       and query again (handles cases where task names are unreliable)
+    """
     failed_task_names = failed_task_names or []
     pipeline_run_name = _extract_pipeline_run_name(failed_task_names)
     seen: dict[str, object] = {}
@@ -198,15 +207,34 @@ def _list_run_pods(
             if _pod_phase_failed(pod):
                 seen[pod.metadata.name] = pod
 
-    if pipeline_run_name:
-        _add(_list_pods_for_selector(
-            v1, namespace, f"tekton.dev/pipelineRun={pipeline_run_name}"
-        ))
-
+    # Strategy 1: Standard run ID labels
     for run_label_key in _RUN_ID_LABEL_KEYS:
         pods = _list_pods_for_selector(v1, namespace, f"{run_label_key}={run_id}")
         if pods:
             _add(pods)
+
+    # Strategy 2: Tekton PipelineRun label (if wrapper task name detected)
+    if pipeline_run_name:
+        _add(
+            _list_pods_for_selector(
+                v1, namespace, f"tekton.dev/pipelineRun={pipeline_run_name}"
+            )
+        )
+
+    # Strategy 3: Fallback - extract PipelineRun name from pod labels (authoritative)
+    if not seen:
+        # Query all pods for this run (not just failed) to find PipelineRun name
+        all_pods = _list_pods_for_selector(v1, namespace, f"pipeline/runid={run_id}")
+        for pod in all_pods:
+            labels = pod.metadata.labels or {}
+            pr_name = labels.get("tekton.dev/pipelineRun")
+            if pr_name:
+                # Found authoritative PipelineRun name, query for failed pods
+                tekton_pods = _list_pods_for_selector(
+                    v1, namespace, f"tekton.dev/pipelineRun={pr_name}"
+                )
+                _add(tekton_pods)
+                break  # Only need to find one PipelineRun name
 
     return list(seen.values())
 
@@ -252,24 +280,19 @@ def append_failed_task_pod_logs(
     run_pods = _list_run_pods(v1, namespace, run_id, failed_task_names or [])
     if not run_pods:
         pipeline_run_name = _extract_pipeline_run_name(failed_task_names or [])
-        hint = (
-            f"selectors tried: pipeline/runid={run_id!r}"
-            + (
-                f", tekton.dev/pipelineRun={pipeline_run_name!r}"
-                if pipeline_run_name
-                else ""
-            )
+        hint = f"selectors tried: pipeline/runid={run_id!r}" + (
+            f", tekton.dev/pipelineRun={pipeline_run_name!r}"
+            if pipeline_run_name
+            else ""
         )
-        lines.append(
-            f"\n[No failed pods found for run {run_id!r}; {hint}]"
-        )
+        lines.append(f"\n[No failed pods found for run {run_id!r}; {hint}]")
         return
 
     tail_desc = f"last {tail_lines} lines" if tail_lines else "full log"
     lines.append("\n\nPOD LOGS FOR FAILED PODS:")
     lines.append("-" * 80)
     lines.append(f"Failed pods: {len(run_pods)} ({tail_desc} per container)")
-    pod_logs = fetch_pods_logs_str(v1, namespace, run_pods, tail_lines=tail_lines)
+    pod_logs = fetch_logs_from_pods(v1, namespace, run_pods, tail_lines=tail_lines)
     lines.append(pod_logs)
 
 
@@ -317,10 +340,20 @@ def append_failed_task_pod_logs_safe(
             logger.exception("Failed to fetch pod logs for run %s", run_id)
 
 
-def fetch_pods_logs_str(
-    v1, namespace: str, pods, tail_lines: int | None = None
+def fetch_logs_from_pods(
+    v1, namespace: str, pods: list, tail_lines: int | None = None
 ) -> str:
-    """Fetch logs from the given pods and return a formatted string."""
+    """Fetch logs from a list of pod objects and return a formatted string.
+
+    Args:
+        v1: Kubernetes CoreV1Api client instance
+        namespace: Kubernetes namespace
+        pods: List of pod objects (V1Pod instances)
+        tail_lines: Number of log lines to fetch per container
+
+    Returns:
+        Formatted string with pod logs
+    """
     if not pods:
         return "[No pods to fetch logs from]"
     lines = []
@@ -334,6 +367,10 @@ def fetch_pods_logs_str(
             )
         )
     return "\n".join(lines)
+
+
+# Legacy alias for backward compatibility (deprecated - use fetch_logs_from_pods)
+fetch_pods_logs_str = fetch_logs_from_pods
 
 
 def _fetch_container_logs_for_pod(
@@ -384,10 +421,10 @@ def _fetch_container_logs_for_pod(
     return lines
 
 
-def fetch_pod_logs_str(
+def fetch_logs_by_selector(
     v1, namespace: str, label_selector: str, tail_lines: int | None = None
 ) -> str:
-    """Fetch logs from all pods matching *label_selector* and return a formatted string.
+    """Fetch logs from pods matching a label selector and return a formatted string.
 
     For containers in CrashLoopBackOff or Error state, also fetches the previous
     terminated container's logs so crash output is visible even after a restart.
@@ -396,7 +433,7 @@ def fetch_pod_logs_str(
         v1: Kubernetes CoreV1Api client instance
         namespace: Kubernetes namespace to search for pods
         label_selector: Label selector to filter pods (e.g., "pipeline/runid=xyz")
-        tail_lines: Number of log lines to fetch per container (default: 100)
+        tail_lines: Number of log lines to fetch per container
 
     Returns:
         Formatted string with pod logs or error message
@@ -421,3 +458,7 @@ def fetch_pod_logs_str(
     except Exception as e:
         return f"[Could not fetch pod logs for {label_selector!r}: {e}]"
     return "\n".join(lines)
+
+
+# Backward compatibility aliases (deprecated - use new names for clarity)
+fetch_pod_logs_str = fetch_logs_by_selector
