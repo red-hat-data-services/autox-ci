@@ -206,7 +206,19 @@ def _list_pods_for_selector(v1, namespace: str, selector: str, logger=None):
 
 
 def _pod_phase_failed(pod) -> bool:
-    return bool(pod.status and pod.status.phase == "Failed")
+    """Return True if pod has failed or has containers with non-zero exit codes.
+
+    Detects both explicit Failed/Unknown phase and containers that crashed
+    (e.g., CrashLoopBackOff, OOMKilled) which may still show phase as Running.
+    """
+    if not pod.status:
+        return False
+    if pod.status.phase in ("Failed", "Unknown"):
+        return True
+    for cs in pod.status.container_statuses or []:
+        if cs.state and cs.state.terminated and cs.state.terminated.exit_code != 0:
+            return True
+    return False
 
 
 def _list_run_pods(

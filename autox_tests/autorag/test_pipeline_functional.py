@@ -95,15 +95,17 @@ class TestAutoRAGFunctional:
         )
 
         # Log failure details for observability even on expected failures
-        logger.info(
-            _collect_failure_details(
-                kfp_client_functional,
-                run_id,
-                config=add_kubeconfig_to_config(
-                    functional_env_config, rhoai_cluster_kubeconfig
-                ),
-            )
+        failure_details = _collect_failure_details(
+            kfp_client_functional,
+            run_id,
+            config=add_kubeconfig_to_config(
+                functional_env_config, rhoai_cluster_kubeconfig
+            ),
         )
+        logger.info(failure_details)
+
+        if "POD LOGS FOR FAILED PODS:" not in failure_details:
+            logger.warning("Pod logs not collected for run %s — check k8s connectivity", run_id)
 
     @pytest.mark.positive
     @pytest.mark.parametrize(
