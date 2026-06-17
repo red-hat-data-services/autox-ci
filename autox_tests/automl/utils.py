@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from autox_tests.lib.clients import make_kfp_client, make_s3_client  # noqa: F401
+from autox_tests.lib.k8s_utils import load_k8s_config
 
 logger = logging.getLogger(__name__)
 
@@ -40,13 +41,6 @@ TASK_PRIMARY_METRICS_TABULAR: dict[str, str] = {
 
 # Expected primary metric key for timeseries models (AutoGluon uses MASE by default).
 TS_PRIMARY_METRIC = "MASE"
-
-
-def load_k8s_config(kubeconfig_path: str | None) -> None:
-    """Load kubernetes config from a file or fall back to in-cluster config."""
-    from autox_tests.lib.k8s_utils import load_k8s_config as _load_k8s_config
-
-    _load_k8s_config(kubeconfig_path)
 
 
 def _make_run_name(prefix: str) -> str:

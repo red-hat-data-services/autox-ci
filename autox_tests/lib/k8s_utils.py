@@ -7,7 +7,8 @@ import re
 from typing import Any
 
 RHOAI_POD_LOG_TAIL_LINES_ENV = "RHOAI_POD_LOG_TAIL_LINES"
-# Default matches previous behavior (automl/utils.py and autorag/utils.py used tail_lines=100)
+# Intentionally lower than the old 100-line default to keep CI log output concise.
+# Override with RHOAI_POD_LOG_TAIL_LINES; set to 0 for full output.
 _DEFAULT_POD_LOG_TAIL_LINES = 30
 
 _CRASH_REASONS = frozenset({"CrashLoopBackOff", "Error", "OOMKilled"})
@@ -97,6 +98,21 @@ def make_k8s_core_api(token: str, kfp_url: str):
     return k8s_client.CoreV1Api(api_client=k8s_client.ApiClient(configuration))
 
 
+def merge_kubeconfig_into_config(config: dict, kubeconfig_path: str | None) -> dict:
+    """Merge temp_kubeconfig_path into a functional test config dict.
+
+    Args:
+        config: Base functional config dict.
+        kubeconfig_path: Path to kubeconfig file or None.
+
+    Returns:
+        New dict with temp_kubeconfig_path merged in (or original if path is None).
+    """
+    if kubeconfig_path is None:
+        return config
+    return {**config, "temp_kubeconfig_path": kubeconfig_path}
+
+
 def load_k8s_config(kubeconfig_path: str | None) -> None:
     """Load kubernetes config from a file or fall back to in-cluster config."""
     from kubernetes import config
@@ -118,10 +134,14 @@ def make_k8s_core_api_from_config(config: dict[str, Any]):
     temp_kubeconfig_path = config.get("temp_kubeconfig_path")
     if temp_kubeconfig_path is not None:
         from kubernetes import client as k8s_client
+        from kubernetes import config as k8s_config
 
-        load_k8s_config(temp_kubeconfig_path)
+        # Load kubeconfig into an isolated Configuration (does not mutate global config)
+        configuration = k8s_client.Configuration()
+        k8s_config.load_kube_config(
+            config_file=temp_kubeconfig_path, client_configuration=configuration
+        )
 
-        configuration = k8s_client.Configuration.get_default_copy()
         verify_ssl = os.environ.get("KFP_VERIFY_SSL", "true").strip().lower()
         configuration.verify_ssl = verify_ssl not in ("0", "false", "no")
 
@@ -172,14 +192,16 @@ def _extract_pipeline_run_name(failed_task_names: list[str]) -> str | None:
     return None
 
 
-def _list_pods_for_selector(v1, namespace: str, selector: str):
+def _list_pods_for_selector(v1, namespace: str, selector: str, logger=None):
     try:
         return v1.list_namespaced_pod(
             namespace=namespace,
             label_selector=selector,
             _request_timeout=30,
         ).items
-    except Exception:
+    except Exception as e:
+        if logger:
+            logger.debug("Pod list failed for selector %r: %s", selector, e)
         return []
 
 
@@ -188,7 +210,7 @@ def _pod_phase_failed(pod) -> bool:
 
 
 def _list_run_pods(
-    v1, namespace: str, run_id: str, failed_task_names: list[str] | None = None
+    v1, namespace: str, run_id: str, failed_task_names: list[str] | None = None, logger=None
 ):
     """Return failed pods belonging to a pipeline run.
 
@@ -209,7 +231,7 @@ def _list_run_pods(
 
     # Strategy 1: Standard run ID labels
     for run_label_key in _RUN_ID_LABEL_KEYS:
-        pods = _list_pods_for_selector(v1, namespace, f"{run_label_key}={run_id}")
+        pods = _list_pods_for_selector(v1, namespace, f"{run_label_key}={run_id}", logger)
         if pods:
             _add(pods)
 
@@ -217,21 +239,25 @@ def _list_run_pods(
     if pipeline_run_name:
         _add(
             _list_pods_for_selector(
-                v1, namespace, f"tekton.dev/pipelineRun={pipeline_run_name}"
+                v1, namespace, f"tekton.dev/pipelineRun={pipeline_run_name}", logger
             )
         )
 
     # Strategy 3: Fallback - extract PipelineRun name from pod labels (authoritative)
     if not seen:
         # Query all pods for this run (not just failed) to find PipelineRun name
-        all_pods = _list_pods_for_selector(v1, namespace, f"pipeline/runid={run_id}")
+        all_pods = []
+        for key in _RUN_ID_LABEL_KEYS:
+            all_pods = _list_pods_for_selector(v1, namespace, f"{key}={run_id}", logger)
+            if all_pods:
+                break
         for pod in all_pods:
             labels = pod.metadata.labels or {}
             pr_name = labels.get("tekton.dev/pipelineRun")
             if pr_name:
                 # Found authoritative PipelineRun name, query for failed pods
                 tekton_pods = _list_pods_for_selector(
-                    v1, namespace, f"tekton.dev/pipelineRun={pr_name}"
+                    v1, namespace, f"tekton.dev/pipelineRun={pr_name}", logger
                 )
                 _add(tekton_pods)
                 break  # Only need to find one PipelineRun name
@@ -253,6 +279,7 @@ def append_failed_task_pod_logs(
     failed_task_names: list[str] | None = None,
     *,
     tail_lines: int | None = -1,
+    logger=None,
 ) -> None:
     """Fetch logs from failed pods in a pipeline run and append them to *lines*.
 
@@ -277,7 +304,7 @@ def append_failed_task_pod_logs(
         )
         return
 
-    run_pods = _list_run_pods(v1, namespace, run_id, failed_task_names or [])
+    run_pods = _list_run_pods(v1, namespace, run_id, failed_task_names or [], logger)
     if not run_pods:
         pipeline_run_name = _extract_pipeline_run_name(failed_task_names or [])
         hint = f"selectors tried: pipeline/runid={run_id!r}" + (
@@ -369,10 +396,6 @@ def fetch_logs_from_pods(
     return "\n".join(lines)
 
 
-# Legacy alias for backward compatibility (deprecated - use fetch_logs_from_pods)
-fetch_pods_logs_str = fetch_logs_from_pods
-
-
 def _fetch_container_logs_for_pod(
     v1, namespace: str, pod_name: str, pod, *, tail_lines: int | None
 ) -> list[str]:
@@ -458,7 +481,3 @@ def fetch_logs_by_selector(
     except Exception as e:
         return f"[Could not fetch pod logs for {label_selector!r}: {e}]"
     return "\n".join(lines)
-
-
-# Backward compatibility aliases (deprecated - use new names for clarity)
-fetch_pod_logs_str = fetch_logs_by_selector

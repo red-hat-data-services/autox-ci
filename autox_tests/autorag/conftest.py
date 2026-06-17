@@ -9,6 +9,7 @@ import pytest
 from autox_tests.conftest import make_kfp_client_for_session
 from autox_tests.lib.clients import make_s3_client
 from autox_tests.lib.env import load_tests_env
+from autox_tests.lib.k8s_utils import merge_kubeconfig_into_config
 from autox_tests.lib.managed_pipelines import (
     PipelineRunTarget,
     resolve_managed_pipeline_target,
@@ -106,13 +107,8 @@ def get_functional_config():
     }
 
 
-def add_kubeconfig_to_config(
-    config: dict, kubeconfig_path: str | None
-) -> dict:
-    """Add temp_kubeconfig_path to config for _collect_failure_details."""
-    if kubeconfig_path is None:
-        return config
-    return {**config, "temp_kubeconfig_path": kubeconfig_path}
+# Backward compatibility alias - use merge_kubeconfig_into_config from lib.k8s_utils
+add_kubeconfig_to_config = merge_kubeconfig_into_config
 
 
 @pytest.fixture(scope="session")
