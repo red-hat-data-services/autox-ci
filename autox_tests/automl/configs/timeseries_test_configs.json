@@ -120,7 +120,7 @@
     "fault_category": "Invalid prediction_length",
     "injected_fault": "prediction_length=0 (must be a positive integer)",
     "expected_failing_stage": "pipeline",
-    "expected_failing_task": ["timeseries-data-loader", "autogluon-timeseries-models-training", "autogluon-timeseries-models-training-2"],
+    "expected_failing_task": ["autogluon-timeseries-models-training", "autogluon-timeseries-models-training-2"],
     "expected_outcome": "Fail fast with clear validation message"
   },
   {
@@ -169,7 +169,7 @@
     "fault_category": "Invalid top_n",
     "injected_fault": "top_n=0 (must be a positive integer)",
     "expected_failing_stage": "pipeline",
-    "expected_failing_task": ["timeseries-data-loader", "autogluon-timeseries-models-training", "autogluon-timeseries-models-training-2"],
+    "expected_failing_task": ["autogluon-timeseries-models-training", "autogluon-timeseries-models-training-2"],
     "expected_outcome": "Rejected before usable run or step failure"
   }
 ]
