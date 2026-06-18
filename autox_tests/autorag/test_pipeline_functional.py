@@ -20,10 +20,9 @@ import random
 
 import pytest
 
-from .conftest import (
-    add_kubeconfig_to_config,
-    get_functional_config,
-)
+from autox_tests.lib.k8s_utils import add_kubeconfig_to_config
+
+from .conftest import get_functional_config
 from autox_tests.autorag.configs.configs import (
     AutoRAGTestConfig,
     get_test_configs_for_run,

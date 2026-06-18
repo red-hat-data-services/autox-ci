@@ -98,8 +98,8 @@ def make_k8s_core_api(token: str, kfp_url: str):
     return k8s_client.CoreV1Api(api_client=k8s_client.ApiClient(configuration))
 
 
-def merge_kubeconfig_into_config(config: dict, kubeconfig_path: str | None) -> dict:
-    """Merge temp_kubeconfig_path into a functional test config dict.
+def add_kubeconfig_to_config(config: dict, kubeconfig_path: str | None) -> dict:
+    """Add temp_kubeconfig_path to a functional test config dict.
 
     Args:
         config: Base functional config dict.

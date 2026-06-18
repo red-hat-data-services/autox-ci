@@ -23,7 +23,9 @@ import time
 import pytest
 
 from .configs.configs import AutoMLTabularFunctionalConfig, get_tabular_configs_for_run
-from .conftest import add_kubeconfig_to_config, get_automl_functional_config
+from autox_tests.lib.k8s_utils import add_kubeconfig_to_config
+
+from .conftest import get_automl_functional_config
 from .utils import (
     TASK_PRIMARY_METRICS_TABULAR,
     _collect_failure_details,
@@ -78,7 +80,7 @@ class TestAutoMLTabularFunctional:
         pipeline_run_timeout,
         s3_client_automl_functional,
         s3_cleanup_tracker,
-        temp_kubeconfig_path,
+        rhoai_cluster_kubeconfig,
     ):
         """Submit pipeline, assert SUCCEEDED, validate artifacts in S3."""
         if not kfp_client_automl_functional:
@@ -114,7 +116,7 @@ class TestAutoMLTabularFunctional:
                 kfp_client_automl_functional,
                 run_id,
                 config=add_kubeconfig_to_config(
-                    automl_functional_config, temp_kubeconfig_path
+                    automl_functional_config, rhoai_cluster_kubeconfig
                 ),
             )
             pytest.fail(
@@ -210,7 +212,7 @@ class TestAutoMLTabularFunctional:
                     run_prefix=prefix,
                     run_id=run_id,
                     automl_functional_config=automl_functional_config,
-                    temp_kubeconfig_path=temp_kubeconfig_path,
+                    rhoai_cluster_kubeconfig=rhoai_cluster_kubeconfig,
                     instances=instances,
                     v2_inputs=v2_inputs,
                 )
@@ -281,7 +283,7 @@ class TestAutoMLTabularFunctionalNegative:
         pipeline_run_timeout,
         s3_client_automl_functional,
         s3_cleanup_tracker,
-        temp_kubeconfig_path,
+        rhoai_cluster_kubeconfig,
     ):
         """Submit pipeline with injected fault; assert FAILED within capped timeout."""
         if not kfp_client_automl_functional:
@@ -322,7 +324,7 @@ class TestAutoMLTabularFunctionalNegative:
             kfp_client_automl_functional,
             run_id,
             config=add_kubeconfig_to_config(
-                automl_functional_config, temp_kubeconfig_path
+                automl_functional_config, rhoai_cluster_kubeconfig
             ),
         )
         logger.info(failure_details)

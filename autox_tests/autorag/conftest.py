@@ -9,7 +9,6 @@ import pytest
 from autox_tests.conftest import make_kfp_client_for_session
 from autox_tests.lib.clients import make_s3_client
 from autox_tests.lib.env import load_tests_env
-from autox_tests.lib.k8s_utils import merge_kubeconfig_into_config
 from autox_tests.lib.managed_pipelines import (
     PipelineRunTarget,
     resolve_managed_pipeline_target,
@@ -107,8 +106,6 @@ def get_functional_config():
     }
 
 
-# Backward compatibility alias - use merge_kubeconfig_into_config from lib.k8s_utils
-add_kubeconfig_to_config = merge_kubeconfig_into_config
 
 
 @pytest.fixture(scope="session")

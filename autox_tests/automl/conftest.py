@@ -9,7 +9,6 @@ import pytest
 
 from autox_tests.conftest import make_kfp_client_for_session
 from autox_tests.lib.env import load_tests_env
-from autox_tests.lib.k8s_utils import merge_kubeconfig_into_config
 from autox_tests.lib.managed_pipelines import (
     PipelineRunTarget,
     resolve_managed_pipeline_target,
@@ -86,8 +85,6 @@ def get_automl_functional_config():
     }
 
 
-# Backward compatibility alias - use merge_kubeconfig_into_config from lib.k8s_utils
-add_kubeconfig_to_config = merge_kubeconfig_into_config
 
 
 @pytest.fixture(scope="session")
@@ -191,13 +188,6 @@ def pipeline_run_timeout():
     return int(os.environ.get("RHOAI_PIPELINE_RUN_TIMEOUT", "3600"))
 
 
-@pytest.fixture(scope="session")
-def temp_kubeconfig_path(automl_functional_config, rhoai_cluster_kubeconfig):
-    """Reuse cluster kubeconfig for KServe deployment tests."""
-    if automl_functional_config is None:
-        yield None
-        return
-    yield rhoai_cluster_kubeconfig
 
 
 class S3CleanupTracker:

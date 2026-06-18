@@ -26,7 +26,9 @@ from .configs.configs import (
     AutoMLTimeseriesFunctionalConfig,
     get_timeseries_configs_for_run,
 )
-from .conftest import add_kubeconfig_to_config, get_automl_functional_config
+from autox_tests.lib.k8s_utils import add_kubeconfig_to_config
+
+from .conftest import get_automl_functional_config
 from .utils import (
     TS_PRIMARY_METRIC,
     _collect_failure_details,
@@ -80,7 +82,7 @@ class TestAutoMLTimeseriesFunctional:
         pipeline_run_timeout,
         s3_client_automl_functional,
         s3_cleanup_tracker,
-        temp_kubeconfig_path,
+        rhoai_cluster_kubeconfig,
     ):
         """Submit pipeline, assert SUCCEEDED, validate artifacts in S3."""
         if not kfp_client_automl_functional:
@@ -116,7 +118,7 @@ class TestAutoMLTimeseriesFunctional:
                 kfp_client_automl_functional,
                 run_id,
                 config=add_kubeconfig_to_config(
-                    automl_functional_config, temp_kubeconfig_path
+                    automl_functional_config, rhoai_cluster_kubeconfig
                 ),
             )
             pytest.fail(
@@ -212,7 +214,7 @@ class TestAutoMLTimeseriesFunctional:
                     run_prefix=prefix,
                     run_id=run_id,
                     automl_functional_config=automl_functional_config,
-                    temp_kubeconfig_path=temp_kubeconfig_path,
+                    rhoai_cluster_kubeconfig=rhoai_cluster_kubeconfig,
                     instances=test_config.inference_sample or None,
                     isvc_env_vars=ts_env_vars or None,
                     v2_inputs=v2_inputs,
@@ -282,7 +284,7 @@ class TestAutoMLTimeseriesFunctionalNegative:
         pipeline_run_timeout,
         s3_client_automl_functional,
         s3_cleanup_tracker,
-        temp_kubeconfig_path,
+        rhoai_cluster_kubeconfig,
     ):
         """Submit pipeline with injected fault; assert FAILED within capped timeout."""
         if not kfp_client_automl_functional:
@@ -323,7 +325,7 @@ class TestAutoMLTimeseriesFunctionalNegative:
             kfp_client_automl_functional,
             run_id,
             config=add_kubeconfig_to_config(
-                automl_functional_config, temp_kubeconfig_path
+                automl_functional_config, rhoai_cluster_kubeconfig
             ),
         )
         logger.info(failure_details)
