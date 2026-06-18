@@ -18,6 +18,7 @@ from autox_tests.lib.pipeline_yaml_sources import (
     PIPELINE_YAML_TABULAR_ENV,
     PIPELINE_YAML_TIMESERIES_ENV,
 )
+from autox_tests.lib.s3_data import S3CleanupTracker
 from autox_tests.lib.settings import (
     AUTOML_UPLOAD_TEST_DATASETS_ENV,
     RHOAI_TRAIN_DATA_BUCKET_ENV,
@@ -195,18 +196,6 @@ def temp_kubeconfig_path(automl_functional_config, rhoai_cluster_kubeconfig):
     yield rhoai_cluster_kubeconfig
 
 
-class S3CleanupTracker:
-    """Accumulates S3 artifact prefixes to delete during session teardown."""
-
-    def __init__(self):
-        """Initialize with an empty tracking dict."""
-        self.artifact_prefixes: dict[str, list[str]] = {}
-
-    def track_artifact_prefix(self, bucket: str, prefix: str) -> None:
-        """Record a pipeline artifact prefix for teardown cleanup."""
-        self.artifact_prefixes.setdefault(bucket, []).append(prefix)
-
-
 @pytest.fixture(scope="session")
 def s3_cleanup_tracker():
     """Session-scoped S3 cleanup tracker shared across all AutoML scenarios."""
@@ -247,7 +236,7 @@ def upload_datasets_if_requested(automl_functional_config, s3_client_automl_func
     yield
 
     if uploaded_keys and bucket:
-        from .utils import delete_s3_objects
+        from autox_tests.lib.s3_data import delete_s3_objects
 
         deleted = delete_s3_objects(s3_client_automl_functional, bucket, uploaded_keys)
         if deleted < len(uploaded_keys):
@@ -285,7 +274,7 @@ def s3_teardown(s3_client_automl_functional, s3_cleanup_tracker):
         )
         return
 
-    from .utils import delete_s3_objects, list_s3_objects
+    from autox_tests.lib.s3_data import delete_s3_objects, list_s3_objects
 
     logger.info("Starting S3 artifact cleanup...")
     for bucket, prefixes in s3_cleanup_tracker.artifact_prefixes.items():

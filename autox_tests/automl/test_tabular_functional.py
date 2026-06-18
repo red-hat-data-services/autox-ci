@@ -24,14 +24,12 @@ import pytest
 
 from .configs.configs import AutoMLTabularFunctionalConfig, get_tabular_configs_for_run
 from .conftest import get_automl_functional_config
+from autox_tests.lib.kfp_run_state import _get_run_state, _run_failed, _run_succeeded
 from .utils import (
     TASK_PRIMARY_METRICS_TABULAR,
     _collect_failure_details,
     _get_failed_task_names,
-    _get_run_state,
-    _run_failed,
     _run_pipeline_and_wait,
-    _run_succeeded,
     collect_model_metrics_and_sizes,
     column_sample_to_instances,
     column_sample_to_v2_inputs,

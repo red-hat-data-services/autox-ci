@@ -9,7 +9,7 @@ run only configs that have all of the given tags.
 
 import json
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -127,6 +127,15 @@ def _load_configs(pass_type: str) -> list[AutoRAGTestConfig]:
         except KeyError as e:
             raise ValueError(f"test_configs[{i}] missing required key {e}") from e
     return configs
+
+
+def get_all_dataset_keys() -> tuple[list[str], list[str]]:
+    """Return (input_data_keys, test_data_keys) deduplicated across all test configs."""
+    with open(_CONFIGS_JSON_PATH) as f:
+        all_items = json.load(f)
+    input_keys = list({item["input_data_key"] for item in all_items if item.get("input_data_key")})
+    test_keys = list({item["test_data_key"] for item in all_items if item.get("test_data_key")})
+    return input_keys, test_keys
 
 
 def get_test_configs_for_run(pass_type: str, tags: None | list[str] = None) -> list[AutoRAGTestConfig]:
