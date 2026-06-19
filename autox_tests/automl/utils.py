@@ -584,6 +584,7 @@ def create_inference_service(
     predictor_cpu: str = "2",
     predictor_memory: str = "4Gi",
     env_vars: dict[str, str] | None = None,
+    service_account_name: str | None = None,
 ) -> None:
     """Create a KServe InferenceService in RawDeployment mode with an external Route."""
     from kubernetes.client.rest import ApiException
@@ -620,7 +621,7 @@ def create_inference_service(
         "spec": {
             "predictor": {
                 "automountServiceAccountToken": False,
-                "serviceAccountName": f"{storage_key}-sa",
+                "serviceAccountName": service_account_name or f"{storage_key}-sa",
                 "deploymentStrategy": {"type": "RollingUpdate"},
                 "maxReplicas": 1,
                 "minReplicas": 1,
@@ -1161,6 +1162,7 @@ def run_deployment_test(
         apps_v1 = client.AppsV1Api()
         co = client.CustomObjectsApi()
 
+        precreated_sa_name = os.environ.get("RHOAI_KSERVE_SA_NAME", "").strip()
         existing_storage_key = os.environ.get("RHOAI_KSERVE_STORAGE_KEY", "").strip()
         if existing_storage_key:
             storage_key = existing_storage_key
@@ -1176,10 +1178,13 @@ def run_deployment_test(
             )
             storage_key = temp_secret_name
             result["storage_key"] = storage_key
-            temp_sa_name = create_connection_sa(v1, namespace, temp_secret_name)
-            temp_rbac_name = create_connection_rbac(
-                rbac_v1, namespace, temp_sa_name, temp_secret_name
-            )
+            if precreated_sa_name:
+                logger.info("Using pre-created SA %r — skipping SA/RBAC creation", precreated_sa_name)
+            else:
+                temp_sa_name = create_connection_sa(v1, namespace, temp_secret_name)
+                temp_rbac_name = create_connection_rbac(
+                    rbac_v1, namespace, temp_sa_name, temp_secret_name
+                )
             logger.info("Waiting 15s for controller informer to index secret and SA...")
             time.sleep(15)
 
@@ -1223,6 +1228,7 @@ def run_deployment_test(
             predictor_cpu=predictor_cpu,
             predictor_memory=predictor_memory,
             env_vars=isvc_env_vars,
+            service_account_name=precreated_sa_name or None,
         )
         isvc_created = True
         logger.info("Created InferenceService %r in namespace %r", isvc_name, namespace)
