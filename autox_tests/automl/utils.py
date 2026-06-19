@@ -13,7 +13,8 @@ import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
-from autox_tests.lib.clients import make_kfp_client, make_s3_client  # noqa: F401
+from autox_tests.lib.kfp_run_state import _normalize_state
+from autox_tests.lib.s3_data import list_s3_objects
 
 logger = logging.getLogger(__name__)
 
@@ -62,31 +63,6 @@ def _run_pipeline_and_wait(client, pipeline_target, arguments, timeout):
         timeout=timeout,
     )
 
-
-def _normalize_state(state):
-    """Normalize a state value (str or enum) to an uppercase string."""
-    if state is None:
-        return None
-    return str(getattr(state, "name", state)).upper()
-
-
-def _get_run_state(detail):
-    """Extract the run state string from a KFP run detail object."""
-    run = getattr(detail, "run", detail)
-    state = getattr(run, "state", None)
-    if state is None and hasattr(run, "status"):
-        state = getattr(run.status, "state", None)
-    return _normalize_state(state)
-
-
-def _run_succeeded(detail):
-    """Return True if the run finished with SUCCEEDED state."""
-    return _get_run_state(detail) == "SUCCEEDED"
-
-
-def _run_failed(detail):
-    """Return True if the run finished with FAILED state."""
-    return _get_run_state(detail) == "FAILED"
 
 
 def _collect_failure_details(client, run_id, config=None):
@@ -156,16 +132,6 @@ def _get_failed_task_names(client, run_id: str) -> list[str]:
         return []
 
 
-def list_s3_objects(s3_client, bucket: str, prefix: str) -> list[dict]:
-    """List all objects under a prefix. Returns list of {Key, Size, ...} dicts."""
-    paginator = s3_client.get_paginator("list_objects_v2")
-    return [
-        obj
-        for page in paginator.paginate(Bucket=bucket, Prefix=prefix)
-        for obj in page.get("Contents") or []
-    ]
-
-
 def read_s3_json(s3_client, bucket: str, key: str) -> dict | None:
     """Read and parse a JSON file from S3; returns None on failure."""
     try:
@@ -174,23 +140,6 @@ def read_s3_json(s3_client, bucket: str, key: str) -> dict | None:
     except Exception as e:
         logger.warning("Failed to read s3://%s/%s: %s", bucket, key, e)
         return None
-
-
-def delete_s3_objects(s3_client, bucket: str, keys: list[str]) -> int:
-    """Delete objects from S3 in batches. Returns count of deleted objects."""
-    deleted = 0
-    batch_size = 1000
-    for i in range(0, len(keys), batch_size):
-        batch = keys[i : i + batch_size]
-        delete_req = {"Objects": [{"Key": k} for k in batch], "Quiet": True}
-        try:
-            s3_client.delete_objects(Bucket=bucket, Delete=delete_req)
-            deleted += len(batch)
-        except Exception as e:
-            logger.warning(
-                "Failed to delete %d objects from s3://%s: %s", len(batch), bucket, e
-            )
-    return deleted
 
 
 def collect_model_metrics_and_sizes(

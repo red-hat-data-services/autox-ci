@@ -28,13 +28,11 @@ from autox_tests.autorag.configs.configs import (
     get_test_configs_for_run,
 )
 
+from autox_tests.lib.kfp_run_state import _get_run_state, _run_failed, _run_succeeded
 from .utils import (
     _collect_failure_details,
     _download_and_execute_notebooks,
-    _get_run_state,
-    _run_failed,
     _run_pipeline_and_wait,
-    _run_succeeded,
     _validate_artifacts_in_s3,
 )
 
@@ -70,6 +68,7 @@ class TestAutoRAGFunctional:
         autorag_pipeline_run_target,
         pipeline_run_timeout,
         s3_client_functional,
+        s3_cleanup_tracker,
     ):
         """Verify pipeline fails as expected for negative test scenarios."""
         if not kfp_client_functional:
@@ -87,6 +86,11 @@ class TestAutoRAGFunctional:
         )
 
         state = _get_run_state(detail)
+
+        bucket = functional_env_config.get("s3_bucket_artifacts")
+        if s3_client_functional and bucket:
+            prefix = f"{autorag_pipeline_run_target.artifact_prefix}/{run_id}"
+            s3_cleanup_tracker.track_artifact_prefix(bucket, prefix)
 
         assert _run_failed(detail), (
             f"[{test_scenario_config.id}] Pipeline run {run_id} expected state FAILED but got {state}"
@@ -107,6 +111,7 @@ class TestAutoRAGFunctional:
         autorag_pipeline_run_target,
         pipeline_run_timeout,
         s3_client_functional,
+        s3_cleanup_tracker,
     ):
         """Run pipeline for one test config; validate based on expected result.
 
@@ -127,6 +132,11 @@ class TestAutoRAGFunctional:
             timeout,
         )
 
+        prefix = f"{autorag_pipeline_run_target.artifact_prefix}/{run_id}"
+        artifact_bucket = functional_env_config.get("s3_bucket_artifacts")
+        if s3_client_functional and artifact_bucket:
+            s3_cleanup_tracker.track_artifact_prefix(artifact_bucket, prefix)
+
         if not _run_succeeded(detail):
             failure_info = _collect_failure_details(kfp_client_functional, run_id, config=functional_env_config)
             pytest.fail(
@@ -136,11 +146,9 @@ class TestAutoRAGFunctional:
             )
 
         # Artifact validation (requires S3 config)
-        if not s3_client_functional or not functional_env_config.get("s3_bucket_artifacts"):
+        if not s3_client_functional or not artifact_bucket:
             return
 
-        artifact_bucket = functional_env_config["s3_bucket_artifacts"]
-        prefix = f"{autorag_pipeline_run_target.artifact_prefix}/{run_id}"
         artifacts = _validate_artifacts_in_s3(s3_client_functional, artifact_bucket, prefix)
 
         assert len(artifacts["pattern_keys"]) >= 1, (

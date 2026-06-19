@@ -7,7 +7,8 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-from autox_tests.lib.clients import make_kfp_client, make_s3_client  # noqa: F401
+from autox_tests.lib.kfp_run_state import _normalize_state
+from autox_tests.lib.s3_data import upload_file_to_s3
 
 logger = logging.getLogger(__name__)
 
@@ -32,31 +33,6 @@ def _run_pipeline_and_wait(client, pipeline_target, arguments, timeout):
         timeout=timeout,
     )
 
-
-def _normalize_state(state):
-    """Normalize a state value (str or enum) to an uppercase string like 'FAILED'."""
-    if state is None:
-        return None
-    return str(getattr(state, "name", state)).upper()
-
-
-def _get_run_state(detail):
-    """Extract the run state string from a run detail object."""
-    run = getattr(detail, "run", detail)
-    state = getattr(run, "state", None)
-    if state is None and hasattr(run, "status"):
-        state = getattr(run.status, "state", None)
-    return _normalize_state(state)
-
-
-def _run_succeeded(detail):
-    """Return True if the run finished successfully."""
-    return _get_run_state(detail) == "SUCCEEDED"
-
-
-def _run_failed(detail):
-    """Return True if the run finished with FAILED state (not timeout or running)."""
-    return _get_run_state(detail) == "FAILED"
 
 
 def _collect_failure_details(client, run_id, config=None):
@@ -338,6 +314,127 @@ def _inject_and_run(notebook_path: Path, output_path: Path) -> None:
         os.environ.update(original_environ)
         os.chdir(original_cwd)
         injected_path.unlink(missing_ok=True)
+
+
+def _common_prefix_len(a: str, b: str) -> int:
+    """Length of the longest common prefix of two strings."""
+    for i, (ca, cb) in enumerate(zip(a, b)):
+        if ca != cb:
+            return i
+    return min(len(a), len(b))
+
+
+def upload_test_datasets(
+    s3_client,
+    bucket: str,
+    s3_keys: list[str],
+    local_data_dir: Path,
+) -> list[str]:
+    """Upload local files or directories to S3 for each key in s3_keys.
+
+    Keys with a file extension are matched by filename (basename). Keys without an
+    extension are treated as S3 directory prefixes: the matching local directory is found
+    by its name, and all files within it are uploaded under that prefix.
+
+    When multiple local files or directories share the same name, the one whose parent
+    directory name shares the longest common prefix with the S3 key's parent component
+    is chosen. Keys with no local match are skipped (covers intentional negative-test keys).
+
+    Returns the list of S3 keys that were actually uploaded.
+    """
+    if not local_data_dir.is_dir():
+        raise FileNotFoundError(
+            f"AUTORAG_UPLOAD_TEST_DATASETS is set but local data directory does not exist: {local_data_dir}"
+        )
+
+    local_files: dict[str, list[Path]] = {}
+    local_dirs: dict[str, list[Path]] = {}
+    for entry in local_data_dir.rglob("*"):
+        if entry.is_file():
+            local_files.setdefault(entry.name, []).append(entry)
+        elif entry.is_dir():
+            local_dirs.setdefault(entry.name, []).append(entry)
+
+    uploaded_keys: list[str] = []
+    failed_uploads: list[str] = []
+
+    for s3_key in sorted(set(s3_keys)):
+        key_path = Path(s3_key)
+        parent_hint = key_path.parent.name
+        leaf = key_path.name
+
+        if key_path.suffix:
+            candidates = sorted(local_files.get(leaf, []))
+            if not candidates:
+                logger.debug("No local file for key %r — skipping upload", s3_key)
+                continue
+            scores = [_common_prefix_len(p.parent.name, parent_hint) for p in candidates]
+            best_score = max(scores)
+            if len(candidates) > 1:
+                if best_score == 0:
+                    logger.warning(
+                        "Cannot discriminate among %d candidates for key %r — picking %s",
+                        len(candidates), s3_key, candidates[0],
+                    )
+                else:
+                    logger.warning(
+                        "Multiple local files named %r; picking best match for parent %r",
+                        leaf, parent_hint,
+                    )
+            local_path = candidates[scores.index(best_score)]
+            try:
+                logger.info("Uploading %s → s3://%s/%s", local_path, bucket, s3_key)
+                upload_file_to_s3(s3_client, bucket=bucket, key=s3_key, local_path=local_path)
+                uploaded_keys.append(s3_key)
+            except Exception as exc:
+                logger.error(
+                    "Failed to upload %s → s3://%s/%s: %s", local_path, bucket, s3_key, exc
+                )
+                failed_uploads.append(s3_key)
+        else:
+            candidates = sorted(local_dirs.get(leaf, []))
+            if not candidates:
+                logger.debug("No local directory for key %r — skipping upload", s3_key)
+                continue
+            scores = [_common_prefix_len(d.parent.name, parent_hint) for d in candidates]
+            best_score = max(scores)
+            if len(candidates) > 1:
+                if best_score == 0:
+                    logger.warning(
+                        "Cannot discriminate among %d candidates for key %r — picking %s",
+                        len(candidates), s3_key, candidates[0],
+                    )
+                else:
+                    logger.warning(
+                        "Multiple local directories named %r; picking best match for parent %r",
+                        leaf, parent_hint,
+                    )
+            local_dir = candidates[scores.index(best_score)]
+            for f in sorted(local_dir.rglob("*")):
+                if not f.is_file():
+                    continue
+                rel = f.relative_to(local_dir)
+                file_s3_key = f"{s3_key}/{rel}"
+                try:
+                    logger.info("Uploading %s → s3://%s/%s", f, bucket, file_s3_key)
+                    upload_file_to_s3(s3_client, bucket=bucket, key=file_s3_key, local_path=f)
+                    uploaded_keys.append(file_s3_key)
+                except Exception as exc:
+                    logger.error(
+                        "Failed to upload %s → s3://%s/%s: %s", f, bucket, file_s3_key, exc
+                    )
+                    failed_uploads.append(file_s3_key)
+
+    logger.info(
+        "Dataset upload complete: %d file(s) uploaded to s3://%s",
+        len(uploaded_keys),
+        bucket,
+    )
+    if failed_uploads:
+        raise RuntimeError(
+            f"Failed to upload {len(failed_uploads)} dataset file(s) to s3://{bucket}: {failed_uploads}"
+        )
+    return uploaded_keys
 
 
 def _download_and_execute_notebooks(s3_client, bucket, notebook_keys):
