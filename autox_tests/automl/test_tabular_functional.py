@@ -210,7 +210,7 @@ class TestAutoMLTabularFunctional:
                     run_prefix=prefix,
                     run_id=run_id,
                     automl_functional_config=automl_functional_config,
-                    rhoai_cluster_kubeconfig=rhoai_cluster_kubeconfig,
+                    temp_kubeconfig_path=rhoai_cluster_kubeconfig,
                     instances=instances,
                     v2_inputs=v2_inputs,
                 )

@@ -212,7 +212,7 @@ class TestAutoMLTimeseriesFunctional:
                     run_prefix=prefix,
                     run_id=run_id,
                     automl_functional_config=automl_functional_config,
-                    rhoai_cluster_kubeconfig=rhoai_cluster_kubeconfig,
+                    temp_kubeconfig_path=rhoai_cluster_kubeconfig,
                     instances=test_config.inference_sample or None,
                     isvc_env_vars=ts_env_vars or None,
                     v2_inputs=v2_inputs,
