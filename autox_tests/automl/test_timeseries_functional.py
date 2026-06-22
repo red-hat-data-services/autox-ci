@@ -29,14 +29,12 @@ from .configs.configs import (
 from autox_tests.lib.k8s_utils import add_kubeconfig_to_config
 
 from .conftest import get_automl_functional_config
+from autox_tests.lib.kfp_run_state import _get_run_state, _run_failed, _run_succeeded
 from .utils import (
     TS_PRIMARY_METRIC,
     _collect_failure_details,
     _get_failed_task_names,
-    _get_run_state,
-    _run_failed,
     _run_pipeline_and_wait,
-    _run_succeeded,
     collect_model_metrics_and_sizes,
     download_and_execute_automl_notebook,
     find_leaderboard_html,

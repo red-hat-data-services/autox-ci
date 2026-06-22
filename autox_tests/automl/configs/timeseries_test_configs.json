@@ -56,7 +56,7 @@
     "known_covariates_names": [],
     "prediction_length": 24,
     "top_n": 2,
-    "train_data_file_key": "functional-test/timeseries/m4_hourly_subset_train_light.csv",
+    "train_data_file_key": "functional-test/timeseries/m4_hourly_subset_train_ultra_light.csv",
     "tags": ["timeseries", "hourly", "standard_schema"],
     "inference_sample": [
       { "item_id": "H1", "timestamp": "1750-01-01 00:00:00", "target": 605.0 },
@@ -99,7 +99,7 @@
     "known_covariates_names": [],
     "prediction_length": 5,
     "top_n": 1,
-    "train_data_file_key": "functional-test/timeseries/m4_hourly_subset_train_light.csv",
+    "train_data_file_key": "functional-test/timeseries/m4_hourly_subset_train_ultra_light.csv",
     "tags": ["negative", "data"],
     "fault_category": "Target column",
     "injected_fault": "target='NonExistentColumn' absent from uploaded CSV",
@@ -115,12 +115,12 @@
     "known_covariates_names": [],
     "prediction_length": 0,
     "top_n": 1,
-    "train_data_file_key": "functional-test/timeseries/m4_hourly_subset_train_light.csv",
+    "train_data_file_key": "functional-test/timeseries/m4_hourly_subset_train_ultra_light.csv",
     "tags": ["negative", "validation"],
     "fault_category": "Invalid prediction_length",
     "injected_fault": "prediction_length=0 (must be a positive integer)",
     "expected_failing_stage": "pipeline",
-    "expected_failing_task": ["timeseries-data-loader", "autogluon-timeseries-models-training"],
+    "expected_failing_task": ["autogluon-timeseries-models-training", "autogluon-timeseries-models-training-2"],
     "expected_outcome": "Fail fast with clear validation message"
   },
   {
@@ -147,7 +147,7 @@
     "known_covariates_names": [],
     "prediction_length": 5,
     "top_n": 1,
-    "train_data_file_key": "functional-test/timeseries/m4_hourly_subset_train_light.csv",
+    "train_data_file_key": "functional-test/timeseries/m4_hourly_subset_train_ultra_light.csv",
     "train_data_secret_name_override": "non-existent-s3-secret-xyz",
     "tags": ["negative", "credentials"],
     "fault_category": "Credentials",
@@ -164,12 +164,12 @@
     "known_covariates_names": [],
     "prediction_length": 5,
     "top_n": 0,
-    "train_data_file_key": "functional-test/timeseries/m4_hourly_subset_train_light.csv",
+    "train_data_file_key": "functional-test/timeseries/m4_hourly_subset_train_ultra_light.csv",
     "tags": ["negative", "validation"],
     "fault_category": "Invalid top_n",
     "injected_fault": "top_n=0 (must be a positive integer)",
     "expected_failing_stage": "pipeline",
-    "expected_failing_task": ["autogluon-timeseries-models-training", "timeseries-data-loader"],
+    "expected_failing_task": ["autogluon-timeseries-models-training", "autogluon-timeseries-models-training-2"],
     "expected_outcome": "Rejected before usable run or step failure"
   }
 ]
