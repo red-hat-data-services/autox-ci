@@ -86,8 +86,6 @@ def get_automl_functional_config():
     }
 
 
-
-
 @pytest.fixture(scope="session")
 def automl_functional_config():
     """Session-scoped AutoML functional test config dict (None if env is incomplete)."""
@@ -187,8 +185,6 @@ def timeseries_pipeline_run_target(kfp_client_automl_functional, tmp_path_factor
 def pipeline_run_timeout():
     """Max seconds to wait for a pipeline run (``RHOAI_PIPELINE_RUN_TIMEOUT``)."""
     return int(os.environ.get("RHOAI_PIPELINE_RUN_TIMEOUT", "3600"))
-
-
 
 
 @pytest.fixture(scope="session")

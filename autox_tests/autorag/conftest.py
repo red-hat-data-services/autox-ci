@@ -51,40 +51,42 @@ def get_functional_config():
     if base is None:
         return None
 
-    kfp_url = (os.environ.get("RHOAI_KFP_URL") or os.environ.get("KFP_HOST") or "").strip()
+    kfp_url = (
+        os.environ.get("RHOAI_KFP_URL") or os.environ.get("KFP_HOST") or ""
+    ).strip()
     if not kfp_url and not should_create_dspa_from_env():
-        logger.info("Set RHOAI_KFP_URL or enable DSPA auto-setup (default when KFP URL is unset).")
+        logger.info(
+            "Set RHOAI_KFP_URL or enable DSPA auto-setup (default when KFP URL is unset)."
+        )
         return None
 
-    default_secret = (
-        (os.environ.get("RHOAI_TRAIN_S3_SECRET_NAME") or "").strip()
-        or (os.environ.get("RHOAI_TEST_S3_SECRET_NAME") or base.get("s3_secret_name") or "").strip()
-    )
+    default_secret = (os.environ.get("RHOAI_TRAIN_S3_SECRET_NAME") or "").strip() or (
+        os.environ.get("RHOAI_TEST_S3_SECRET_NAME") or base.get("s3_secret_name") or ""
+    ).strip()
     t_secret = (os.environ.get("TEST_DATA_SECRET_NAME") or default_secret).strip()
     i_secret = (os.environ.get("INPUT_DATA_SECRET_NAME") or default_secret).strip()
     t_bucket = (os.environ.get("TEST_DATA_BUCKET_NAME") or "").strip()
     i_bucket = (os.environ.get("INPUT_DATA_BUCKET_NAME") or "").strip()
     ogx_secret = (os.environ.get("OGX_SECRET_NAME") or "").strip()
 
-    if not all([base.get("rhoai_token"), t_secret, t_bucket, i_secret, i_bucket, ogx_secret]):
+    if not all(
+        [base.get("rhoai_token"), t_secret, t_bucket, i_secret, i_bucket, ogx_secret]
+    ):
         return None
 
     if not use_managed_pipelines_from_env():
         if not (os.environ.get(PIPELINE_YAML_AUTORAG_ENV) or "").strip():
             return None
 
-    endpoint = (
-        (os.environ.get("ARTIFACTS_AWS_S3_ENDPOINT") or "").strip()
-        or base.get("s3_endpoint")
+    endpoint = (os.environ.get("ARTIFACTS_AWS_S3_ENDPOINT") or "").strip() or base.get(
+        "s3_endpoint"
     )
-    access = (
-        (os.environ.get("ARTIFACTS_AWS_ACCESS_KEY_ID") or "").strip()
-        or base.get("s3_access_key")
+    access = (os.environ.get("ARTIFACTS_AWS_ACCESS_KEY_ID") or "").strip() or base.get(
+        "s3_access_key"
     )
     secret = (
-        (os.environ.get("ARTIFACTS_AWS_SECRET_ACCESS_KEY") or "").strip()
-        or base.get("s3_secret_key")
-    )
+        os.environ.get("ARTIFACTS_AWS_SECRET_ACCESS_KEY") or ""
+    ).strip() or base.get("s3_secret_key")
     region = (
         (os.environ.get("ARTIFACTS_AWS_DEFAULT_REGION") or "").strip()
         or base.get("s3_region")
@@ -106,8 +108,6 @@ def get_functional_config():
         "s3_region": region,
         "s3_bucket_artifacts": bucket_artifacts or None,
     }
-
-
 
 
 @pytest.fixture(scope="session")
@@ -148,7 +148,9 @@ def s3_client_functional(functional_env_config):
 def autorag_pipeline_run_target(kfp_client_functional, tmp_path_factory):
     """AutoRAG pipeline: managed KFP registration or legacy ``AUTORAG_PIPELINE_PATH`` package."""
     if not kfp_client_functional:
-        pytest.skip("KFP client not available — skipping pipeline run target resolution")
+        pytest.skip(
+            "KFP client not available — skipping pipeline run target resolution"
+        )
     try:
         return resolve_managed_pipeline_target(
             kfp_client_functional,
@@ -157,7 +159,13 @@ def autorag_pipeline_run_target(kfp_client_functional, tmp_path_factory):
             cache_dir=tmp_path_factory.mktemp("pipeline-yaml-autorag"),
             cache_file_name="documents-rag-optimization-pipeline.yaml",
         )
-    except (FileNotFoundError, OSError, RuntimeError, TimeoutError, EnvironmentError) as e:
+    except (
+        FileNotFoundError,
+        OSError,
+        RuntimeError,
+        TimeoutError,
+        EnvironmentError,
+    ) as e:
         pytest.fail(str(e))
 
 
