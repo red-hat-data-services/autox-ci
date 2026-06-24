@@ -188,15 +188,6 @@ def pipeline_run_timeout():
 
 
 @pytest.fixture(scope="session")
-def temp_kubeconfig_path(automl_functional_config, rhoai_cluster_kubeconfig):
-    """Reuse cluster kubeconfig for KServe deployment tests."""
-    if automl_functional_config is None:
-        yield None
-        return
-    yield rhoai_cluster_kubeconfig
-
-
-@pytest.fixture(scope="session")
 def s3_cleanup_tracker():
     """Session-scoped S3 cleanup tracker shared across all AutoML scenarios."""
     return S3CleanupTracker()

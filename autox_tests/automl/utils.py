@@ -13,6 +13,8 @@ import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
+from autox_tests.lib.clients import make_kfp_client, make_s3_client  # noqa: F401
+from autox_tests.lib.k8s_utils import load_k8s_config
 from autox_tests.lib.kfp_run_state import _normalize_state
 from autox_tests.lib.s3_data import list_s3_objects
 
@@ -66,8 +68,23 @@ def _run_pipeline_and_wait(client, pipeline_target, arguments, timeout):
 
 
 def _collect_failure_details(client, run_id, config=None):
-    """Collect failure details from a failed pipeline run."""
+    """Collect failure details from a failed pipeline run.
+
+    For managed/Tekton-backed pipelines, task.error is None — this function fetches
+    pod logs from the Kubernetes API to provide the actual error output.
+
+    Args:
+        client: KFP client instance.
+        run_id: The pipeline run ID.
+        config: Functional config dict with 'rhoai_project' (namespace), 'temp_kubeconfig_path',
+                or ('rhoai_token' + 'rhoai_kfp_url') for Kubernetes API authentication.
+
+    Returns:
+        Formatted string with failure details and pod logs.
+    """
     lines = [f"\n{'=' * 80}", f"FAILURE DETAILS FOR RUN: {run_id}", "=" * 80]
+
+    failed_task_names = []
 
     try:
         run_detail = client.get_run(run_id)
@@ -99,10 +116,19 @@ def _collect_failure_details(client, run_id, config=None):
                     if task_error:
                         error_msg = getattr(task_error, "message", str(task_error))
                         lines.append(f"  Error: {error_msg}")
+                    failed_task_names.append(name)
                 else:
                     lines.append(f"  TASK: {name} -- {state_str}")
     except Exception as e:
         lines.append(f"\n[Could not fetch run details: {e}]")
+
+    # Fetch logs from failed pods only (Tekton-backed managed pipelines)
+    if config:
+        from autox_tests.lib.k8s_utils import append_failed_task_pod_logs_safe
+
+        append_failed_task_pod_logs_safe(
+            lines, run_id, config, failed_task_names, logger=logger
+        )
 
     lines.append("=" * 80)
     return "\n".join(lines)
@@ -236,19 +262,6 @@ def make_isvc_name(scenario_id: str, run_id: str) -> str:
     """
     clean = re.sub(r"[^a-z0-9]+", "-", scenario_id.lower()).strip("-")[:20]
     return f"automl-{clean}-{run_id[:8]}"
-
-
-def load_k8s_config(kubeconfig_path: str | None) -> None:
-    """Load kubernetes config from a file or fall back to in-cluster config."""
-    from kubernetes import config
-
-    try:
-        if kubeconfig_path:
-            config.load_kube_config(config_file=kubeconfig_path)
-        else:
-            config.load_kube_config()
-    except Exception:
-        config.load_incluster_config()
 
 
 def find_top_model_predictor_prefix(
@@ -982,74 +995,6 @@ def delete_inference_service(co, namespace: str, isvc_name: str) -> None:
             logger.warning("Failed to delete InferenceService %r: %s", isvc_name, e)
 
 
-def fetch_pod_logs_str(
-    v1, namespace: str, label_selector: str, tail_lines: int = 100
-) -> str:
-    """Fetch logs from all pods matching *label_selector* and return a formatted string.
-
-    For containers in CrashLoopBackOff or Error state, also fetches the previous
-    terminated container's logs so crash output is visible even after a restart.
-    """
-    lines = []
-    _CRASH_REASONS = frozenset({"CrashLoopBackOff", "Error", "OOMKilled"})
-    try:
-        pod_list = v1.list_namespaced_pod(
-            namespace=namespace, label_selector=label_selector, _request_timeout=30
-        )
-        if not pod_list.items:
-            return f"[No pods found with label selector {label_selector!r} in namespace {namespace!r}]"
-        lines.append(f"Pod logs for {label_selector!r} ({len(pod_list.items)} pod(s)):")
-        for pod in pod_list.items:
-            pod_name = pod.metadata.name
-            phase = pod.status.phase if pod.status else "unknown"
-            lines.append(f"\n--- Pod: {pod_name} (phase: {phase}) ---")
-            containers = (
-                [c.name for c in (pod.spec.containers or [])] if pod.spec else []
-            )
-            container_statuses = (
-                {cs.name: cs for cs in (pod.status.container_statuses or [])}
-                if pod.status
-                else {}
-            )
-            for container_name in containers:
-                cs = container_statuses.get(container_name)
-                waiting_reason = ""
-                if cs and cs.state and cs.state.waiting:
-                    waiting_reason = cs.state.waiting.reason or ""
-                is_crashed = waiting_reason in _CRASH_REASONS
-                try:
-                    log = v1.read_namespaced_pod_log(
-                        name=pod_name,
-                        namespace=namespace,
-                        container=container_name,
-                        tail_lines=tail_lines,
-                        _request_timeout=60,
-                    )
-                    lines.append(f"[container: {container_name}]")
-                    lines.append(log if log else "(empty)")
-                except Exception as e:
-                    lines.append(
-                        f"[container: {container_name}] error fetching current logs: {e}"
-                    )
-                if is_crashed:
-                    try:
-                        prev_log = v1.read_namespaced_pod_log(
-                            name=pod_name,
-                            namespace=namespace,
-                            container=container_name,
-                            tail_lines=tail_lines,
-                            previous=True,
-                            _request_timeout=60,
-                        )
-                        lines.append(f"[container: {container_name} — previous run]")
-                        lines.append(prev_log if prev_log else "(empty)")
-                    except Exception:
-                        pass
-    except Exception as e:
-        return f"[Could not fetch pod logs for {label_selector!r}: {e}]"
-    return "\n".join(lines)
-
-
 _AUTOML_NOTEBOOK_ENV_PREFIXES = ("AWS_",)
 _SYSTEM_ENV_KEYS = frozenset(
     {
@@ -1251,8 +1196,13 @@ def run_deployment_test(
         result["isvc_ready"] = isvc_ready
 
         if blocking_reason or not isvc_ready:
-            pod_logs = fetch_pod_logs_str(
-                v1, namespace, f"serving.kserve.io/inferenceservice={isvc_name}"
+            from autox_tests.lib.k8s_utils import fetch_logs_by_selector, pod_log_tail_lines
+
+            pod_logs = fetch_logs_by_selector(
+                v1,
+                namespace,
+                f"serving.kserve.io/inferenceservice={isvc_name}",
+                tail_lines=pod_log_tail_lines(),
             )
             logger.error("Predictor pod logs for %r:\n%s", isvc_name, pod_logs)
             if blocking_reason:
@@ -1283,8 +1233,13 @@ def run_deployment_test(
                 result["predictions"] = response.get("predictions")
                 result["v1_response"] = response
             except Exception as score_err:
-                pod_logs = fetch_pod_logs_str(
-                    v1, namespace, f"serving.kserve.io/inferenceservice={isvc_name}"
+                from autox_tests.lib.k8s_utils import fetch_logs_by_selector, pod_log_tail_lines
+
+                pod_logs = fetch_logs_by_selector(
+                    v1,
+                    namespace,
+                    f"serving.kserve.io/inferenceservice={isvc_name}",
+                    tail_lines=pod_log_tail_lines(),
                 )
                 result["score_error"] = f"{score_err}\n{pod_logs}"
         else:

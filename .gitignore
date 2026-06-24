@@ -18,6 +18,7 @@ downloads/
 eggs/
 .eggs/
 lib64/
+!autox_tests/lib/
 parts/
 sdist/
 var/

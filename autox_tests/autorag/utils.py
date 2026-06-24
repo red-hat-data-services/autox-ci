@@ -38,9 +38,9 @@ def _run_pipeline_and_wait(client, pipeline_target, arguments, timeout):
 def _collect_failure_details(client, run_id, config=None):
     """Collect failure details from a failed pipeline run via the Kubernetes API.
 
-    Uses the Kubernetes client to find pods with label ``pipeline/runid=<run_id>``,
-    identifies failed pods, and fetches their logs.  Task-level metadata is still
-    pulled from the KFP v2 API for context.
+    Uses the Kubernetes client to find pods for failed pipeline tasks (via Tekton
+    labels such as ``tekton.dev/pipelineTask``) and fetches their logs. Task-level
+    metadata is still pulled from the KFP v2 API for context.
 
     Args:
         client: KFP client instance (used for run-level / task-level metadata).
@@ -52,6 +52,7 @@ def _collect_failure_details(client, run_id, config=None):
         Formatted string with failure details and pod logs.
     """
     lines = [f"\n{'=' * 80}", f"FAILURE DETAILS FOR RUN: {run_id}", "=" * 80]
+    failed_task_names: list[str] = []
 
     # --- Run-level and task-level details from KFP v2 API ---
     try:
@@ -87,6 +88,8 @@ def _collect_failure_details(client, run_id, config=None):
                         error_msg = getattr(task_error, "message", str(task_error))
                         lines.append(f"  Error: {error_msg}")
 
+                    failed_task_names.append(name)
+
                     start = getattr(task, "start_time", None)
                     end = getattr(task, "end_time", None)
                     if start and end:
@@ -98,137 +101,20 @@ def _collect_failure_details(client, run_id, config=None):
     except Exception as e:
         lines.append(f"\n[Could not fetch run details from KFP API: {e}]")
 
-    # --- Pod logs via Kubernetes API (label-based pod discovery) ---
-    try:
-        namespace = config.get("rhoai_project") if config else None
-        token = config.get("rhoai_token") if config else None
-        kfp_url = config.get("rhoai_kfp_url") if config else None
-        _append_failed_pod_logs(run_id, namespace, lines, token=token, kfp_url=kfp_url)
-    except Exception as e:
-        lines.append(f"\n[Could not fetch pod logs: {e}]")
+    # Fetch logs from failed pods only (Tekton-backed managed pipelines)
+    if config:
+        from autox_tests.lib.k8s_utils import append_failed_task_pod_logs_safe
+
+        append_failed_task_pod_logs_safe(
+            lines,
+            run_id,
+            config,
+            failed_task_names,
+            logger=logger,
+        )
 
     lines.append("=" * 80)
     return "\n".join(lines)
-
-
-def _derive_k8s_api_url(kfp_url):
-    """Derive OpenShift API server URL from a KFP route URL.
-
-    Standard OCP: https://<route>.apps.<cluster-domain> -> https://api.<cluster-domain>:6443
-    ROSA:         https://<route>.apps.rosa.<cluster-domain> -> https://api.<cluster-domain>:443
-
-    Override entirely with K8S_API_URL env var, or just the port with K8S_API_PORT.
-    """
-    override = os.environ.get("K8S_API_URL")
-    if override:
-        return override.strip().rstrip("/")
-
-    from urllib.parse import urlparse
-
-    hostname = urlparse(kfp_url).hostname or ""
-    apps_idx = hostname.find(".apps.")
-    if apps_idx < 0:
-        return None
-    base_domain = hostname[apps_idx + len(".apps.") :]
-    is_rosa = base_domain.startswith("rosa.")
-    if is_rosa:
-        base_domain = base_domain[len("rosa.") :]
-    default_port = 443 if is_rosa else 6443
-    port = os.environ.get("K8S_API_PORT", str(default_port)).strip()
-    return f"https://api.{base_domain}:{port}"
-
-
-def _make_k8s_core_api(token, kfp_url):
-    """Create a Kubernetes CoreV1Api client authenticated with a bearer token."""
-    from kubernetes import client as k8s_client
-
-    api_url = _derive_k8s_api_url(kfp_url)
-    if not api_url:
-        raise RuntimeError(f"Cannot derive K8S API URL from KFP URL: {kfp_url}")
-
-    verify_ssl = os.environ.get("KFP_VERIFY_SSL", "true").strip().lower()
-    verify_ssl = verify_ssl not in ("0", "false", "no")
-
-    configuration = k8s_client.Configuration()
-    configuration.host = api_url
-    configuration.api_key = {"authorization": f"Bearer {token}"}
-    configuration.verify_ssl = verify_ssl
-    if not verify_ssl:
-        import urllib3
-
-        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
-    return k8s_client.CoreV1Api(api_client=k8s_client.ApiClient(configuration))
-
-
-def _is_pod_failed(pod):
-    """Return True if a pod is in a failed state."""
-    phase = pod.status.phase or ""
-    if phase.lower() == "failed":
-        return True
-    for cs in pod.status.container_statuses or []:
-        terminated = cs.state.terminated if cs.state else None
-        if terminated and terminated.exit_code != 0:
-            return True
-    return False
-
-
-def _append_failed_pod_logs(run_id, namespace, lines, token=None, kfp_url=None):
-    """Find failed pods for a pipeline run by label and append their logs.
-
-    Lists pods matching ``pipeline/runid=<run_id>`` in the given namespace,
-    filters for failed pods, and fetches logs from each container.
-    """
-    if not token or not kfp_url:
-        lines.append("\n[Missing RHOAI_TOKEN or RHOAI_KFP_URL; skipping pod log fetch]")
-        return
-
-    try:
-        import kubernetes  # noqa: F401
-    except ImportError:
-        lines.append("\n[kubernetes package not installed; skipping pod log fetch]")
-        return
-
-    ns = namespace or "default"
-    api = _make_k8s_core_api(token, kfp_url)
-
-    pod_list = api.list_namespaced_pod(
-        namespace=ns,
-        label_selector=f"pipeline/runid={run_id}",
-        _request_timeout=30,
-    )
-
-    if not pod_list.items:
-        lines.append(f"\n[No pods found with label pipeline/runid={run_id} in namespace {ns}]")
-        return
-
-    failed_pods = [p for p in pod_list.items if _is_pod_failed(p)]
-
-    if not failed_pods:
-        all_phases = ", ".join(f"{p.metadata.name}={p.status.phase}" for p in pod_list.items)
-        lines.append(f"\n[No failed pods among {len(pod_list.items)} pods: {all_phases}]")
-        return
-
-    lines.append(f"\nFound {len(failed_pods)} failed pod(s) out of {len(pod_list.items)} total")
-
-    for pod in failed_pods:
-        pod_name = pod.metadata.name
-        lines.append(f"\n--- Failed pod: {pod_name} (phase: {pod.status.phase}) ---")
-
-        containers = [c.name for c in (pod.spec.containers or [])]
-        for container_name in containers:
-            try:
-                log = api.read_namespaced_pod_log(
-                    name=pod_name,
-                    namespace=ns,
-                    container=container_name,
-                    tail_lines=100,
-                    _request_timeout=60,
-                )
-                lines.append(f"[container: {container_name}]")
-                lines.append(log if log else "(empty)")
-            except Exception as e:
-                lines.append(f"[container: {container_name}] error: {e}")
 
 
 def _validate_artifacts_in_s3(s3_client, bucket, prefix):

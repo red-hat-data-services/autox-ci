@@ -20,9 +20,9 @@ import random
 
 import pytest
 
-from .conftest import (
-    get_functional_config,
-)
+from autox_tests.lib.k8s_utils import add_kubeconfig_to_config
+
+from .conftest import get_functional_config
 from autox_tests.autorag.configs.configs import (
     AutoRAGTestConfig,
     get_test_configs_for_run,
@@ -69,6 +69,7 @@ class TestAutoRAGFunctional:
         pipeline_run_timeout,
         s3_client_functional,
         s3_cleanup_tracker,
+        rhoai_cluster_kubeconfig,
     ):
         """Verify pipeline fails as expected for negative test scenarios."""
         if not kfp_client_functional:
@@ -97,7 +98,17 @@ class TestAutoRAGFunctional:
         )
 
         # Log failure details for observability even on expected failures
-        logger.info(_collect_failure_details(kfp_client_functional, run_id, config=functional_env_config))
+        failure_details = _collect_failure_details(
+            kfp_client_functional,
+            run_id,
+            config=add_kubeconfig_to_config(
+                functional_env_config, rhoai_cluster_kubeconfig
+            ),
+        )
+        logger.info(failure_details)
+
+        if "POD LOGS FOR FAILED PODS:" not in failure_details:
+            logger.warning("Pod logs not collected for run %s — check k8s connectivity", run_id)
 
     @pytest.mark.positive
     @pytest.mark.parametrize(
@@ -112,6 +123,7 @@ class TestAutoRAGFunctional:
         pipeline_run_timeout,
         s3_client_functional,
         s3_cleanup_tracker,
+        rhoai_cluster_kubeconfig,
     ):
         """Run pipeline for one test config; validate based on expected result.
 
@@ -138,7 +150,13 @@ class TestAutoRAGFunctional:
             s3_cleanup_tracker.track_artifact_prefix(artifact_bucket, prefix)
 
         if not _run_succeeded(detail):
-            failure_info = _collect_failure_details(kfp_client_functional, run_id, config=functional_env_config)
+            failure_info = _collect_failure_details(
+                kfp_client_functional,
+                run_id,
+                config=add_kubeconfig_to_config(
+                    functional_env_config, rhoai_cluster_kubeconfig
+                ),
+            )
             pytest.fail(
                 f"[{test_scenario_config.id}] Pipeline run {run_id} was expected to PASS but failed; "
                 f"state={_get_run_state(detail)}"

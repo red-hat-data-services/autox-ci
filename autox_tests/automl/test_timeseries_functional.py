@@ -26,6 +26,8 @@ from .configs.configs import (
     AutoMLTimeseriesFunctionalConfig,
     get_timeseries_configs_for_run,
 )
+from autox_tests.lib.k8s_utils import add_kubeconfig_to_config
+
 from .conftest import get_automl_functional_config
 from autox_tests.lib.kfp_run_state import _get_run_state, _run_failed, _run_succeeded
 from .utils import (
@@ -78,7 +80,7 @@ class TestAutoMLTimeseriesFunctional:
         pipeline_run_timeout,
         s3_client_automl_functional,
         s3_cleanup_tracker,
-        temp_kubeconfig_path,
+        rhoai_cluster_kubeconfig,
     ):
         """Submit pipeline, assert SUCCEEDED, validate artifacts in S3."""
         if not kfp_client_automl_functional:
@@ -111,7 +113,11 @@ class TestAutoMLTimeseriesFunctional:
 
         if not _run_succeeded(detail):
             failure_info = _collect_failure_details(
-                kfp_client_automl_functional, run_id, config=automl_functional_config
+                kfp_client_automl_functional,
+                run_id,
+                config=add_kubeconfig_to_config(
+                    automl_functional_config, rhoai_cluster_kubeconfig
+                ),
             )
             pytest.fail(
                 f"[{test_config.id}] Pipeline run {run_id} expected SUCCEEDED but got "
@@ -206,7 +212,7 @@ class TestAutoMLTimeseriesFunctional:
                     run_prefix=prefix,
                     run_id=run_id,
                     automl_functional_config=automl_functional_config,
-                    temp_kubeconfig_path=temp_kubeconfig_path,
+                    temp_kubeconfig_path=rhoai_cluster_kubeconfig,
                     instances=test_config.inference_sample or None,
                     isvc_env_vars=ts_env_vars or None,
                     v2_inputs=v2_inputs,
@@ -276,6 +282,7 @@ class TestAutoMLTimeseriesFunctionalNegative:
         pipeline_run_timeout,
         s3_client_automl_functional,
         s3_cleanup_tracker,
+        rhoai_cluster_kubeconfig,
     ):
         """Submit pipeline with injected fault; assert FAILED within capped timeout."""
         if not kfp_client_automl_functional:
@@ -312,11 +319,17 @@ class TestAutoMLTimeseriesFunctionalNegative:
             failed_task_names,
             test_config.expected_failing_task,
         )
-        logger.info(
-            _collect_failure_details(
-                kfp_client_automl_functional, run_id, config=automl_functional_config
-            )
+        failure_details = _collect_failure_details(
+            kfp_client_automl_functional,
+            run_id,
+            config=add_kubeconfig_to_config(
+                automl_functional_config, rhoai_cluster_kubeconfig
+            ),
         )
+        logger.info(failure_details)
+
+        if "POD LOGS FOR FAILED PODS:" not in failure_details:
+            logger.warning("Pod logs not collected for run %s — check k8s connectivity", run_id)
 
         assert _run_failed(detail), (
             f"[{test_config.id}] Pipeline run {run_id} expected FAILED but got {state}. "
