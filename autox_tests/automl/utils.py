@@ -253,15 +253,23 @@ def find_test_dataset_csv(s3_client, bucket: str, run_prefix: str) -> str | None
 # ---------------------------------------------------------------------------
 
 
-def make_isvc_name(scenario_id: str, run_id: str) -> str:
-    """Return a valid Kubernetes name for an InferenceService (≤36 chars, DNS label safe).
+def make_isvc_name(scenario_id: str, run_id: str, namespace: str = "") -> str:
+    """Return a valid Kubernetes name for an InferenceService, bounded by DNS label limits.
 
-    Layout: ``automl-`` (7) + clean (≤20) + ``-`` (1) + run_id[:8] (8) = ≤36.
-    The cap at 36 chars keeps the odh-model-controller-generated
-    ``{name}-kube-rbac-proxy-sar-config`` volume name within the 63-char limit.
+    Two constraints drive the cap:
+    - KServe hostname label ``{name}-predictor-{namespace}`` must be ≤ 63 chars.
+    - odh-model-controller volume ``{name}-kube-rbac-proxy-sar-config`` must be ≤ 63 chars (→ name ≤ 37).
+
+    Layout: ``automl-`` (7) + clean (≤N) + ``-`` (1) + run_id[:8] (8) = 16 + N.
     """
-    clean = re.sub(r"[^a-z0-9]+", "-", scenario_id.lower()).strip("-")[:20]
-    return f"automl-{clean}-{run_id[:8]}"
+    prefix = "automl-"
+    suffix = f"-{run_id[:8]}"
+    hostname_budget = 63 - len("-predictor-") - len(namespace)  # 52 - len(namespace)
+    volume_budget = 37  # 63 - len("-kube-rbac-proxy-sar-config")
+    max_name = min(hostname_budget, volume_budget)
+    max_clean = max(1, max_name - len(prefix) - len(suffix))
+    clean = re.sub(r"[^a-z0-9]+", "-", scenario_id.lower()).strip("-")[:max_clean]
+    return f"{prefix}{clean}{suffix}"
 
 
 def find_top_model_predictor_prefix(
@@ -1056,7 +1064,7 @@ def run_deployment_test(
 
     top_model = model_entries[0]
     model_name = top_model["model_name"]
-    isvc_name = make_isvc_name(scenario_id, run_id)
+    isvc_name = make_isvc_name(scenario_id, run_id, namespace=namespace)
     existing_runtime_name = os.environ.get("RHOAI_SERVING_RUNTIME_NAME", "").strip()
     serving_runtime_name = existing_runtime_name or isvc_name
 
