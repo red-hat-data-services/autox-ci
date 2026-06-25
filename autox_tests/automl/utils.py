@@ -1122,12 +1122,19 @@ def run_deployment_test(
             result["storage_key"] = storage_key
         else:
             temp_secret_name = f"kserve-s3-{isvc_name[:40]}"
+            # The storage initializer runs inside the cluster, so it needs the
+            # in-cluster S3 endpoint, not the external one used by the test client.
+            incluster_endpoint = os.environ.get("INCLUSTER_AWS_S3_ENDPOINT", "").strip()
+            kserve_s3_config = {
+                **automl_functional_config,
+                "s3_endpoint": incluster_endpoint or automl_functional_config["s3_endpoint"],
+            }
             create_kserve_s3_secret(
                 v1,
                 namespace,
                 temp_secret_name,
                 artifacts_bucket,
-                automl_functional_config,
+                kserve_s3_config,
             )
             storage_key = temp_secret_name
             result["storage_key"] = storage_key
@@ -1217,7 +1224,12 @@ def run_deployment_test(
                 result["score_error"] = (
                     f"ISVC {isvc_name!r} blocking condition: {blocking_reason}"
                 )
-                return result
+            else:
+                result["score_error"] = (
+                    f"ISVC {isvc_name!r} not ready after {inference_timeout}s "
+                    f"— predictor pod still initializing; increase RHOAI_INFERENCE_TIMEOUT"
+                )
+            return result
 
         external_url = resolve_isvc_external_url(co, namespace, isvc_name)
         result["isvc_url"] = external_url
