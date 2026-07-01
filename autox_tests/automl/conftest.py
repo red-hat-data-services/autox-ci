@@ -30,14 +30,28 @@ def get_automl_functional_config():
     kfp_url = os.environ.get("RHOAI_KFP_URL") or os.environ.get("KFP_HOST")
     token = os.environ.get("RHOAI_TOKEN") or os.environ.get("KFP_TOKEN")
     project = os.environ.get("RHOAI_PROJECT_NAME") or os.environ.get("KFP_NAMESPACE")
-    train_secret = os.environ.get("RHOAI_TRAIN_S3_SECRET_NAME") or os.environ.get(
-        "RHOAI_TEST_S3_SECRET_NAME"
+    train_secret = (
+        os.environ.get("RHOAI_TRAIN_S3_SECRET_NAME")
+        or os.environ.get("RHOAI_TEST_S3_SECRET_NAME")
     )
-    train_bucket = os.environ.get("AUTOML_TRAIN_DATA_BUCKET_NAME") or os.environ.get(
-        "RHOAI_TEST_DATA_BUCKET"
+    train_bucket = (
+        os.environ.get("RHOAI_TRAIN_DATA_BUCKET")
+        or os.environ.get("AUTOML_TRAIN_DATA_BUCKET_NAME")
+        or os.environ.get("RHOAI_TEST_DATA_BUCKET")
     )
 
-    if not all([kfp_url, token, train_secret, train_bucket]):
+    missing = [
+        name
+        for name, val in [
+            ("RHOAI_KFP_URL", kfp_url),
+            ("RHOAI_TOKEN", token),
+            ("RHOAI_TRAIN_S3_SECRET_NAME / RHOAI_TEST_S3_SECRET_NAME", train_secret),
+            ("RHOAI_TRAIN_DATA_BUCKET / AUTOML_TRAIN_DATA_BUCKET_NAME", train_bucket),
+        ]
+        if not val
+    ]
+    if missing:
+        logger.info("AutoML functional config incomplete — missing: %s", ", ".join(missing))
         return None
 
     endpoint = os.environ.get("AWS_S3_ENDPOINT")
