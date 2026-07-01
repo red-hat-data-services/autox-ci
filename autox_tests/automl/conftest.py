@@ -40,16 +40,15 @@ def get_automl_functional_config():
         or os.environ.get("RHOAI_TEST_DATA_BUCKET")
     )
 
-    missing = [
-        name
-        for name, val in [
-            ("RHOAI_KFP_URL", kfp_url),
-            ("RHOAI_TOKEN", token),
-            ("RHOAI_TRAIN_S3_SECRET_NAME / RHOAI_TEST_S3_SECRET_NAME", train_secret),
-            ("RHOAI_TRAIN_DATA_BUCKET / AUTOML_TRAIN_DATA_BUCKET_NAME", train_bucket),
-        ]
-        if not val
-    ]
+    missing = []
+    if not kfp_url:
+        missing.append("RHOAI_KFP_URL")
+    if not token:
+        missing.append("RHOAI_TOKEN")
+    if not train_secret:
+        missing.append("RHOAI_TRAIN_S3_SECRET_NAME / RHOAI_TEST_S3_SECRET_NAME")
+    if not train_bucket:
+        missing.append("RHOAI_TRAIN_DATA_BUCKET / AUTOML_TRAIN_DATA_BUCKET_NAME")
     if missing:
         logger.info("AutoML functional config incomplete — missing: %s", ", ".join(missing))
         return None
