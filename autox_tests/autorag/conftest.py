@@ -3,11 +3,13 @@
 import json
 import logging
 import os
+from pathlib import Path
 
 import pytest
 
 from autox_tests.lib.clients import make_kfp_client, make_s3_client
 from autox_tests.lib.env import load_tests_env
+from autox_tests.lib.settings import AUTORAG_UPLOAD_TEST_DATASETS_ENV
 
 logger = logging.getLogger(__name__)
 
@@ -121,3 +123,78 @@ def compiled_pipeline_path(tmp_path_factory):
 def pipeline_run_timeout():
     """Timeout in seconds for waiting on a pipeline run (override via env)."""
     return int(os.environ.get("RHOAI_PIPELINE_RUN_TIMEOUT", "3600"))
+
+
+@pytest.fixture(scope="session", autouse=True)
+def upload_datasets_if_requested(functional_env_config, s3_client_functional):
+    """Upload test datasets to S3 at session start when ``AUTORAG_UPLOAD_TEST_DATASETS`` is set.
+
+    When set to ``1``, ``true``, or ``yes``, input and test datasets referenced in
+    test_configs.json are uploaded from the local ``data/`` directory to S3 before any
+    tests run. When unset, datasets are assumed to already be present in S3.
+
+    Input data keys are uploaded to ``INPUT_DATA_BUCKET_NAME``; test data keys to
+    ``TEST_DATA_BUCKET_NAME``. All uploaded objects are deleted from S3 after the session.
+    """
+    uploaded: list[tuple[str, str]] = []  # (bucket, s3_key)
+
+    raw = os.environ.get(AUTORAG_UPLOAD_TEST_DATASETS_ENV, "").strip().lower()
+    if raw in ("1", "true", "yes"):
+        if functional_env_config is None or s3_client_functional is None:
+            pytest.skip(
+                f"{AUTORAG_UPLOAD_TEST_DATASETS_ENV} is set but S3 client is not configured — "
+                "set AWS_* and INPUT_DATA_BUCKET_NAME / TEST_DATA_BUCKET_NAME env vars"
+            )
+        else:
+            from .configs.configs import get_all_dataset_keys
+            from .utils import upload_test_datasets
+
+            local_data_dir = Path(__file__).parent / "data"
+            input_bucket = functional_env_config["input_data_bucket_name"]
+            test_bucket = functional_env_config["test_data_bucket_name"]
+            input_keys, test_keys = get_all_dataset_keys()
+
+            for key in upload_test_datasets(
+                s3_client_functional,
+                input_bucket,
+                input_keys,
+                local_data_dir,
+            ):
+                uploaded.append((input_bucket, key))
+
+            for key in upload_test_datasets(
+                s3_client_functional,
+                test_bucket,
+                test_keys,
+                local_data_dir,
+            ):
+                uploaded.append((test_bucket, key))
+
+    yield
+
+    if uploaded:
+        from collections import defaultdict
+
+        from autox_tests.lib.s3_data import delete_s3_objects
+
+        by_bucket: dict[str, list[str]] = defaultdict(list)
+        for bucket, key in uploaded:
+            by_bucket[bucket].append(key)
+
+        total_deleted = 0
+        total_keys = len(uploaded)
+        for bucket, keys in by_bucket.items():
+            deleted = delete_s3_objects(s3_client_functional, bucket, keys)
+            total_deleted += deleted
+
+        if total_deleted < total_keys:
+            logger.warning(
+                "Dataset teardown: only %d of %d object(s) deleted — buckets may be dirty",
+                total_deleted,
+                total_keys,
+            )
+        else:
+            logger.info(
+                "Dataset teardown complete: %d file(s) removed from S3",
+                total_deleted,
+            )

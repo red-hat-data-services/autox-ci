@@ -1,4 +1,4 @@
-"""S3 upload helpers for root RHOAI tests."""
+"""S3 helpers shared across RHOAI test suites."""
 
 from __future__ import annotations
 
@@ -93,12 +93,11 @@ def upload_file_to_s3(
     local_path: Path,
 ) -> None:
     """Upload a single file to S3 with a best-effort Content-Type."""
-    body = local_path.read_bytes()
     content_type, _ = mimetypes.guess_type(str(local_path))
-    extra: dict[str, Any] = {}
+    extra_args: dict[str, Any] = {}
     if content_type:
-        extra["ContentType"] = content_type
-    s3_client.put_object(Bucket=bucket, Key=key, Body=body, **extra)
+        extra_args["ContentType"] = content_type
+    s3_client.upload_file(str(local_path), bucket, key, ExtraArgs=extra_args or None)
 
 
 def upload_tree_to_s3_prefix(
@@ -118,3 +117,46 @@ def upload_tree_to_s3_prefix(
         rel = path.relative_to(local_root)
         key = f"{prefix}/{rel.as_posix()}" if prefix else rel.as_posix()
         upload_file_to_s3(s3_client, bucket=bucket, key=key, local_path=path)
+
+
+def list_s3_objects(s3_client: Any, bucket: str, prefix: str) -> list[dict]:
+    """List all objects under a prefix. Returns list of {Key, Size, ...} dicts."""
+    paginator = s3_client.get_paginator("list_objects_v2")
+    return [
+        obj
+        for page in paginator.paginate(Bucket=bucket, Prefix=prefix)
+        for obj in page.get("Contents") or []
+    ]
+
+
+def delete_s3_objects(s3_client: Any, bucket: str, keys: list[str]) -> int:
+    """Delete S3 objects in batches of 1000. Returns the count of confirmed deleted objects."""
+    deleted = 0
+    batch_size = 1000
+    for i in range(0, len(keys), batch_size):
+        batch = keys[i : i + batch_size]
+        delete_req = {"Objects": [{"Key": k} for k in batch], "Quiet": True}
+        try:
+            response = s3_client.delete_objects(Bucket=bucket, Delete=delete_req)
+            errors = response.get("Errors", [])
+            for err in errors:
+                logger.warning(
+                    "Failed to delete s3://%s/%s: %s", bucket, err["Key"], err.get("Message")
+                )
+            deleted += len(batch) - len(errors)
+        except Exception as e:
+            logger.warning(
+                "Failed to delete %d objects from s3://%s: %s", len(batch), bucket, e
+            )
+    return deleted
+
+
+class S3CleanupTracker:
+    """Accumulates S3 artifact prefixes to delete during session teardown."""
+
+    def __init__(self) -> None:
+        self.artifact_prefixes: dict[str, list[str]] = {}
+
+    def track_artifact_prefix(self, bucket: str, prefix: str) -> None:
+        """Record a pipeline artifact prefix for teardown cleanup."""
+        self.artifact_prefixes.setdefault(bucket, []).append(prefix)

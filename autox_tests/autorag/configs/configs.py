@@ -150,3 +150,12 @@ def get_test_configs_for_run(pass_type: str, tags: None | list[str] = None) -> l
     if not all_tags:
         return test_configs
     return [c for c in test_configs if all(t.lower() in c.tags for t in all_tags)]
+
+
+def get_all_dataset_keys() -> tuple[list[str], list[str]]:
+    """Return (input_data_keys, test_data_keys) deduplicated across all test configs."""
+    with open(_CONFIGS_JSON_PATH) as f:
+        all_items = json.load(f)
+    input_keys = list({item["input_data_key"] for item in all_items if item.get("input_data_key")})
+    test_keys = list({item["test_data_key"] for item in all_items if item.get("test_data_key")})
+    return input_keys, test_keys
