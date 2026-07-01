@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from autox_tests.lib.clients import make_kfp_client, make_s3_client  # noqa: F401
+from autox_tests.lib.s3_data import delete_s3_objects, list_s3_objects
 
 logger = logging.getLogger(__name__)
 
@@ -156,16 +157,6 @@ def _get_failed_task_names(client, run_id: str) -> list[str]:
         return []
 
 
-def list_s3_objects(s3_client, bucket: str, prefix: str) -> list[dict]:
-    """List all objects under a prefix. Returns list of {Key, Size, ...} dicts."""
-    paginator = s3_client.get_paginator("list_objects_v2")
-    return [
-        obj
-        for page in paginator.paginate(Bucket=bucket, Prefix=prefix)
-        for obj in page.get("Contents") or []
-    ]
-
-
 def read_s3_json(s3_client, bucket: str, key: str) -> dict | None:
     """Read and parse a JSON file from S3; returns None on failure."""
     try:
@@ -174,23 +165,6 @@ def read_s3_json(s3_client, bucket: str, key: str) -> dict | None:
     except Exception as e:
         logger.warning("Failed to read s3://%s/%s: %s", bucket, key, e)
         return None
-
-
-def delete_s3_objects(s3_client, bucket: str, keys: list[str]) -> int:
-    """Delete objects from S3 in batches. Returns count of deleted objects."""
-    deleted = 0
-    batch_size = 1000
-    for i in range(0, len(keys), batch_size):
-        batch = keys[i : i + batch_size]
-        delete_req = {"Objects": [{"Key": k} for k in batch], "Quiet": True}
-        try:
-            s3_client.delete_objects(Bucket=bucket, Delete=delete_req)
-            deleted += len(batch)
-        except Exception as e:
-            logger.warning(
-                "Failed to delete %d objects from s3://%s: %s", len(batch), bucket, e
-            )
-    return deleted
 
 
 def collect_model_metrics_and_sizes(
@@ -1432,6 +1406,7 @@ def upload_test_datasets(
         local_index[f.name] = f
 
     uploaded_keys: list[str] = []
+    failed_uploads: list[str] = []
     for s3_key in sorted(set(s3_keys)):
         filename = Path(s3_key).name
         local_path = local_index.get(filename)
@@ -1450,12 +1425,17 @@ def upload_test_datasets(
             logger.error(
                 "Failed to upload %s → s3://%s/%s: %s", local_path, bucket, s3_key, exc
             )
+            failed_uploads.append(s3_key)
 
     logger.info(
         "Dataset upload complete: %d file(s) uploaded to s3://%s",
         len(uploaded_keys),
         bucket,
     )
+    if failed_uploads:
+        raise RuntimeError(
+            f"Failed to upload {len(failed_uploads)} dataset file(s) to s3://{bucket}: {failed_uploads}"
+        )
     return uploaded_keys
 
 

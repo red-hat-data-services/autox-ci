@@ -92,10 +92,14 @@ class AutoRAGTestConfig:
         return arguments
 
 
+def _read_raw_configs() -> list[dict]:
+    with open(_CONFIGS_JSON_PATH) as f:
+        return json.load(f)
+
+
 def _load_configs(pass_type: str) -> list[AutoRAGTestConfig]:
     """Load test configs from test_configs.json and return AutoRAGTestConfig instances."""
-    with open(_CONFIGS_JSON_PATH) as f:
-        all_items = json.load(f)
+    all_items = _read_raw_configs()
 
     expected = "pass" if pass_type == "positive" else "fail"
     data = [item for item in all_items if item.get("expected_result") == expected]
@@ -154,8 +158,7 @@ def get_test_configs_for_run(pass_type: str, tags: None | list[str] = None) -> l
 
 def get_all_dataset_keys() -> tuple[list[str], list[str]]:
     """Return (input_data_keys, test_data_keys) deduplicated across all test configs."""
-    with open(_CONFIGS_JSON_PATH) as f:
-        all_items = json.load(f)
+    all_items = _read_raw_configs()
     input_keys = list({item["input_data_key"] for item in all_items if item.get("input_data_key")})
     test_keys = list({item["test_data_key"] for item in all_items if item.get("test_data_key")})
     return input_keys, test_keys

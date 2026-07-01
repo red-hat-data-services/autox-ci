@@ -13,6 +13,11 @@ from autox_tests.lib.pipeline_yaml_sources import (
     PIPELINE_YAML_TIMESERIES_ENV,
     resolve_precompiled_pipeline_yaml,
 )
+from autox_tests.lib.settings import (
+    AUTOML_UPLOAD_TEST_DATASETS_ENV,
+    RHOAI_TRAIN_DATA_BUCKET_ENV,
+    RHOAI_TRAIN_S3_SECRET_NAME_ENV,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -31,11 +36,11 @@ def get_automl_functional_config():
     token = os.environ.get("RHOAI_TOKEN") or os.environ.get("KFP_TOKEN")
     project = os.environ.get("RHOAI_PROJECT_NAME") or os.environ.get("KFP_NAMESPACE")
     train_secret = (
-        os.environ.get("RHOAI_TRAIN_S3_SECRET_NAME")
+        os.environ.get(RHOAI_TRAIN_S3_SECRET_NAME_ENV)
         or os.environ.get("RHOAI_TEST_S3_SECRET_NAME")
     )
     train_bucket = (
-        os.environ.get("RHOAI_TRAIN_DATA_BUCKET")
+        os.environ.get(RHOAI_TRAIN_DATA_BUCKET_ENV)
         or os.environ.get("AUTOML_TRAIN_DATA_BUCKET_NAME")
         or os.environ.get("RHOAI_TEST_DATA_BUCKET")
     )
@@ -205,21 +210,11 @@ def temp_kubeconfig_path(automl_functional_config):
             pass
 
 
-class S3CleanupTracker:
-    """Accumulates S3 artifact prefixes to delete during session teardown."""
-
-    def __init__(self):
-        """Initialize with an empty tracking dict."""
-        self.artifact_prefixes: dict[str, list[str]] = {}  # bucket -> [prefixes]
-
-    def track_artifact_prefix(self, bucket: str, prefix: str) -> None:
-        """Record a pipeline artifact prefix for teardown cleanup."""
-        self.artifact_prefixes.setdefault(bucket, []).append(prefix)
-
-
 @pytest.fixture(scope="session")
 def s3_cleanup_tracker():
     """Session-scoped S3 cleanup tracker shared across all AutoML scenarios."""
+    from autox_tests.lib.s3_data import S3CleanupTracker
+
     return S3CleanupTracker()
 
 
@@ -231,15 +226,13 @@ def upload_datasets_if_requested(automl_functional_config, s3_client_automl_func
     and timeseries_test_configs.json are uploaded from the local ``data/`` directory to S3
     before any tests run. When unset, datasets are assumed to already be present in S3.
     """
-    from autox_tests.lib.settings import AUTOML_UPLOAD_TEST_DATASETS_ENV
-
     uploaded_keys: list[str] = []
     bucket: str | None = None
 
     raw = os.environ.get(AUTOML_UPLOAD_TEST_DATASETS_ENV, "").strip().lower()
     if raw in ("1", "true", "yes"):
         if automl_functional_config is None or s3_client_automl_functional is None:
-            pytest.skip(
+            raise RuntimeError(
                 f"{AUTOML_UPLOAD_TEST_DATASETS_ENV} is set but S3 client is not configured — "
                 "set AWS_* and RHOAI_TRAIN_DATA_BUCKET env vars"
             )

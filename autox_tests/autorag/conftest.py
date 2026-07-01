@@ -141,7 +141,7 @@ def upload_datasets_if_requested(functional_env_config, s3_client_functional):
     raw = os.environ.get(AUTORAG_UPLOAD_TEST_DATASETS_ENV, "").strip().lower()
     if raw in ("1", "true", "yes"):
         if functional_env_config is None or s3_client_functional is None:
-            pytest.skip(
+            raise RuntimeError(
                 f"{AUTORAG_UPLOAD_TEST_DATASETS_ENV} is set but S3 client is not configured — "
                 "set AWS_* and INPUT_DATA_BUCKET_NAME / TEST_DATA_BUCKET_NAME env vars"
             )
