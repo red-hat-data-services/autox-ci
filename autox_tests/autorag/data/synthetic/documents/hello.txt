@@ -1,1 +1,4 @@
-Placeholder document for root RHOAI AutoRAG upload tests. Replace with your corpus as needed.
+AutoRAG synthetic smoke corpus.
+
+The AutoRAG pipeline indexes this document to validate retrieval and generation on a minimal dataset.
+The expected answer to the smoke question is that AutoRAG is a documents RAG optimization pipeline.

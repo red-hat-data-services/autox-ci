@@ -44,7 +44,7 @@
     {
         "id": "TC-P-1",
         "description": "Run simple scenario using inline milvus and 4 patterns.",
-        "tags": ["smoke", "inline::milvus", "answer_correctness", "default_models"],
+        "tags": ["smoke", "inline::milvus", "answer_correctness", "default_models", "response_quality"],
         "expected_result": "pass",
         "vector_io_provider_type": "inline::milvus",
         "vector_io_provider_id": "milvus-lite",
@@ -53,12 +53,13 @@
         "optimization_max_rag_patterns": 4,
         "optimization_metric": "answer_correctness",
         "input_data_key": "datasets/rag/rh_summit_2026/documents",
-        "test_data_key": "datasets/rag/rh_summit_2026/benchmark_data.json"
+        "test_data_key": "datasets/rag/rh_summit_2026/benchmark_data.json",
+        "min_evaluation_questions": 1
     },
     {
         "id": "TC-P-2",
         "description": "Run scenario using remote milvus instance, with defined embedding models.",
-        "tags": ["smoke", "remote::milvus", "faithfulness"],
+        "tags": ["smoke", "remote::milvus", "faithfulness", "response_quality"],
         "expected_result": "pass",
         "embedding_models": ["vllm-embedding/bge-m3"],
         "vector_io_provider_type": "remote::milvus",
@@ -66,18 +67,65 @@
         "vector_io_provider_id": "milvus-remote",
         "optimization_metric": "faithfulness",
         "input_data_key": "datasets/rag/rh_summit_2026/documents",
-        "test_data_key": "datasets/rag/rh_summit_2026/benchmark_data.json"
+        "test_data_key": "datasets/rag/rh_summit_2026/benchmark_data.json",
+        "min_evaluation_questions": 1
     },
     {
         "id": "TC-P-3",
         "description": "Run scenario using pgvector with all available embedding and foundation models.",
-        "tags": ["remote::pgvector", "answer_correctness"],
+        "tags": ["remote::pgvector", "answer_correctness", "response_quality", "responses_api"],
         "expected_result": "pass",
         "vector_io_provider_type": "remote::pgvector",
         "optimization_max_rag_patterns": 6,
         "vector_io_provider_id": "pgvector",
         "optimization_metric": "answer_correctness",
         "input_data_key": "datasets/rag/rh_summit_2026/documents",
-        "test_data_key": "datasets/rag/rh_summit_2026/benchmark_data.json"
+        "test_data_key": "datasets/rag/rh_summit_2026/benchmark_data.json",
+        "min_evaluation_questions": 1
+    },
+    {
+        "id": "TC-P-4",
+        "description": "Faithfulness optimization on inline milvus with response-quality artifact checks.",
+        "tags": ["inline::milvus", "faithfulness", "response_quality"],
+        "expected_result": "pass",
+        "vector_io_provider_type": "inline::milvus",
+        "vector_io_provider_id": "milvus-lite",
+        "embedding_models": ["vllm-embedding/bge-m3"],
+        "generation_models": null,
+        "optimization_max_rag_patterns": 4,
+        "optimization_metric": "faithfulness",
+        "input_data_key": "datasets/rag/rh_summit_2026/documents",
+        "test_data_key": "datasets/rag/rh_summit_2026/benchmark_data.json",
+        "min_evaluation_questions": 1
+    },
+    {
+        "id": "TC-P-5",
+        "description": "Answer correctness optimization on inline milvus with response-quality artifact checks.",
+        "tags": ["inline::milvus", "answer_correctness", "response_quality"],
+        "expected_result": "pass",
+        "vector_io_provider_type": "inline::milvus",
+        "vector_io_provider_id": "milvus-lite",
+        "embedding_models": ["vllm-embedding/bge-m3"],
+        "generation_models": null,
+        "optimization_max_rag_patterns": 4,
+        "optimization_metric": "answer_correctness",
+        "input_data_key": "datasets/rag/rh_summit_2026/documents",
+        "test_data_key": "datasets/rag/rh_summit_2026/benchmark_data.json",
+        "min_evaluation_questions": 1
+    },
+    {
+        "id": "TC-P-6",
+        "description": "Fast synthetic smoke with 2 patterns and minimal benchmark for response-quality checks.",
+        "tags": ["smoke", "synthetic", "inline::milvus", "faithfulness", "response_quality"],
+        "expected_result": "pass",
+        "vector_io_provider_type": "inline::milvus",
+        "vector_io_provider_id": "milvus-lite",
+        "embedding_models": ["vllm-embedding/bge-m3"],
+        "generation_models": null,
+        "optimization_max_rag_patterns": 2,
+        "optimization_metric": "faithfulness",
+        "input_data_key": "datasets/rag/synthetic/documents",
+        "test_data_key": "datasets/rag/synthetic/benchmark.json",
+        "min_evaluation_questions": 2
     }
 ]

@@ -2,6 +2,7 @@
 
 import logging
 import os
+import re
 import secrets
 import tempfile
 from datetime import datetime, timezone
@@ -321,6 +322,234 @@ def upload_test_datasets(
             f"Failed to upload {len(failed_uploads)} dataset file(s) to s3://{bucket}: {failed_uploads}"
         )
     return uploaded_keys
+
+
+def _download_s3_json(s3_client, bucket: str, key: str):
+    """Download and parse a JSON object from S3."""
+    import json
+
+    response = s3_client.get_object(Bucket=bucket, Key=key)
+    return json.loads(response["Body"].read())
+
+
+def _load_pattern_json_objects(s3_client, bucket: str, pattern_keys: list[str]) -> list[dict]:
+    patterns: list[dict] = []
+    errors: list[str] = []
+    for key in pattern_keys:
+        try:
+            data = _download_s3_json(s3_client, bucket, key)
+            if isinstance(data, dict):
+                patterns.append(data)
+        except Exception as exc:
+            errors.append(f"{key}: {exc}")
+    if errors:
+        raise AssertionError("Failed to load pattern.json files:\n" + "\n".join(errors))
+    return patterns
+
+
+def _maybe_run_llm_judge_validation(
+    patterns: list[dict],
+    *,
+    scenario_id: str,
+    enabled: bool,
+) -> None:
+    """Optionally score a sample of answers with LLM-as-a-Judge when enabled."""
+    if not enabled:
+        return
+
+    base_url = (os.environ.get("OGX_CLIENT_BASE_URL") or "").strip()
+    api_key = (os.environ.get("OGX_CLIENT_API_KEY") or "").strip()
+    if not base_url or not api_key:
+        logger.warning(
+            "[%s] llm_judge tag set but OGX_CLIENT_BASE_URL/API_KEY missing — skipping",
+            scenario_id,
+        )
+        return
+
+    from .response_validation import collect_answers_from_patterns
+
+    try:
+        from openai import OpenAI
+    except ImportError:
+        logger.warning("[%s] openai package not installed — skipping llm_judge", scenario_id)
+        return
+
+    answers = collect_answers_from_patterns(patterns)
+    if not answers:
+        logger.warning("[%s] no answers available for llm_judge sampling", scenario_id)
+        return
+
+    model_id = (os.environ.get("AUTORAG_LLM_JUDGE_MODEL") or "").strip()
+    if not model_id:
+        raise AssertionError(
+            f"[{scenario_id}] llm_judge enabled but AUTORAG_LLM_JUDGE_MODEL is not set — "
+            "configure a foundation model id available on your cluster"
+        )
+
+    sample_size = min(3, len(answers))
+    sample = answers[:sample_size]
+    client = OpenAI(base_url=f"{base_url.rstrip('/')}/v1", api_key=api_key)
+
+    scores: list[float] = []
+    for row in sample:
+        question = row.get("question") or ""
+        predicted = row.get("answer") or ""
+        if not predicted or str(predicted).startswith("Error:"):
+            scores.append(0.0)
+            continue
+        prompt = (
+            "Rate the predicted answer from 1-5 versus the question. "
+            "Reply with ONLY a digit 1-5.\n\n"
+            f"Question: {question}\nPredicted: {predicted}"
+        )
+        try:
+            response = client.chat.completions.create(
+                model=model_id,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.1,
+                max_tokens=8,
+            )
+            text = (response.choices[0].message.content or "").strip()
+            match = re.search(r"[1-5]", text)
+            scores.append(int(match.group()) / 5.0 if match else 0.5)
+        except Exception as exc:
+            logger.warning("[%s] llm_judge call failed: %s", scenario_id, exc)
+            scores.append(0.5)
+
+    mean_score = sum(scores) / len(scores) if scores else 0.0
+    logger.info("[%s] llm_judge sample mean=%.2f (n=%d)", scenario_id, mean_score, len(scores))
+    assert mean_score > 0.0, f"[{scenario_id}] llm_judge sample mean must be > 0"
+
+
+def _validate_response_quality_artifacts(
+    s3_client,
+    bucket: str,
+    artifacts: dict,
+    *,
+    scenario_id: str,
+    optimization_metric: str,
+    vector_io_provider_id: str | None = None,
+    min_patterns: int = 1,
+    min_evaluation_questions: int | None = None,
+    require_leaderboard: bool = False,
+    require_responses_export: bool = False,
+    run_llm_judge: bool = False,
+) -> None:
+    """Validate evaluation scores, prompts, and optional Responses API export in S3 artifacts."""
+    from .response_validation import (
+        collect_answers_from_patterns,
+        compute_answer_quality_stats,
+        select_best_pattern,
+        validate_evaluation_results_payload,
+        validate_generation_prompt_template,
+        validate_pattern_scores,
+        validate_responses_export,
+    )
+
+    if require_leaderboard:
+        assert len(artifacts["leaderboard_keys"]) >= 1, (
+            f"[{scenario_id}] Expected leaderboard artifact under run prefix; "
+            f"found {artifacts['leaderboard_keys']}"
+        )
+
+    if artifacts["evaluation_results_keys"]:
+        eval_key = artifacts["evaluation_results_keys"][0]
+        eval_data = _download_s3_json(s3_client, bucket, eval_key)
+        validate_evaluation_results_payload(
+            eval_data,
+            min_patterns=min_patterns,
+            min_questions=min_evaluation_questions,
+            scenario_id=scenario_id,
+        )
+
+    assert artifacts["pattern_keys"], (
+        f"[{scenario_id}] response_quality validation requires pattern.json artifacts"
+    )
+    patterns = _load_pattern_json_objects(s3_client, bucket, artifacts["pattern_keys"])
+    assert len(patterns) >= min_patterns, (
+        f"[{scenario_id}] expected >={min_patterns} pattern.json files, found {len(patterns)}"
+    )
+
+    best_pattern = select_best_pattern(patterns)
+    validate_pattern_scores(
+        best_pattern,
+        optimization_metric=optimization_metric,
+        scenario_id=scenario_id,
+    )
+    validate_generation_prompt_template(best_pattern, scenario_id=scenario_id)
+
+    if require_responses_export:
+        assert vector_io_provider_id, (
+            f"[{scenario_id}] responses_api validation requires vector_io_provider_id"
+        )
+        validate_responses_export(
+            best_pattern,
+            provider_id=vector_io_provider_id,
+            scenario_id=scenario_id,
+        )
+
+    answers = collect_answers_from_patterns(patterns)
+    if min_evaluation_questions and answers:
+        assert len(answers) >= min_evaluation_questions, (
+            f"[{scenario_id}] expected >={min_evaluation_questions} answers in pattern.json, "
+            f"found {len(answers)}"
+        )
+
+    if answers:
+        stats = compute_answer_quality_stats(answers)
+        logger.info(
+            "[%s] answer quality: citation_rate=%.1f%% multilingual_rate=%.1f%% (n=%d)",
+            scenario_id,
+            stats["citation_rate"] * 100,
+            stats["multilingual_rate"] * 100,
+            len(answers),
+        )
+
+    _maybe_run_llm_judge_validation(
+        patterns,
+        scenario_id=scenario_id,
+        enabled=run_llm_judge,
+    )
+
+    if require_responses_export:
+        _run_responses_api_probe(
+            best_pattern,
+            scenario_id=scenario_id,
+        )
+
+
+def _run_responses_api_probe(pattern: dict, *, scenario_id: str) -> None:
+    """POST one /v1/responses probe using exported responses_template (responses_api tag)."""
+    base_url = (os.environ.get("OGX_CLIENT_BASE_URL") or "").strip()
+    api_key = (os.environ.get("OGX_CLIENT_API_KEY") or "").strip()
+    if not base_url or not api_key:
+        raise AssertionError(
+            f"[{scenario_id}] responses_api validation requires OGX_CLIENT_BASE_URL and "
+            "OGX_CLIENT_API_KEY for live /v1/responses probe"
+        )
+
+    from .response_validation import run_responses_api_probe
+
+    try:
+        summary = run_responses_api_probe(
+            pattern,
+            base_url=base_url,
+            api_key=api_key,
+            scenario_id=scenario_id,
+        )
+    except RuntimeError as exc:
+        raise AssertionError(
+            f"[{scenario_id}] Responses API probe failed: {exc}"
+        ) from exc
+
+    logger.info(
+        "[%s] Responses API probe OK: pattern=%s hits=%d answer_chars=%d question=%r",
+        scenario_id,
+        summary.get("pattern_id"),
+        summary.get("file_search_hits"),
+        summary.get("answer_chars"),
+        summary.get("question"),
+    )
 
 
 def _download_and_execute_notebooks(s3_client, bucket, notebook_keys):
