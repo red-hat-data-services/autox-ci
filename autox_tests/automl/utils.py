@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from autox_tests.lib.clients import make_kfp_client, make_s3_client  # noqa: F401
+from autox_tests.lib.s3_data import delete_s3_objects, list_s3_objects
 
 logger = logging.getLogger(__name__)
 
@@ -156,16 +157,6 @@ def _get_failed_task_names(client, run_id: str) -> list[str]:
         return []
 
 
-def list_s3_objects(s3_client, bucket: str, prefix: str) -> list[dict]:
-    """List all objects under a prefix. Returns list of {Key, Size, ...} dicts."""
-    paginator = s3_client.get_paginator("list_objects_v2")
-    return [
-        obj
-        for page in paginator.paginate(Bucket=bucket, Prefix=prefix)
-        for obj in page.get("Contents") or []
-    ]
-
-
 def read_s3_json(s3_client, bucket: str, key: str) -> dict | None:
     """Read and parse a JSON file from S3; returns None on failure."""
     try:
@@ -174,23 +165,6 @@ def read_s3_json(s3_client, bucket: str, key: str) -> dict | None:
     except Exception as e:
         logger.warning("Failed to read s3://%s/%s: %s", bucket, key, e)
         return None
-
-
-def delete_s3_objects(s3_client, bucket: str, keys: list[str]) -> int:
-    """Delete objects from S3 in batches. Returns count of deleted objects."""
-    deleted = 0
-    batch_size = 1000
-    for i in range(0, len(keys), batch_size):
-        batch = keys[i : i + batch_size]
-        delete_req = {"Objects": [{"Key": k} for k in batch], "Quiet": True}
-        try:
-            s3_client.delete_objects(Bucket=bucket, Delete=delete_req)
-            deleted += len(batch)
-        except Exception as e:
-            logger.warning(
-                "Failed to delete %d objects from s3://%s: %s", len(batch), bucket, e
-            )
-    return deleted
 
 
 def collect_model_metrics_and_sizes(
@@ -1399,6 +1373,70 @@ def run_deployment_test(
                 logger.warning("Failed to delete temporary ServiceAccount: %s", e)
 
     return result
+
+
+def upload_test_datasets(
+    s3_client,
+    bucket: str,
+    s3_keys: list[str],
+    local_data_dir: Path,
+) -> list[str]:
+    """Upload local CSV files to S3 for each key in s3_keys that has a matching local file.
+
+    Matching is done by filename only (basename), so local directory layout does not need
+    to mirror the S3 key prefix structure. Keys with no local match are skipped with a
+    debug log — this covers intentional negative-test keys like 'does-not-exist-*.csv'.
+
+    Returns the list of S3 keys that were actually uploaded.
+    """
+    if not local_data_dir.is_dir():
+        raise FileNotFoundError(
+            f"AUTOML_UPLOAD_TEST_DATASETS is set but local data directory does not exist: {local_data_dir}"
+        )
+
+    local_index: dict[str, Path] = {}
+    for f in local_data_dir.rglob("*.csv"):
+        if f.name in local_index:
+            logger.warning(
+                "Duplicate local filename %r: %s shadows %s — using the latter",
+                f.name,
+                local_index[f.name],
+                f,
+            )
+        local_index[f.name] = f
+
+    uploaded_keys: list[str] = []
+    failed_uploads: list[str] = []
+    for s3_key in sorted(set(s3_keys)):
+        filename = Path(s3_key).name
+        local_path = local_index.get(filename)
+        if local_path is None:
+            logger.debug(
+                "No local file for key %r (filename=%r) — skipping upload",
+                s3_key,
+                filename,
+            )
+            continue
+        try:
+            logger.info("Uploading %s → s3://%s/%s", local_path, bucket, s3_key)
+            s3_client.upload_file(str(local_path), bucket, s3_key)
+            uploaded_keys.append(s3_key)
+        except Exception as exc:
+            logger.error(
+                "Failed to upload %s → s3://%s/%s: %s", local_path, bucket, s3_key, exc
+            )
+            failed_uploads.append(s3_key)
+
+    logger.info(
+        "Dataset upload complete: %d file(s) uploaded to s3://%s",
+        len(uploaded_keys),
+        bucket,
+    )
+    if failed_uploads:
+        raise RuntimeError(
+            f"Failed to upload {len(failed_uploads)} dataset file(s) to s3://{bucket}: {failed_uploads}"
+        )
+    return uploaded_keys
 
 
 def download_and_execute_automl_notebook(

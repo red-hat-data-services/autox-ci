@@ -154,6 +154,13 @@ def _split_by_pass_type(configs: list, pass_type: str | None) -> list:
     return configs
 
 
+def get_all_train_data_file_keys() -> list[str]:
+    """Return all unique train_data_file_key values across tabular and timeseries configs."""
+    keys = [c.train_data_file_key for c in _load_tabular_configs()]
+    keys += [c.train_data_file_key for c in _load_timeseries_configs()]
+    return keys
+
+
 def get_tabular_configs_for_run(
     pass_type: str | None = None,
 ) -> list[AutoMLTabularFunctionalConfig]:

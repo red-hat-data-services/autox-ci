@@ -13,6 +13,11 @@ from autox_tests.lib.pipeline_yaml_sources import (
     PIPELINE_YAML_TIMESERIES_ENV,
     resolve_precompiled_pipeline_yaml,
 )
+from autox_tests.lib.settings import (
+    AUTOML_UPLOAD_TEST_DATASETS_ENV,
+    RHOAI_TRAIN_DATA_BUCKET_ENV,
+    RHOAI_TRAIN_S3_SECRET_NAME_ENV,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -30,12 +35,27 @@ def get_automl_functional_config():
     kfp_url = os.environ.get("RHOAI_KFP_URL") or os.environ.get("KFP_HOST")
     token = os.environ.get("RHOAI_TOKEN") or os.environ.get("KFP_TOKEN")
     project = os.environ.get("RHOAI_PROJECT_NAME") or os.environ.get("KFP_NAMESPACE")
-    train_secret = os.environ.get("RHOAI_TEST_S3_SECRET_NAME")
-    train_bucket = os.environ.get("AUTOML_TRAIN_DATA_BUCKET_NAME") or os.environ.get(
-        "RHOAI_TEST_DATA_BUCKET"
+    train_secret = (
+        os.environ.get(RHOAI_TRAIN_S3_SECRET_NAME_ENV)
+        or os.environ.get("RHOAI_TEST_S3_SECRET_NAME")
+    )
+    train_bucket = (
+        os.environ.get(RHOAI_TRAIN_DATA_BUCKET_ENV)
+        or os.environ.get("AUTOML_TRAIN_DATA_BUCKET_NAME")
+        or os.environ.get("RHOAI_TEST_DATA_BUCKET")
     )
 
-    if not all([kfp_url, token, train_secret, train_bucket]):
+    missing = []
+    if not kfp_url:
+        missing.append("RHOAI_KFP_URL")
+    if not token:
+        missing.append("RHOAI_TOKEN")
+    if not train_secret:
+        missing.append("RHOAI_TRAIN_S3_SECRET_NAME / RHOAI_TEST_S3_SECRET_NAME")
+    if not train_bucket:
+        missing.append("RHOAI_TRAIN_DATA_BUCKET / AUTOML_TRAIN_DATA_BUCKET_NAME")
+    if missing:
+        logger.info("AutoML functional config incomplete — missing: %s", ", ".join(missing))
         return None
 
     endpoint = os.environ.get("AWS_S3_ENDPOINT")
@@ -190,22 +210,64 @@ def temp_kubeconfig_path(automl_functional_config):
             pass
 
 
-class S3CleanupTracker:
-    """Accumulates S3 artifact prefixes to delete during session teardown."""
-
-    def __init__(self):
-        """Initialize with an empty tracking dict."""
-        self.artifact_prefixes: dict[str, list[str]] = {}  # bucket -> [prefixes]
-
-    def track_artifact_prefix(self, bucket: str, prefix: str) -> None:
-        """Record a pipeline artifact prefix for teardown cleanup."""
-        self.artifact_prefixes.setdefault(bucket, []).append(prefix)
-
-
 @pytest.fixture(scope="session")
 def s3_cleanup_tracker():
     """Session-scoped S3 cleanup tracker shared across all AutoML scenarios."""
+    from autox_tests.lib.s3_data import S3CleanupTracker
+
     return S3CleanupTracker()
+
+
+@pytest.fixture(scope="session", autouse=True)
+def upload_datasets_if_requested(automl_functional_config, s3_client_automl_functional):
+    """Upload test datasets to S3 at session start when ``AUTOML_UPLOAD_TEST_DATASETS`` is set.
+
+    When set to ``1``, ``true``, or ``yes``, datasets referenced in tabular_test_configs.json
+    and timeseries_test_configs.json are uploaded from the local ``data/`` directory to S3
+    before any tests run. When unset, datasets are assumed to already be present in S3.
+    """
+    uploaded_keys: list[str] = []
+    bucket: str | None = None
+
+    raw = os.environ.get(AUTOML_UPLOAD_TEST_DATASETS_ENV, "").strip().lower()
+    if raw in ("1", "true", "yes"):
+        if automl_functional_config is None or s3_client_automl_functional is None:
+            raise RuntimeError(
+                f"{AUTOML_UPLOAD_TEST_DATASETS_ENV} is set but S3 client is not configured — "
+                "set AWS_* and RHOAI_TRAIN_DATA_BUCKET env vars"
+            )
+        else:
+            from .configs.configs import get_all_train_data_file_keys
+            from .utils import upload_test_datasets
+
+            local_data_dir = Path(__file__).parent / "data"
+            bucket = automl_functional_config["train_data_bucket_name"]
+            uploaded_keys = upload_test_datasets(
+                s3_client_automl_functional,
+                bucket,
+                get_all_train_data_file_keys(),
+                local_data_dir,
+            )
+
+    yield
+
+    if uploaded_keys and bucket:
+        from autox_tests.lib.s3_data import delete_s3_objects
+
+        deleted = delete_s3_objects(s3_client_automl_functional, bucket, uploaded_keys)
+        if deleted < len(uploaded_keys):
+            logger.warning(
+                "Dataset teardown: only %d of %d object(s) deleted from s3://%s — bucket may be dirty",
+                deleted,
+                len(uploaded_keys),
+                bucket,
+            )
+        else:
+            logger.info(
+                "Dataset teardown complete: %d file(s) removed from s3://%s",
+                deleted,
+                bucket,
+            )
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -228,7 +290,7 @@ def s3_teardown(s3_client_automl_functional, s3_cleanup_tracker):
         )
         return
 
-    from .utils import delete_s3_objects, list_s3_objects
+    from autox_tests.lib.s3_data import delete_s3_objects, list_s3_objects
 
     logger.info("Starting S3 artifact cleanup...")
     for bucket, prefixes in s3_cleanup_tracker.artifact_prefixes.items():
