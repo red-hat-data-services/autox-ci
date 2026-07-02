@@ -52,6 +52,7 @@ class AutoRAGTestConfig:
     input_data_key: str | None = None
     test_data_key: str | None = None
     optimization_metric: str | None = None
+    min_evaluation_questions: int | None = None
 
     def __post_init__(self):
         if self.embedding_models == "env":

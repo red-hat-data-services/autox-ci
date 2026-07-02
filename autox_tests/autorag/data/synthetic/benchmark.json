@@ -1,1 +1,16 @@
-{"questions": []}
+[
+  {
+    "question": "What is AutoRAG used for in this smoke test?",
+    "correct_answers": [
+      "AutoRAG is a documents RAG optimization pipeline used to search retrieval and generation settings."
+    ],
+    "correct_answer_document_ids": ["hello.txt"]
+  },
+  {
+    "question": "What corpus does the synthetic smoke scenario index?",
+    "correct_answers": [
+      "The synthetic smoke scenario indexes the hello.txt placeholder document."
+    ],
+    "correct_answer_document_ids": ["hello.txt"]
+  }
+]

@@ -8,6 +8,8 @@ Parametrized functional tests for the Documents RAG Optimization pipeline on Red
 autorag/
   conftest.py                 Fixtures: env config, KFP client, S3 client, pipeline YAML resolution
   test_pipeline_functional.py Pytest test class (parametrized over configs)
+  response_validation.py        Score/prompt/Responses API export validators
+  test_response_validation.py   Unit tests for response_validation helpers
   utils.py                    Run submission, state checks, failure diagnostics, artifact + notebook validation
   configs/
     configs.py                AutoRAGTestConfig dataclass, config loading and tag filtering
@@ -69,6 +71,12 @@ Pass tags via `--tags` / `-t` on the CLI or set `TESTS_TAGS` in the environment.
 2. At least 1 pattern artifact exists in S3
 3. Indexing notebook, inference notebook, and `evaluation_results.json` exist in S3
 4. A randomly selected indexing and inference notebook executes successfully via papermill
+5. When tagged `response_quality`: Unitxt scores in `pattern.json`, generation prompt template, `evaluation_results.json` content, leaderboard artifact, and answer-quality stats are validated
+6. When additionally tagged `responses_api`: `responses_template` and `vector_store_binding` parity are validated in the best pattern export
+
+Scenarios tagged `response_quality` perform deeper artifact checks. Filter with `-t response_quality` or combine tags (e.g. `-t "smoke and response_quality"`).
+
+Optional LLM-as-a-Judge sampling: add the `llm_judge` tag to a scenario, set `AUTORAG_RUN_LLM_JUDGE=true`, and configure `AUTORAG_LLM_JUDGE_MODEL` to a foundation model available on your cluster (no default is assumed). Also requires `OGX_CLIENT_BASE_URL` / `OGX_CLIENT_API_KEY`.
 
 **Expected-fail scenarios:**
 1. Pipeline run finishes with state `FAILED` (not `SUCCEEDED`, not timeout)

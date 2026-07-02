@@ -16,6 +16,7 @@ Passing criteria for expected-pass tests (from RHAIENG-4142):
 """
 
 import logging
+import os
 import random
 
 import pytest
@@ -34,6 +35,7 @@ from .utils import (
     _download_and_execute_notebooks,
     _run_pipeline_and_wait,
     _validate_artifacts_in_s3,
+    _validate_response_quality_artifacts,
 )
 
 logger = logging.getLogger(__name__)
@@ -185,6 +187,26 @@ class TestAutoRAGFunctional:
             f"[{test_scenario_config.id}] Expected evaluation_results.json under {prefix}; "
             f"found {artifacts['evaluation_results_keys']}"
         )
+
+        if "response_quality" in test_scenario_config.tags:
+            llm_judge_enabled = (
+                "llm_judge" in test_scenario_config.tags
+                and os.environ.get("AUTORAG_RUN_LLM_JUDGE", "").strip().lower()
+                in ("1", "true", "yes")
+            )
+            _validate_response_quality_artifacts(
+                s3_client_functional,
+                artifact_bucket,
+                artifacts,
+                scenario_id=test_scenario_config.id,
+                optimization_metric=test_scenario_config.optimization_metric or "faithfulness",
+                vector_io_provider_id=test_scenario_config.vector_io_provider_id,
+                min_patterns=1,
+                min_evaluation_questions=test_scenario_config.min_evaluation_questions,
+                require_leaderboard=True,
+                require_responses_export="responses_api" in test_scenario_config.tags,
+                run_llm_judge=llm_judge_enabled,
+            )
 
         # Notebook execution validation
         random_indexing_notebook = random.choice(artifacts["indexing_notebook_keys"])
