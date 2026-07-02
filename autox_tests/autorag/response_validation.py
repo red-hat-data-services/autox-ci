@@ -224,6 +224,161 @@ def select_best_pattern(patterns: list[dict[str, Any]]) -> dict[str, Any]:
     return max(scored, key=lambda p: float(p["final_score"]))
 
 
+def get_pattern_responses_template(pattern: dict[str, Any]) -> dict[str, Any] | None:
+    template = (pattern.get("settings") or {}).get("responses_template")
+    return template if isinstance(template, dict) else None
+
+
+def _json_safe(value: Any) -> Any:
+    return json.loads(json.dumps(value, default=str))
+
+
+def inject_question_into_responses_template(template: dict[str, Any], question: str) -> dict[str, Any]:
+    """Return a copy of template with the user message set to the benchmark question."""
+    payload = _json_safe(template)
+    user_items = payload.get("input") or []
+    if len(user_items) < 2:
+        raise ValueError("responses_template must have system + user input messages")
+    content = user_items[1].get("content") or []
+    if not content or not isinstance(content[0], dict):
+        raise ValueError("responses_template user message must have text content")
+    content[0]["text"] = question
+    return payload
+
+
+def extract_responses_answer(result: dict[str, Any]) -> str:
+    """Extract assistant text from an OGX /v1/responses JSON body."""
+    if not isinstance(result, dict):
+        return ""
+
+    top = result.get("output_text")
+    if isinstance(top, str) and top.strip():
+        return top.strip()
+
+    output = result.get("output")
+    if isinstance(output, list):
+        for item in output:
+            if item.get("type") != "message":
+                continue
+            for part in item.get("content") or []:
+                if not isinstance(part, dict):
+                    continue
+                if part.get("type") in ("output_text", "text"):
+                    text = part.get("text") or part.get("value") or ""
+                    if text:
+                        return str(text).strip()
+    return ""
+
+
+def extract_file_search_hits(result: dict[str, Any]) -> list[dict[str, Any]]:
+    """Summarize file_search_call.results from a Responses API payload."""
+    hits: list[dict[str, Any]] = []
+    for item in result.get("output") or []:
+        if item.get("type") != "file_search_call":
+            continue
+        for row in item.get("results") or []:
+            hits.append(
+                {
+                    "file_id": row.get("file_id"),
+                    "score": row.get("score"),
+                    "text_preview": (row.get("text") or "")[:120],
+                }
+            )
+    return hits
+
+
+def post_ogx_responses(
+    base_url: str,
+    api_key: str,
+    payload: dict[str, Any],
+    *,
+    timeout: int = 60,
+) -> dict[str, Any]:
+    """POST to /v1/responses; raise with response body snippet on HTTP errors."""
+    import requests
+
+    resp = requests.post(
+        f"{base_url.rstrip('/')}/v1/responses",
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        json=payload,
+        timeout=timeout,
+    )
+    if not resp.ok:
+        raise RuntimeError(f"HTTP {resp.status_code}: {resp.text[:800]}")
+    return resp.json()
+
+
+def pick_probe_question(pattern: dict[str, Any], *, fallback: str | None = None) -> str:
+    """Select a benchmark question for a single Responses API probe call."""
+    for entry in pattern.get("evaluation_results") or []:
+        if isinstance(entry, dict):
+            question = (entry.get("question") or "").strip()
+            if question:
+                return question
+    return fallback or "Summarize the main topic covered in the indexed documents."
+
+
+def validate_responses_api_probe_result(
+    result: dict[str, Any],
+    *,
+    scenario_id: str,
+    pattern_id: str,
+) -> dict[str, Any]:
+    """Assert a live /v1/responses probe returned retrieval hits and an answer."""
+    hits = extract_file_search_hits(result)
+    answer = extract_responses_answer(result)
+
+    assert hits, (
+        f"[{scenario_id}] Responses API probe for {pattern_id}: "
+        "file_search returned no results (empty file_search_call.results)"
+    )
+    assert answer, (
+        f"[{scenario_id}] Responses API probe for {pattern_id}: "
+        "response had file_search hits but no extractable answer text"
+    )
+
+    return {
+        "pattern_id": pattern_id,
+        "file_search_hits": len(hits),
+        "answer_chars": len(answer),
+        "answer_preview": answer[:200],
+    }
+
+
+def run_responses_api_probe(
+    pattern: dict[str, Any],
+    *,
+    base_url: str,
+    api_key: str,
+    scenario_id: str,
+    question: str | None = None,
+    timeout: int = 60,
+) -> dict[str, Any]:
+    """Execute one live Responses API call for the best pattern export."""
+    template = get_pattern_responses_template(pattern)
+    if not template:
+        raise AssertionError(
+            f"[{scenario_id}] cannot run Responses API probe: missing responses_template"
+        )
+
+    pattern_id = (
+        pattern.get("pattern_name") or pattern.get("pattern_id") or pattern.get("name") or "unknown"
+    )
+    probe_question = question or pick_probe_question(pattern)
+    payload = inject_question_into_responses_template(template, probe_question)
+    result = post_ogx_responses(base_url, api_key, payload, timeout=timeout)
+    summary = validate_responses_api_probe_result(
+        result,
+        scenario_id=scenario_id,
+        pattern_id=pattern_id,
+    )
+    summary["question"] = probe_question
+    return summary
+
+
 def parse_s3_json(s3_client: Any, bucket: str, key: str) -> Any:
     response = s3_client.get_object(Bucket=bucket, Key=key)
     return json.loads(response["Body"].read())

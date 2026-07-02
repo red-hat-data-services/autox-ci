@@ -72,7 +72,7 @@ Pass tags via `--tags` / `-t` on the CLI or set `TESTS_TAGS` in the environment.
 3. Indexing notebook, inference notebook, and `evaluation_results.json` exist in S3
 4. A randomly selected indexing and inference notebook executes successfully via papermill
 5. When tagged `response_quality`: Unitxt scores in `pattern.json`, generation prompt template, `evaluation_results.json` content, leaderboard artifact, and answer-quality stats are validated
-6. When additionally tagged `responses_api`: `responses_template` and `vector_store_binding` parity are validated in the best pattern export
+6. When additionally tagged `responses_api`: `responses_template` and `vector_store_binding` parity are validated in the best pattern export, then a live `POST /v1/responses` probe checks `file_search` hits and answer text (requires `OGX_CLIENT_BASE_URL` / `OGX_CLIENT_API_KEY`)
 
 Scenarios tagged `response_quality` perform deeper artifact checks. Filter with `-t response_quality` or combine tags (e.g. `-t "smoke and response_quality"`).
 

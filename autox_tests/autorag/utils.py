@@ -511,6 +511,46 @@ def _validate_response_quality_artifacts(
         enabled=run_llm_judge,
     )
 
+    if require_responses_export:
+        _run_responses_api_probe(
+            best_pattern,
+            scenario_id=scenario_id,
+        )
+
+
+def _run_responses_api_probe(pattern: dict, *, scenario_id: str) -> None:
+    """POST one /v1/responses probe using exported responses_template (responses_api tag)."""
+    base_url = (os.environ.get("OGX_CLIENT_BASE_URL") or "").strip()
+    api_key = (os.environ.get("OGX_CLIENT_API_KEY") or "").strip()
+    if not base_url or not api_key:
+        raise AssertionError(
+            f"[{scenario_id}] responses_api validation requires OGX_CLIENT_BASE_URL and "
+            "OGX_CLIENT_API_KEY for live /v1/responses probe"
+        )
+
+    from .response_validation import run_responses_api_probe
+
+    try:
+        summary = run_responses_api_probe(
+            pattern,
+            base_url=base_url,
+            api_key=api_key,
+            scenario_id=scenario_id,
+        )
+    except RuntimeError as exc:
+        raise AssertionError(
+            f"[{scenario_id}] Responses API probe failed: {exc}"
+        ) from exc
+
+    logger.info(
+        "[%s] Responses API probe OK: pattern=%s hits=%d answer_chars=%d question=%r",
+        scenario_id,
+        summary.get("pattern_id"),
+        summary.get("file_search_hits"),
+        summary.get("answer_chars"),
+        summary.get("question"),
+    )
+
 
 def _download_and_execute_notebooks(s3_client, bucket, notebook_keys):
     """Download notebooks from S3 and execute them via papermill.
