@@ -9,7 +9,7 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-from autox_tests.automl.utils import read_s3_json
+from autox_tests.lib.s3_data import read_s3_json
 from autox_tests.lib.kfp_run_state import _normalize_state
 from autox_tests.lib.s3_data import upload_file_to_s3
 

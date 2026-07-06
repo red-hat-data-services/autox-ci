@@ -9,7 +9,6 @@ autorag/
   conftest.py                 Fixtures: env config, KFP client, S3 client, pipeline YAML resolution
   test_pipeline_functional.py Pytest test class (parametrized over configs)
   response_validation.py        Score/prompt/Responses API export validators
-  test_response_validation.py   Unit tests for response_validation helpers
   utils.py                    Run submission, state checks, failure diagnostics, artifact + notebook validation
   configs/
     configs.py                AutoRAGTestConfig dataclass, config loading and tag filtering

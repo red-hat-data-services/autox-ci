@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import mimetypes
 from pathlib import Path
@@ -127,6 +128,16 @@ def list_s3_objects(s3_client: Any, bucket: str, prefix: str) -> list[dict]:
         for page in paginator.paginate(Bucket=bucket, Prefix=prefix)
         for obj in page.get("Contents") or []
     ]
+
+
+def read_s3_json(s3_client: Any, bucket: str, key: str) -> dict | None:
+    """Read and parse a JSON file from S3; returns None on failure."""
+    try:
+        resp = s3_client.get_object(Bucket=bucket, Key=key)
+        return json.loads(resp["Body"].read().decode("utf-8"))
+    except Exception as e:
+        logger.warning("Failed to read s3://%s/%s: %s", bucket, key, e)
+        return None
 
 
 def delete_s3_objects(s3_client: Any, bucket: str, keys: list[str]) -> int:
