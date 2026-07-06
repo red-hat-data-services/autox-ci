@@ -3,8 +3,9 @@
 Configurations are loaded from test_configs.json in this directory by default.
 Set AUTORAG_TEST_CONFIGS_PATH to load from a custom JSON file instead.
 Each entry specifies pipeline parameter overrides, expected result (pass/fail),
-and optional tags for filtering. Use TESTS_TAGS (comma-separated) to
-run only configs that have all of the given tags.
+and optional tags for filtering. Use FUNCTIONAL_TESTS_TAGS (comma-separated) to
+run only configs that have all of the given tags. TESTS_TAGS is accepted as a
+legacy alias.
 """
 
 import json
@@ -27,7 +28,7 @@ class AutoRAGTestConfig:
         id: Short identifier for the config (used in pytest parametrize ids).
         description: Human-readable summary of the test scenario.
         tags: Optional list of tags for filtering (e.g. ["smoke", "positive"]).
-            Use TESTS_TAGS to run only configs that have all of the given tags.
+            Use FUNCTIONAL_TESTS_TAGS to run only configs that have all of the given tags.
         expected_result: "pass" or "fail" — whether the pipeline run should succeed.
         pipeline_params_overrides: Keys matching pipeline parameter names. Values
             are resolved against the base config using these rules:
@@ -156,8 +157,8 @@ def get_test_configs_for_run(pass_type: str, tags: None | list[str] = None) -> l
 
     tags = tags or []
 
-    env_tags_raw = os.getenv("TESTS_TAGS")
-    env_tags = [t.strip().lower() for t in env_tags_raw.split(",") if t.strip()] if env_tags_raw else []
+    env_tags_raw = os.getenv("FUNCTIONAL_TESTS_TAGS") or os.getenv("TESTS_TAGS") or ""
+    env_tags = [t.strip().lower() for t in env_tags_raw.split(",") if t.strip()]
 
     all_tags = {t.lower() for t in (tags + env_tags)}
 

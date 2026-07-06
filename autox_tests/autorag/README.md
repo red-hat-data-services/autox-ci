@@ -55,14 +55,14 @@ Scenarios live in `configs/test_configs.json`. Each entry specifies:
 |---|---|
 | `id` | Short identifier shown in pytest output (e.g. `TC-P-1`) |
 | `description` | Human-readable summary |
-| `tags` | List of tags for runtime filtering via `-t` / `TESTS_TAGS` |
+| `tags` | List of tags for runtime filtering via `-t` / `FUNCTIONAL_TESTS_TAGS` |
 | `expected_result` | `"pass"` or `"fail"` |
 | `vector_io_provider_id` | Milvus provider ID for this scenario |
 | `pipeline_params_overrides` | Per-scenario parameter overrides |
 
 ### Tag filtering
 
-Pass tags via `--tags` / `-t` on the CLI or set `TESTS_TAGS` in the environment. Only scenarios matching **all** specified tags are selected.
+Pass tags via `--tags` / `-t` on the CLI or set `FUNCTIONAL_TESTS_TAGS` in the environment (from `.env.rag` or exported by `run_tests.sh`). Only scenarios matching **all** specified tags are selected.
 
 ## Pass / fail criteria
 

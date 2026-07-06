@@ -159,17 +159,20 @@ def validate_evaluation_results_payload(
             )
 
     if min_questions is not None and min_questions > 0:
-        answer_rows = [
+        flat_rows = [
             row
             for row in entries
             if row.get("question") and (row.get("answer") is not None or row.get("scores"))
         ]
-        nested = sum(
-            len(row.get("evaluation_results") or [])
+        nested_rows = [
+            inner
             for row in entries
-            if isinstance(row.get("evaluation_results"), list)
-        )
-        total_answers = max(len(answer_rows), nested)
+            for inner in (row.get("evaluation_results") or [])
+            if isinstance(inner, dict)
+            and inner.get("question")
+            and (inner.get("answer") is not None or inner.get("scores"))
+        ]
+        total_answers = len(flat_rows) + len(nested_rows)
         assert total_answers >= min_questions, (
             f"[{scenario_id}] expected >={min_questions} evaluated questions, found {total_answers}"
         )
@@ -218,6 +221,8 @@ def collect_answers_from_patterns(patterns: list[dict[str, Any]]) -> list[dict[s
 
 def select_best_pattern(patterns: list[dict[str, Any]]) -> dict[str, Any]:
     """Return the pattern with the highest final_score."""
+    if not patterns:
+        raise ValueError("select_best_pattern requires a non-empty pattern list")
     scored = [p for p in patterns if p.get("final_score") is not None]
     if not scored:
         return patterns[0]
@@ -236,10 +241,13 @@ def _json_safe(value: Any) -> Any:
 def inject_question_into_responses_template(template: dict[str, Any], question: str) -> dict[str, Any]:
     """Return a copy of template with the user message set to the benchmark question."""
     payload = _json_safe(template)
-    user_items = payload.get("input") or []
-    if len(user_items) < 2:
-        raise ValueError("responses_template must have system + user input messages")
-    content = user_items[1].get("content") or []
+    user_msg = next(
+        (m for m in reversed(payload.get("input") or []) if m.get("role") == "user"),
+        None,
+    )
+    if not user_msg:
+        raise ValueError("responses_template has no user-role message")
+    content = user_msg.get("content") or []
     if not content or not isinstance(content[0], dict):
         raise ValueError("responses_template user message must have text content")
     content[0]["text"] = question
@@ -377,8 +385,3 @@ def run_responses_api_probe(
     )
     summary["question"] = probe_question
     return summary
-
-
-def parse_s3_json(s3_client: Any, bucket: str, key: str) -> Any:
-    response = s3_client.get_object(Bucket=bucket, Key=key)
-    return json.loads(response["Body"].read())

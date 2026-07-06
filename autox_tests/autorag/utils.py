@@ -2,12 +2,14 @@
 
 import logging
 import os
+import random
 import re
 import secrets
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
+from autox_tests.automl.utils import read_s3_json
 from autox_tests.lib.kfp_run_state import _normalize_state
 from autox_tests.lib.s3_data import upload_file_to_s3
 
@@ -324,24 +326,17 @@ def upload_test_datasets(
     return uploaded_keys
 
 
-def _download_s3_json(s3_client, bucket: str, key: str):
-    """Download and parse a JSON object from S3."""
-    import json
-
-    response = s3_client.get_object(Bucket=bucket, Key=key)
-    return json.loads(response["Body"].read())
-
-
 def _load_pattern_json_objects(s3_client, bucket: str, pattern_keys: list[str]) -> list[dict]:
     patterns: list[dict] = []
     errors: list[str] = []
     for key in pattern_keys:
-        try:
-            data = _download_s3_json(s3_client, bucket, key)
-            if isinstance(data, dict):
-                patterns.append(data)
-        except Exception as exc:
-            errors.append(f"{key}: {exc}")
+        data = read_s3_json(s3_client, bucket, key)
+        if data is None:
+            errors.append(f"{key}: failed to read or parse JSON")
+        elif isinstance(data, dict):
+            patterns.append(data)
+        else:
+            errors.append(f"{key}: expected dict, got {type(data).__name__}")
     if errors:
         raise AssertionError("Failed to load pattern.json files:\n" + "\n".join(errors))
     return patterns
@@ -387,7 +382,7 @@ def _maybe_run_llm_judge_validation(
         )
 
     sample_size = min(3, len(answers))
-    sample = answers[:sample_size]
+    sample = random.sample(answers, sample_size)
     client = OpenAI(base_url=f"{base_url.rstrip('/')}/v1", api_key=api_key)
 
     scores: list[float] = []
@@ -410,8 +405,8 @@ def _maybe_run_llm_judge_validation(
                 max_tokens=8,
             )
             text = (response.choices[0].message.content or "").strip()
-            match = re.search(r"[1-5]", text)
-            scores.append(int(match.group()) / 5.0 if match else 0.5)
+            match = re.search(r"(?<![0-9])([1-5])(?![0-9])", text)
+            scores.append(int(match.group(1)) / 5.0 if match else 0.5)
         except Exception as exc:
             logger.warning("[%s] llm_judge call failed: %s", scenario_id, exc)
             scores.append(0.5)
@@ -454,7 +449,10 @@ def _validate_response_quality_artifacts(
 
     if artifacts["evaluation_results_keys"]:
         eval_key = artifacts["evaluation_results_keys"][0]
-        eval_data = _download_s3_json(s3_client, bucket, eval_key)
+        eval_data = read_s3_json(s3_client, bucket, eval_key)
+        assert eval_data is not None, (
+            f"[{scenario_id}] failed to read evaluation_results.json at {eval_key}"
+        )
         validate_evaluation_results_payload(
             eval_data,
             min_patterns=min_patterns,

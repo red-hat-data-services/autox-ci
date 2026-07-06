@@ -1,4 +1,6 @@
-"""Unit tests for response-quality artifact validation helpers."""
+"""Unit tests for response_validation helpers (pure logic; no cluster or S3)."""
+
+import pytest
 
 from autox_tests.autorag.response_validation import (
     collect_answers_from_patterns,
@@ -9,6 +11,7 @@ from autox_tests.autorag.response_validation import (
     extract_responses_answer,
     inject_question_into_responses_template,
     pick_probe_question,
+    select_best_pattern,
     validate_evaluation_results_payload,
     validate_generation_prompt_template,
     validate_pattern_scores,
@@ -120,6 +123,19 @@ def test_inject_question_into_responses_template():
     assert payload["input"][1]["content"][0]["text"] == "What is AutoRAG?"
 
 
+def test_inject_question_targets_last_user_role_message():
+    template = {
+        "input": [
+            {"role": "system", "content": [{"type": "text", "text": "system"}]},
+            {"role": "user", "content": [{"type": "text", "text": "old"}]},
+            {"role": "assistant", "content": [{"type": "text", "text": "prior"}]},
+            {"role": "user", "content": [{"type": "text", "text": "placeholder"}]},
+        ],
+    }
+    payload = inject_question_into_responses_template(template, "Latest question?")
+    assert payload["input"][3]["content"][0]["text"] == "Latest question?"
+
+
 def test_extract_responses_answer_and_file_search_hits():
     result = {
         "output": [
@@ -154,3 +170,8 @@ def test_validate_responses_api_probe_result_requires_hits_and_answer():
 def test_pick_probe_question_prefers_evaluation_results():
     pattern = _sample_pattern()
     assert pick_probe_question(pattern) == "Q1?"
+
+
+def test_select_best_pattern_requires_non_empty_list():
+    with pytest.raises(ValueError, match="non-empty"):
+        select_best_pattern([])
