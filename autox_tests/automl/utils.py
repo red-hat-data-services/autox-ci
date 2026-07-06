@@ -16,7 +16,7 @@ from pathlib import Path
 from autox_tests.lib.clients import make_kfp_client, make_s3_client  # noqa: F401
 from autox_tests.lib.k8s_utils import load_k8s_config
 from autox_tests.lib.kfp_run_state import _normalize_state
-from autox_tests.lib.s3_data import list_s3_objects
+from autox_tests.lib.s3_data import list_s3_objects, read_s3_json
 
 logger = logging.getLogger(__name__)
 
@@ -156,16 +156,6 @@ def _get_failed_task_names(client, run_id: str) -> list[str]:
     except Exception as exc:
         logger.warning("Could not get failed task names for run %s: %s", run_id, exc)
         return []
-
-
-def read_s3_json(s3_client, bucket: str, key: str) -> dict | None:
-    """Read and parse a JSON file from S3; returns None on failure."""
-    try:
-        resp = s3_client.get_object(Bucket=bucket, Key=key)
-        return json.loads(resp["Body"].read().decode("utf-8"))
-    except Exception as e:
-        logger.warning("Failed to read s3://%s/%s: %s", bucket, key, e)
-        return None
 
 
 def collect_model_metrics_and_sizes(

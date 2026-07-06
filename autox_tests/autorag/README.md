@@ -8,6 +8,7 @@ Parametrized functional tests for the Documents RAG Optimization pipeline on Red
 autorag/
   conftest.py                 Fixtures: env config, KFP client, S3 client, pipeline YAML resolution
   test_pipeline_functional.py Pytest test class (parametrized over configs)
+  response_validation.py        Score/prompt/Responses API export validators
   utils.py                    Run submission, state checks, failure diagnostics, artifact + notebook validation
   configs/
     configs.py                AutoRAGTestConfig dataclass, config loading and tag filtering
@@ -53,14 +54,14 @@ Scenarios live in `configs/test_configs.json`. Each entry specifies:
 |---|---|
 | `id` | Short identifier shown in pytest output (e.g. `TC-P-1`) |
 | `description` | Human-readable summary |
-| `tags` | List of tags for runtime filtering via `-t` / `TESTS_TAGS` |
+| `tags` | List of tags for runtime filtering via `-t` / `FUNCTIONAL_TESTS_TAGS` |
 | `expected_result` | `"pass"` or `"fail"` |
 | `vector_io_provider_id` | Milvus provider ID for this scenario |
 | `pipeline_params_overrides` | Per-scenario parameter overrides |
 
 ### Tag filtering
 
-Pass tags via `--tags` / `-t` on the CLI or set `TESTS_TAGS` in the environment. Only scenarios matching **all** specified tags are selected.
+Pass tags via `--tags` / `-t` on the CLI or set `FUNCTIONAL_TESTS_TAGS` in the environment (from `.env.rag` or exported by `run_tests.sh`). Only scenarios matching **all** specified tags are selected.
 
 ## Pass / fail criteria
 
@@ -69,6 +70,12 @@ Pass tags via `--tags` / `-t` on the CLI or set `TESTS_TAGS` in the environment.
 2. At least 1 pattern artifact exists in S3
 3. Indexing notebook, inference notebook, and `evaluation_results.json` exist in S3
 4. A randomly selected indexing and inference notebook executes successfully via papermill
+5. When tagged `response_quality`: Unitxt scores in `pattern.json`, generation prompt template, `evaluation_results.json` content, leaderboard artifact, and answer-quality stats are validated
+6. When additionally tagged `responses_api`: `responses_template` and `vector_store_binding` parity are validated in the best pattern export, then a live `POST /v1/responses` probe checks `file_search` hits and answer text (requires `OGX_CLIENT_BASE_URL` / `OGX_CLIENT_API_KEY`)
+
+Scenarios tagged `response_quality` perform deeper artifact checks. Filter with `-t response_quality` or combine tags (e.g. `-t "smoke and response_quality"`).
+
+Optional LLM-as-a-Judge sampling: add the `llm_judge` tag to a scenario, set `AUTORAG_RUN_LLM_JUDGE=true`, and configure `AUTORAG_LLM_JUDGE_MODEL` to a foundation model available on your cluster (no default is assumed). Also requires `OGX_CLIENT_BASE_URL` / `OGX_CLIENT_API_KEY`.
 
 **Expected-fail scenarios:**
 1. Pipeline run finishes with state `FAILED` (not `SUCCEEDED`, not timeout)
