@@ -41,8 +41,8 @@ TASK_PRIMARY_METRICS_TABULAR: dict[str, str] = {
     "multiclass": "accuracy",
 }
 
-# Expected primary metric key for timeseries models (AutoGluon uses MASE by default).
-TS_PRIMARY_METRIC = "MASE"
+# Acceptable primary metric keys for timeseries models (key name varies across AutoGluon versions).
+TS_PRIMARY_METRIC = "mean_absolute_scaled_error"
 
 
 def _make_run_name(prefix: str) -> str:
