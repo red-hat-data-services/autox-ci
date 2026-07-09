@@ -333,6 +333,7 @@ def submit_pipeline_run_and_wait(
             namespace=namespace,
         )
         run_id = run.run_id
+        logger.info("Pipeline run submitted: name=%s run_id=%s", run_name, run_id)
     elif target.mode == "managed":
         if not target.pipeline_id:
             raise ValueError("managed mode requires pipeline_id on PipelineRunTarget")
@@ -368,6 +369,7 @@ def submit_pipeline_run_and_wait(
             enable_caching=False,
         )
         run_id = run.run_id
+        logger.info("Pipeline run submitted: name=%s run_id=%s", run_name, run_id)
     else:
         raise ValueError(f"Unknown pipeline run mode: {target.mode!r}")
 

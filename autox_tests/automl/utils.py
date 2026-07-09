@@ -74,7 +74,7 @@ def _run_pipeline_and_wait(client, pipeline_target, arguments, timeout):
     """Submit a pipeline run and block until completion; return ``(run_id, detail)``."""
     from autox_tests.lib.managed_pipelines import submit_pipeline_run_and_wait
 
-    run_name = _make_run_name("automl-func")
+    run_name = _make_run_name("test-automl-pvc-func")
     return submit_pipeline_run_and_wait(
         client,
         pipeline_target,

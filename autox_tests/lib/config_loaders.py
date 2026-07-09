@@ -44,15 +44,13 @@ class AutomlTabularTestConfig:
 
     def get_pipeline_arguments(
         self,
-        train_data_bucket_name: str,
-        train_data_file_key: str,
+        train_data_key: str,
         train_data_secret_name: str,
     ) -> dict[str, Any]:
         """Build keyword arguments for the tabular AutoML training pipeline."""
         return {
             "train_data_secret_name": train_data_secret_name,
-            "train_data_bucket_name": train_data_bucket_name,
-            "train_data_file_key": train_data_file_key,
+            "train_data_key": train_data_key,
             "label_column": self.label_column,
             "task_type": self.task_type,
             **self.automl_settings,
@@ -141,15 +139,13 @@ class AutomlTimeseriesTestConfig:
 
     def get_pipeline_arguments(
         self,
-        train_data_bucket_name: str,
-        train_data_file_key: str,
+        train_data_key: str,
         train_data_secret_name: str,
     ) -> dict[str, Any]:
         """Build keyword arguments for the time series AutoML training pipeline."""
         return {
             "train_data_secret_name": train_data_secret_name,
-            "train_data_bucket_name": train_data_bucket_name,
-            "train_data_file_key": train_data_file_key,
+            "train_data_key": train_data_key,
             "target": self.target,
             "id_column": self.id_column,
             "timestamp_column": self.timestamp_column,

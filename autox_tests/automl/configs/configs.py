@@ -52,8 +52,7 @@ class AutoMLTabularFunctionalConfig:
         )
         return {
             "train_data_secret_name": effective_secret,
-            "train_data_bucket_name": base_config["train_data_bucket_name"],
-            "train_data_file_key": self.train_data_file_key,
+            "train_data_key": self.train_data_file_key,
             "label_column": self.label_column,
             "task_type": self.task_type,
             "top_n": self.top_n,
@@ -95,8 +94,7 @@ class AutoMLTimeseriesFunctionalConfig:
         )
         args = {
             "train_data_secret_name": effective_secret,
-            "train_data_bucket_name": base_config["train_data_bucket_name"],
-            "train_data_file_key": self.train_data_file_key,
+            "train_data_key": self.train_data_file_key,
             "target": self.target,
             "id_column": self.id_column,
             "timestamp_column": self.timestamp_column,
