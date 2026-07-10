@@ -84,6 +84,7 @@ class AutoMLTimeseriesFunctionalConfig:
     injected_fault: str | None = None
     expected_failing_stage: str | None = None
     expected_failing_task: list[str] | None = None
+    eval_metric: str | None = None
     train_data_secret_name_override: str | None = None
 
     def get_pipeline_arguments(self, base_config: dict) -> dict[str, Any]:
@@ -92,7 +93,7 @@ class AutoMLTimeseriesFunctionalConfig:
             self.train_data_secret_name_override
             or base_config["train_data_secret_name"]
         )
-        return {
+        args = {
             "train_data_secret_name": effective_secret,
             "train_data_bucket_name": base_config["train_data_bucket_name"],
             "train_data_file_key": self.train_data_file_key,
@@ -103,6 +104,9 @@ class AutoMLTimeseriesFunctionalConfig:
             "prediction_length": self.prediction_length,
             "top_n": self.top_n,
         }
+        if self.eval_metric is not None:
+            args["eval_metric"] = self.eval_metric
+        return args
 
 
 _TABULAR_FIELDS: set[str] | None = None
