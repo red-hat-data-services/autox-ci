@@ -7,6 +7,7 @@
     "known_covariates_names": ["Price_max"],
     "prediction_length": 7,
     "top_n": 1,
+    "eval_metric": "WQL",
     "train_data_file_key": "functional-test/timeseries/fruits_daily_price.csv",
     "tags": ["timeseries", "smoke", "renamed_schema", "covariate"],
     "inference_sample": [
