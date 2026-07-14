@@ -553,7 +553,7 @@ def _fetch_serving_runtime_template(co, template_name: str, template_namespace: 
 
     for embedded in obj.get("objects", []):
         if (embedded.get("kind") == "ServingRuntime"
-                and embedded.get("apiVersion", "").startswith("serving.kserve.io/")):
+                and embedded.get("apiVersion") == f"{_KSERVE_GROUP}/{_KSERVE_SR_VERSION}"):
             return {"metadata": embedded.get("metadata", {}), "spec": embedded["spec"]}
     raise RuntimeError(
         f"OpenShift Template {template_name!r} contains no ServingRuntime object"
