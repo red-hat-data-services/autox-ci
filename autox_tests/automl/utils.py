@@ -30,6 +30,24 @@ _KSERVE_SR_VERSION = "v1alpha1"
 _KSERVE_ISVC_PLURAL = "inferenceservices"
 _KSERVE_SR_PLURAL = "servingruntimes"
 
+# OpenShift Template API (used by RHOAI ModelController to ship serving runtime templates)
+_OS_TEMPLATE_GROUP = "template.openshift.io"
+_OS_TEMPLATE_VERSION = "v1"
+_OS_TEMPLATE_PLURAL = "templates"
+_RHOAI_SR_TEMPLATE_NAMESPACE = "redhat-ods-applications"
+
+# Annotations safe to propagate from an OpenShift Template's embedded ServingRuntime
+# into a namespace-scoped copy. All others (management stamps, owner encodings) are dropped.
+_ALLOWED_SR_ANNOTATIONS = frozenset({
+    "opendatahub.io/apiProtocol",
+    "opendatahub.io/runtime-version",
+    "openshift.io/display-name",
+    "monitoring.opendatahub.io/scrape",
+    "opendatahub.io/kserve-runtime",
+    "prometheus.io/path",
+    "prometheus.io/port",
+})
+
 _K8S_CALL_TIMEOUT = 30  # seconds per Kubernetes API call
 _HW_PROFILE_FETCH_ATTEMPTS = 6
 _HW_PROFILE_FETCH_DELAY_SECONDS = 3.0
@@ -422,13 +440,8 @@ def create_connection_rbac(
     return rb_name
 
 
-def ensure_serving_runtime(
-    co, namespace: str, runtime_name: str, serving_image: str
-) -> bool:
-    """Create the AutoGluon ServingRuntime if it does not exist.
-
-    Returns True if newly created, False if it already existed.
-    """
+def _serving_runtime_exists(co, namespace: str, name: str) -> bool:
+    """Return True if a namespace-scoped ServingRuntime with the given name exists."""
     from kubernetes.client.rest import ApiException
 
     try:
@@ -437,16 +450,26 @@ def ensure_serving_runtime(
             version=_KSERVE_SR_VERSION,
             namespace=namespace,
             plural=_KSERVE_SR_PLURAL,
-            name=runtime_name,
+            name=name,
             _request_timeout=_K8S_CALL_TIMEOUT,
         )
-        logger.info(
-            "ServingRuntime %r already exists — skipping creation", runtime_name
-        )
-        return False
+        return True
     except ApiException as e:
         if e.status != 404:
             raise
+        return False
+
+
+def ensure_serving_runtime(
+    co, namespace: str, runtime_name: str, serving_image: str
+) -> bool:
+    """Create the AutoGluon ServingRuntime if it does not exist.
+
+    Returns True if newly created, False if it already existed.
+    """
+    if _serving_runtime_exists(co, namespace, runtime_name):
+        logger.info("ServingRuntime %r already exists — skipping creation", runtime_name)
+        return False
 
     runtime = {
         "apiVersion": f"{_KSERVE_GROUP}/{_KSERVE_SR_VERSION}",
@@ -500,6 +523,85 @@ def ensure_serving_runtime(
         _request_timeout=_K8S_CALL_TIMEOUT,
     )
     logger.info("Created ServingRuntime %r in %r", runtime_name, namespace)
+    return True
+
+
+def _fetch_serving_runtime_template(co, template_name: str, template_namespace: str) -> dict:
+    """Fetch a RHOAI serving-runtime OpenShift Template and return the embedded ServingRuntime.
+
+    RHOAI ModelController ships runtime templates as ``template.openshift.io/v1`` Template
+    objects; the ServingRuntime definition lives in ``objects[]``.
+
+    Returns a dict with ``metadata`` and ``spec`` from the embedded ServingRuntime.
+    """
+    from kubernetes.client.rest import ApiException
+
+    try:
+        obj = co.get_namespaced_custom_object(
+            group=_OS_TEMPLATE_GROUP,
+            version=_OS_TEMPLATE_VERSION,
+            namespace=template_namespace,
+            plural=_OS_TEMPLATE_PLURAL,
+            name=template_name,
+            _request_timeout=_K8S_CALL_TIMEOUT,
+        )
+    except ApiException as e:
+        raise RuntimeError(
+            f"Failed to fetch OpenShift Template {template_name!r} "
+            f"from namespace {template_namespace!r}: {e.status} {e.reason}"
+        ) from e
+
+    for embedded in obj.get("objects", []):
+        if (embedded.get("kind") == "ServingRuntime"
+                and embedded.get("apiVersion", "").startswith("serving.kserve.io/")):
+            return {"metadata": embedded.get("metadata", {}), "spec": embedded["spec"]}
+    raise RuntimeError(
+        f"OpenShift Template {template_name!r} contains no ServingRuntime object"
+    )
+
+
+def create_serving_runtime_from_template(
+    co,
+    namespace: str,
+    template_name: str,
+    runtime_name: str,
+    template_namespace: str = _RHOAI_SR_TEMPLATE_NAMESPACE,
+) -> bool:
+    """Clone a serving-runtime template into a namespace-scoped ServingRuntime.
+
+    Returns True if newly created, False if it already existed.
+    """
+    if _serving_runtime_exists(co, namespace, runtime_name):
+        logger.info("ServingRuntime %r already exists — skipping creation", runtime_name)
+        return False
+
+    sr_template = _fetch_serving_runtime_template(co, template_name, template_namespace)
+    template_meta = sr_template.get("metadata", {})
+    runtime = {
+        "apiVersion": f"{_KSERVE_GROUP}/{_KSERVE_SR_VERSION}",
+        "kind": "ServingRuntime",
+        "metadata": {
+            "name": runtime_name,
+            "namespace": namespace,
+            "annotations": {
+                k: v for k, v in template_meta.get("annotations", {}).items()
+                if k in _ALLOWED_SR_ANNOTATIONS
+            },
+            "labels": {"opendatahub.io/dashboard": "true"},
+        },
+        "spec": sr_template["spec"],
+    }
+    co.create_namespaced_custom_object(
+        group=_KSERVE_GROUP,
+        version=_KSERVE_SR_VERSION,
+        namespace=namespace,
+        plural=_KSERVE_SR_PLURAL,
+        body=runtime,
+        _request_timeout=_K8S_CALL_TIMEOUT,
+    )
+    logger.info(
+        "Created ServingRuntime %r in %r from template %r", runtime_name, namespace, template_name
+    )
     return True
 
 
@@ -1148,21 +1250,30 @@ def run_deployment_test(
             logger.info("Waiting 15s for controller informer to index secret and SA...")
             time.sleep(15)
 
+        newly_created = False
         if create_runtime:
-            if not serving_image:
-                logger.warning(
-                    "RHOAI_CREATE_SERVING_RUNTIME=true but RHOAI_SERVING_IMAGE not set"
+            runtime_template_name = os.environ.get(
+                "RHOAI_SERVING_RUNTIME_TEMPLATE_NAME", ""
+            ).strip()
+            if runtime_template_name:
+                newly_created = create_serving_runtime_from_template(
+                    co, namespace, runtime_template_name, serving_runtime_name
                 )
-            else:
+            elif serving_image:
                 newly_created = ensure_serving_runtime(
                     co, namespace, serving_runtime_name, serving_image
                 )
-                if newly_created:
-                    temp_runtime_name = serving_runtime_name
-                    logger.info(
-                        "Waiting 30s for KServe controller to index ServingRuntime..."
-                    )
-                    time.sleep(30)
+            else:
+                logger.warning(
+                    "RHOAI_CREATE_SERVING_RUNTIME=true but neither "
+                    "RHOAI_SERVING_RUNTIME_TEMPLATE_NAME nor RHOAI_SERVING_IMAGE is set"
+                )
+            if newly_created:
+                temp_runtime_name = serving_runtime_name
+                logger.info(
+                    "Waiting 30s for KServe controller to index ServingRuntime..."
+                )
+                time.sleep(30)
 
         hw_rv = os.environ.get("RHOAI_HARDWARE_PROFILE_RESOURCE_VERSION", "").strip()
         if not hw_rv:
