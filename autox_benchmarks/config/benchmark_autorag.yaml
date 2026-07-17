@@ -1,10 +1,7 @@
 suite: base
 
 pipeline:
-  compile: {}
-  git_url: "https://github.com/opendatahub-io/pipelines-components.git"
-  git_ref: "main"
-  autorag_entrypoint: "pipelines/training/autorag/documents_rag_optimization_pipeline/pipeline.py"
+  mode: managed
 
 run:
   optimization_metric: "faithfulness"

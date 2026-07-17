@@ -87,8 +87,19 @@ def main(argv: list[str] | None = None) -> int:
             "Default: $BENCHMARK_TIMESERIES_PACKAGE_PATH or $TIMESERIES_PACKAGE_PATH"
         ),
     )
+    parser.add_argument(
+        "--managed-pipelines",
+        action="store_true",
+        help=(
+            "Use DSPA-managed KFP pipelines instead of uploading a compiled YAML. "
+            "Equivalent to BENCHMARK_USE_MANAGED_PIPELINES=true"
+        ),
+    )
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args(argv)
+
+    if args.managed_pipelines:
+        os.environ["BENCHMARK_USE_MANAGED_PIPELINES"] = "true"
 
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,

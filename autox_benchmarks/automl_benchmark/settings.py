@@ -21,8 +21,8 @@ class BenchmarkSettings:
     """artifact_s3_root_*: first path segment under the bucket for KFP artifacts (pipeline template name)."""
 
     config_dir: Path
-    pipeline_yaml: Path
-    timeseries_pipeline_yaml: Path
+    pipeline_yaml: Path | None
+    timeseries_pipeline_yaml: Path | None
     train_data_secret_name: str
     train_data_bucket_name: str
     artifact_s3_root_tabular: str
@@ -35,19 +35,31 @@ class BenchmarkSettings:
     run_name_prefix: str
     benchmark_s3_prefix: str
     upload_benchmark_results: bool
+    pipeline_mode: str = "package"
 
 
 def benchmark_settings_from_config(cfg: dict[str, Any], config_dir: Path) -> BenchmarkSettings:
+    from benchmark_common.managed_pipelines import (
+        get_managed_kfp_pipeline_name,
+        resolve_benchmark_pipeline_mode,
+    )
+
     pipeline_cfg = cfg.get("pipeline") or {}
     storage_cfg = cfg.get("storage") or {}
     run_cfg = cfg.get("run") or {}
     kfp_cfg = cfg.get("kfp") or {}
 
-    pipeline_yaml = resolve_under(config_dir, str(pipeline_cfg.get("package_path", "../pipelines/autogluon-tabular-training-pipeline.yaml")))
-    timeseries_pipeline_yaml = resolve_under(
-        config_dir,
-        str(pipeline_cfg.get("timeseries_package_path", "../pipelines/autogluon-timeseries-training-pipeline.yaml")),
-    )
+    mode = resolve_benchmark_pipeline_mode(cfg)
+
+    if mode == "managed":
+        pipeline_yaml = None
+        timeseries_pipeline_yaml = None
+    else:
+        pipeline_yaml = resolve_under(config_dir, str(pipeline_cfg.get("package_path", "../pipelines/autogluon-tabular-training-pipeline.yaml")))
+        timeseries_pipeline_yaml = resolve_under(
+            config_dir,
+            str(pipeline_cfg.get("timeseries_package_path", "../pipelines/autogluon-timeseries-training-pipeline.yaml")),
+        )
     secret = pipeline_cfg.get("train_data_secret_name")
     bucket = storage_cfg.get("train_data_bucket_name")
     if not secret or not bucket:
@@ -56,16 +68,15 @@ def benchmark_settings_from_config(cfg: dict[str, Any], config_dir: Path) -> Ben
             "(set in .env only, not in benchmark.yaml)"
         )
 
-    tab_root = _artifact_root_from_storage(
-        storage_cfg,
-        "artifact_s3_prefix",
-        "autogluon-tabular-training-pipeline",
-    )
-    ts_root = _artifact_root_from_storage(
-        storage_cfg,
-        "timeseries_artifact_s3_prefix",
-        "autogluon-timeseries-training-pipeline",
-    )
+    if mode == "managed":
+        tab_default = get_managed_kfp_pipeline_name("tabular", cfg)
+        ts_default = get_managed_kfp_pipeline_name("timeseries", cfg)
+    else:
+        tab_default = "autogluon-tabular-training-pipeline"
+        ts_default = "autogluon-timeseries-training-pipeline"
+
+    tab_root = _artifact_root_from_storage(storage_cfg, "artifact_s3_prefix", tab_default)
+    ts_root = _artifact_root_from_storage(storage_cfg, "timeseries_artifact_s3_prefix", ts_default)
 
     bench_prefix = str(storage_cfg.get("benchmark_s3_prefix") or "benchmarks/ml").strip().strip("/")
     upload_raw = storage_cfg.get("upload_benchmark_results")
@@ -92,4 +103,5 @@ def benchmark_settings_from_config(cfg: dict[str, Any], config_dir: Path) -> Ben
         run_name_prefix=str(run_cfg.get("run_name_prefix", "benchmark")),
         benchmark_s3_prefix=bench_prefix,
         upload_benchmark_results=upload_benchmark_results,
+        pipeline_mode=mode,
     )

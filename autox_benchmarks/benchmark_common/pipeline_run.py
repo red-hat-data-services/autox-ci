@@ -1,13 +1,15 @@
-"""Submit a compiled pipeline package and wait until the run reaches a terminal state."""
+"""Submit a pipeline run (package upload or managed KFP) and wait for terminal state."""
 
 from __future__ import annotations
 
 import logging
+import os
 import subprocess
 import time
 from pathlib import Path
 from typing import Any
 
+from benchmark_common.managed_pipelines import PipelineRunTarget
 from benchmark_common.run_state import is_terminal_state, read_run_state, unwrap_run_from_get_run
 from benchmark_common.yaml_io import load_yaml_dict
 
@@ -80,6 +82,54 @@ def submit_pipeline_package(
             run_name=run_name,
             experiment_name=experiment_name,
         )
+
+
+def submit_pipeline_run(
+    client: Any,
+    target: PipelineRunTarget,
+    *,
+    arguments: dict[str, Any],
+    run_name: str,
+    experiment_name: str,
+    enable_caching: bool,
+) -> Any:
+    """Dual-mode pipeline submission: package upload or managed KFP pipeline."""
+    if target.mode == "package":
+        if not target.package_path:
+            raise ValueError("package mode requires package_path on PipelineRunTarget")
+        return submit_pipeline_package(
+            client,
+            pipeline_file=target.package_path,
+            arguments=arguments,
+            run_name=run_name,
+            experiment_name=experiment_name,
+            enable_caching=enable_caching,
+        )
+
+    if target.mode == "managed":
+        if not target.pipeline_id:
+            raise ValueError("managed mode requires pipeline_id on PipelineRunTarget")
+        experiment = _get_or_create_experiment(client, experiment_name)
+        return client.run_pipeline(
+            experiment_id=experiment.experiment_id,
+            job_name=run_name,
+            pipeline_id=target.pipeline_id,
+            version_id=target.pipeline_version_id,
+            params=arguments,
+            enable_caching=enable_caching,
+        )
+
+    raise ValueError(f"Unknown pipeline run mode: {target.mode!r}")
+
+
+def _get_or_create_experiment(client: Any, experiment_name: str) -> Any:
+    """Create a KFP experiment or return it if it already exists."""
+    try:
+        return client.create_experiment(name=experiment_name)
+    except Exception as e:
+        if "already exists" in str(e).lower() or "conflict" in str(e).lower():
+            return client.get_experiment(experiment_name=experiment_name)
+        raise
 
 
 def extract_run_id(run_result: Any) -> str:

@@ -44,12 +44,13 @@ def _build_run_metadata(
     settings: BenchmarkSettings,
     cfg: dict[str, Any],
     s3_cfg: dict[str, Any],
-    pipeline_yaml_path: Path,
+    pipeline_yaml_path: Path | None,
     s3_benchmark_key_prefix: str,
     arguments: dict[str, Any] | None,
     dataset_filter: str,
     fail_fast: bool,
     repo_root: Path | None,
+    kfp_pipeline_name: str | None = None,
 ) -> dict[str, Any]:
     """Build metadata dict for a single dataset run."""
     return {
@@ -65,7 +66,7 @@ def _build_run_metadata(
         "duration_seconds": row.get("duration_seconds"),
         "error": row.get("error"),
         "optimization_metric": row.get("optimization_metric"),
-        "pipeline_yaml": str(pipeline_yaml_path),
+        "pipeline_yaml": str(pipeline_yaml_path) if pipeline_yaml_path else kfp_pipeline_name or "managed",
         "pipeline_arguments": arguments or {},
         "s3_benchmark_prefix": s3_benchmark_key_prefix,
         "dataset_filter": dataset_filter,
@@ -130,11 +131,12 @@ def upload_single_dataset_results(
     batch_id: str,
     dataset: dict[str, Any],
     row: dict[str, Any],
-    pipeline_yaml_path: Path,
+    pipeline_yaml_path: Path | None,
     arguments: dict[str, Any] | None,
     dataset_filter: str,
     fail_fast: bool,
     repo_root: Path | None,
+    kfp_pipeline_name: str | None = None,
 ) -> None:
     """Upload results and metadata for a single dataset run to S3."""
     if not settings.upload_benchmark_results or not s3_cfg_usable(s3_cfg):
@@ -155,6 +157,7 @@ def upload_single_dataset_results(
         dataset_filter=dataset_filter,
         fail_fast=fail_fast,
         repo_root=repo_root,
+        kfp_pipeline_name=kfp_pipeline_name,
     )
 
     meta_body = json.dumps(meta, indent=2, default=str).encode("utf-8")

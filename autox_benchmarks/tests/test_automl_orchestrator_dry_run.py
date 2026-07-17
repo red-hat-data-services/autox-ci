@@ -180,7 +180,7 @@ class TestDryRunExecution:
             )
             == 0
         )
-        _, settings, _, _ = automl_orchestrator.load_config_and_datasets(
+        _, settings, _, _, _ = automl_orchestrator.load_config_and_datasets(
             dataset_filter="tabular",
             tabular_package_path_cli=str(tabular_pipeline_path),
         )
@@ -203,12 +203,29 @@ class TestDryRunExecution:
         assert args["prediction_length"] == 12
 
 
+class TestManagedDryRun:
+    @patch("automl_benchmark.orchestrator.create_kfp_client")
+    def test_managed_dry_run_does_not_require_kfp_client(
+        self,
+        mock_kfp,
+        automl_orchestrator: BenchmarkOrchestrator,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("BENCHMARK_USE_MANAGED_PIPELINES", "true")
+        out = tmp_path / "managed_dry.csv"
+        assert automl_orchestrator.execute(output_csv=out, dry_run=True) == 0
+        mock_kfp.assert_not_called()
+        df = read_results_csv(out)
+        assert len(df) >= 1
+
+
 class TestLoadConfig:
     def test_merged_credentials_and_upload_disabled(
         self,
         automl_orchestrator: BenchmarkOrchestrator,
     ) -> None:
-        cfg, settings, datasets, config_dir = automl_orchestrator.load_config_and_datasets()
+        cfg, settings, datasets, config_dir, _ = automl_orchestrator.load_config_and_datasets()
         assert str(cfg["kfp"]["host"]).startswith("https://")
         assert settings.train_data_bucket_name == "test-benchmark-bucket"
         assert settings.upload_benchmark_results is False

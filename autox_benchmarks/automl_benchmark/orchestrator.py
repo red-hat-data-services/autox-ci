@@ -10,17 +10,21 @@ from typing import Any
 from automl_benchmark.config_loader import load_merged_benchmark_config
 from benchmark_common.kfp_client import create_kfp_client
 from benchmark_common.manifest import load_dataset_entries
+from benchmark_common.managed_pipelines import PipelineRunTarget
 from automl_benchmark.pipeline_params import (
     build_pipeline_arguments,
     is_timeseries_dataset,
     pipeline_file_for_dataset,
+    target_for_dataset,
 )
 from benchmark_common.pipeline_run import (
     extract_run_id,
     filter_pipeline_arguments,
     submit_pipeline_package,
+    submit_pipeline_run,
     wait_for_terminal_run,
 )
+from benchmark_common.pipeline_target_resolve import resolve_automl_pipeline_targets
 from automl_benchmark.s3_leaderboard_artifact import (
     discover_leaderboard_html_s3_uri,
     download_leaderboard_html_to_dir,
@@ -44,7 +48,6 @@ from automl_benchmark.s3_benchmark_upload import (
 from benchmark_common.s3_upload import build_batch_id
 from benchmark_common.s3_client import s3_cfg_usable
 from automl_benchmark.s3_experiment_dedupe import try_load_cached_result_row
-from benchmark_common.pipeline_package_resolve import resolve_automl_pipeline_package_paths
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +69,7 @@ def _maybe_upload_benchmark_row(
     batch_id: str,
     ds: dict[str, Any],
     row: dict[str, Any],
-    pipeline_file: Path,
+    target: PipelineRunTarget,
     arguments: dict[str, Any],
     output_csv: Path,
     dataset_filter: str,
@@ -86,6 +89,7 @@ def _maybe_upload_benchmark_row(
         if is_timeseries_dataset(ds)
         else settings.artifact_s3_root_tabular
     )
+    pipeline_ir_path = Path(target.package_path).resolve() if target.package_path else None
     upload_single_dataset_results(
         s3_cfg=s3_cfg,
         bucket=settings.train_data_bucket_name,
@@ -94,7 +98,7 @@ def _maybe_upload_benchmark_row(
         batch_id=batch_id,
         dataset=ds,
         row=row,
-        pipeline_ir_path=pipeline_file.resolve(),
+        pipeline_ir_path=pipeline_ir_path,
         output_csv_parent=output_csv.resolve().parent,
         arguments=arguments,
         dataset_filter=dataset_filter,
@@ -102,6 +106,9 @@ def _maybe_upload_benchmark_row(
         artifact_s3_root=root,
         repo_root=repo_root,
         experiment_fingerprint=experiment_fingerprint,
+        pipeline_id=target.pipeline_id,
+        pipeline_version_id=target.pipeline_version_id,
+        kfp_pipeline_name=target.kfp_pipeline_name,
     )
 
 
@@ -145,7 +152,8 @@ class BenchmarkOrchestrator:
         dataset_filter: str = "all",
         tabular_package_path_cli: str | None = None,
         timeseries_package_path_cli: str | None = None,
-    ) -> tuple[dict[str, Any], BenchmarkSettings, list[dict[str, Any]], Path]:
+        client: Any = None,
+    ) -> tuple[dict[str, Any], BenchmarkSettings, list[dict[str, Any]], Path, dict[str, PipelineRunTarget]]:
         cfg, config_dir = load_merged_benchmark_config(self.config_path, self.env_file)
         datasets = load_dataset_entries(cfg, config_dir)
 
@@ -159,16 +167,17 @@ class BenchmarkOrchestrator:
             else:
                 needs_tabular = True
 
-        resolve_automl_pipeline_package_paths(
+        targets = resolve_automl_pipeline_targets(
             cfg,
             config_dir,
+            client,
             cli_tabular=tabular_package_path_cli,
             cli_timeseries=timeseries_package_path_cli,
             needs_tabular=needs_tabular,
             needs_timeseries=needs_ts,
         )
         settings = benchmark_settings_from_config(cfg, config_dir)
-        return cfg, settings, datasets, config_dir
+        return cfg, settings, datasets, config_dir, targets
 
     def execute(
         self,
@@ -181,11 +190,22 @@ class BenchmarkOrchestrator:
         tabular_package_path_cli: str | None = None,
         timeseries_package_path_cli: str | None = None,
     ) -> int:
+        # Create KFP client first — managed mode needs it for pipeline discovery
+        client = None
+        if not dry_run:
+            try:
+                cfg_pre, _ = load_merged_benchmark_config(self.config_path, self.env_file)
+                client = create_kfp_client(cfg_pre)
+            except Exception as e:
+                logger.error("KFP client failed: %s", e)
+                return 1
+
         try:
-            cfg, settings, datasets, _ = self.load_config_and_datasets(
+            cfg, settings, datasets, _, targets = self.load_config_and_datasets(
                 dataset_filter=dataset_filter,
                 tabular_package_path_cli=tabular_package_path_cli,
                 timeseries_package_path_cli=timeseries_package_path_cli,
+                client=client,
             )
         except Exception as e:
             logger.error("%s", e)
@@ -194,31 +214,26 @@ class BenchmarkOrchestrator:
         batch_id = build_batch_id()
         started_at = datetime.now(timezone.utc).isoformat()
         repo_root = _infer_repo_root(self.config_path)
+        is_managed = settings.pipeline_mode == "managed"
 
-        needs_tabular = False
-        needs_ts = False
-        for ds in datasets:
-            if not _dataset_matches_filter(ds, dataset_filter):
-                continue
-            if is_timeseries_dataset(ds):
-                needs_ts = True
-            else:
-                needs_tabular = True
-        if needs_tabular and not settings.pipeline_yaml.is_file():
-            logger.error("Tabular pipeline package not found: %s", settings.pipeline_yaml)
-            return 1
-        if needs_ts and not settings.timeseries_pipeline_yaml.is_file():
-            logger.error("Time series pipeline package not found: %s", settings.timeseries_pipeline_yaml)
-            return 1
+        if not is_managed:
+            needs_tabular = False
+            needs_ts = False
+            for ds in datasets:
+                if not _dataset_matches_filter(ds, dataset_filter):
+                    continue
+                if is_timeseries_dataset(ds):
+                    needs_ts = True
+                else:
+                    needs_tabular = True
+            if needs_tabular and (settings.pipeline_yaml is None or not settings.pipeline_yaml.is_file()):
+                logger.error("Tabular pipeline package not found: %s", settings.pipeline_yaml)
+                return 1
+            if needs_ts and (settings.timeseries_pipeline_yaml is None or not settings.timeseries_pipeline_yaml.is_file()):
+                logger.error("Time series pipeline package not found: %s", settings.timeseries_pipeline_yaml)
+                return 1
 
         rows: list[dict[str, Any]] = []
-        client = None
-        if not dry_run:
-            try:
-                client = create_kfp_client(cfg)
-            except Exception as e:
-                logger.error("KFP client failed: %s", e)
-                return 1
 
         for i, ds in enumerate(datasets):
             ds_id = str(ds.get("id", ds.get("name", f"dataset_{i}")))
@@ -241,14 +256,19 @@ class BenchmarkOrchestrator:
                     return 1
                 continue
 
-            pipeline_file = pipeline_file_for_dataset(ds, settings)
-            arguments = filter_pipeline_arguments(arguments, pipeline_file)
+            target = target_for_dataset(ds, targets)
+            pipeline_file = Path(target.package_path) if target.package_path else None
+
+            if not is_managed and pipeline_file is not None:
+                arguments = filter_pipeline_arguments(arguments, pipeline_file)
+
             run_name = run_name_for_dataset(settings.run_name_prefix, ds_id)
             base = base_row_for_dataset(ds, i, run_name, settings.top_n)
 
             if dry_run:
                 rows.append(dry_run_row(base, arguments))
-                logger.info("DRY_RUN %s pipeline=%s -> %s", ds_id, pipeline_file.name, arguments)
+                label = target.kfp_pipeline_name if is_managed else (pipeline_file.name if pipeline_file else "unknown")
+                logger.info("DRY_RUN %s pipeline=%s -> %s", ds_id, label, arguments)
                 continue
 
             assert client is not None
@@ -258,13 +278,15 @@ class BenchmarkOrchestrator:
                 s3_cfg_dedupe = cfg.get("s3")
                 if isinstance(s3_cfg_dedupe, dict) and s3_cfg_usable(s3_cfg_dedupe):
                     experiment_fp = compute_experiment_fingerprint(
-                        pipeline_ir_path=pipeline_file.resolve(),
+                        pipeline_ir_path=pipeline_file.resolve() if pipeline_file else None,
                         pipeline_arguments=dict(arguments),
                         dataset=ds,
                         settings=settings,
                         cfg=cfg,
                         s3_cfg=s3_cfg_dedupe,
                         dataset_filter=dataset_filter,
+                        pipeline_id=target.pipeline_id,
+                        pipeline_version_id=target.pipeline_version_id,
                     )
                     cached = try_load_cached_result_row(
                         s3_cfg=s3_cfg_dedupe,
@@ -277,9 +299,9 @@ class BenchmarkOrchestrator:
                         continue
 
             try:
-                run_result = submit_pipeline_package(
+                run_result = submit_pipeline_run(
                     client,
-                    pipeline_file=str(pipeline_file),
+                    target,
                     arguments=arguments,
                     run_name=run_name,
                     experiment_name=settings.experiment_name,
@@ -303,7 +325,7 @@ class BenchmarkOrchestrator:
                         batch_id=batch_id,
                         ds=ds,
                         row=tout,
-                        pipeline_file=pipeline_file,
+                        target=target,
                         arguments=arguments,
                         output_csv=output_csv,
                         dataset_filter=dataset_filter,
@@ -352,7 +374,7 @@ class BenchmarkOrchestrator:
                     batch_id=batch_id,
                     ds=ds,
                     row=row,
-                    pipeline_file=pipeline_file,
+                    target=target,
                     arguments=arguments,
                     output_csv=output_csv,
                     dataset_filter=dataset_filter,

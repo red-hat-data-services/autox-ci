@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from benchmark_common.managed_pipelines import PipelineRunTarget
 from automl_benchmark.settings import BenchmarkSettings
 
 
@@ -19,6 +20,15 @@ def pipeline_file_for_dataset(dataset: dict[str, Any], settings: BenchmarkSettin
     if is_timeseries_dataset(dataset):
         return settings.timeseries_pipeline_yaml
     return settings.pipeline_yaml
+
+
+def target_for_dataset(
+    dataset: dict[str, Any],
+    targets: dict[str, PipelineRunTarget],
+) -> PipelineRunTarget:
+    if is_timeseries_dataset(dataset):
+        return targets["timeseries"]
+    return targets["tabular"]
 
 
 def _merge_manifest_pipeline_overrides(

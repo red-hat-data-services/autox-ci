@@ -10,7 +10,7 @@ from typing import Any
 
 from autorag_benchmark.config_loader import load_merged_benchmark_config
 from autorag_benchmark.pattern_scores import extract_pattern_scores, extract_pattern_scores_tabular
-from autorag_benchmark.pipeline_params import build_pipeline_arguments, pipeline_file_for_dataset
+from autorag_benchmark.pipeline_params import build_pipeline_arguments
 from autorag_benchmark.result_rows import (
     base_row_for_dataset,
     completed_row,
@@ -26,9 +26,10 @@ from autorag_benchmark.s3_benchmark_upload import (
 )
 from autorag_benchmark.settings import BenchmarkSettings, benchmark_settings_from_config
 from benchmark_common.kfp_client import create_kfp_client
+from benchmark_common.managed_pipelines import PipelineRunTarget
 from benchmark_common.manifest import load_dataset_entries
-from benchmark_common.pipeline_package_resolve import resolve_autorag_pipeline_package_path
-from benchmark_common.pipeline_run import extract_run_id, filter_pipeline_arguments, submit_pipeline_package, wait_for_terminal_run
+from benchmark_common.pipeline_run import extract_run_id, filter_pipeline_arguments, submit_pipeline_package, submit_pipeline_run, wait_for_terminal_run
+from benchmark_common.pipeline_target_resolve import resolve_autorag_pipeline_target
 from benchmark_common.results_csv import write_results_csv
 from benchmark_common.run_state import is_success_state
 
@@ -56,12 +57,15 @@ class BenchmarkOrchestrator:
         self,
         *,
         package_path_cli: str | None = None,
-    ) -> tuple[dict[str, Any], BenchmarkSettings, list[dict[str, Any]]]:
+        client: Any = None,
+    ) -> tuple[dict[str, Any], BenchmarkSettings, list[dict[str, Any]], PipelineRunTarget]:
         cfg, config_dir = load_merged_benchmark_config(self.config_path, self.env_file)
-        resolve_autorag_pipeline_package_path(cfg, config_dir, cli_package=package_path_cli)
+        target = resolve_autorag_pipeline_target(
+            cfg, config_dir, client, cli_package=package_path_cli,
+        )
         settings = benchmark_settings_from_config(cfg, config_dir)
         datasets = load_dataset_entries(cfg, config_dir)
-        return cfg, settings, datasets
+        return cfg, settings, datasets, target
 
     def execute(
         self,
@@ -72,15 +76,30 @@ class BenchmarkOrchestrator:
         dataset_filter: str = "all",
         package_path_cli: str | None = None,
     ) -> int:
+        # Create KFP client first — managed mode needs it for pipeline discovery
+        client = None
+        if not dry_run:
+            try:
+                cfg_pre, _ = load_merged_benchmark_config(self.config_path, self.env_file)
+                client = create_kfp_client(cfg_pre)
+            except Exception as e:
+                logger.error("KFP client failed: %s", e)
+                return 1
+
         try:
-            cfg, settings, datasets = self.load_config_and_datasets(package_path_cli=package_path_cli)
+            cfg, settings, datasets, target = self.load_config_and_datasets(
+                package_path_cli=package_path_cli, client=client,
+            )
         except Exception as e:
             logger.error("%s", e)
             return 1
 
-        if not settings.pipeline_yaml.is_file():
-            logger.error("RAG pipeline package not found: %s", settings.pipeline_yaml)
-            return 1
+        is_managed = settings.pipeline_mode == "managed"
+
+        if not is_managed:
+            if settings.pipeline_yaml is None or not settings.pipeline_yaml.is_file():
+                logger.error("RAG pipeline package not found: %s", settings.pipeline_yaml)
+                return 1
 
         # S3 upload preparation
         batch_id = build_batch_id()
@@ -99,13 +118,7 @@ class BenchmarkOrchestrator:
             logger.info("Benchmark batch_id=%s (results will upload to s3://%s/%s/)", batch_id, bucket, settings.benchmark_s3_prefix)
 
         rows: list[dict[str, Any]] = []
-        client = None
-        if not dry_run:
-            try:
-                client = create_kfp_client(cfg)
-            except Exception as e:
-                logger.error("KFP client failed: %s", e)
-                return 1
+        pipeline_file = Path(target.package_path) if target.package_path else None
 
         for i, ds in enumerate(datasets):
             ds_id = str(ds.get("id", ds.get("name", f"dataset_{i}")))
@@ -128,21 +141,23 @@ class BenchmarkOrchestrator:
                     return 1
                 continue
 
-            pipeline_file = pipeline_file_for_dataset(ds, settings)
-            arguments = filter_pipeline_arguments(arguments, pipeline_file)
+            if not is_managed and pipeline_file is not None:
+                arguments = filter_pipeline_arguments(arguments, pipeline_file)
+
             run_name = run_name_for_dataset(settings.run_name_prefix, ds_id)
             base = base_row_for_dataset(ds, i, run_name, suite=settings.suite, rhoai_version=settings.rhoai_version)
 
             if dry_run:
                 rows.append(dry_run_row(base, arguments))
-                logger.info("DRY_RUN %s pipeline=%s -> %s", ds_id, pipeline_file.name, arguments)
+                label = target.kfp_pipeline_name if is_managed else (pipeline_file.name if pipeline_file else "unknown")
+                logger.info("DRY_RUN %s pipeline=%s -> %s", ds_id, label, arguments)
                 continue
 
             assert client is not None
             try:
-                run_result = submit_pipeline_package(
+                run_result = submit_pipeline_run(
                     client,
-                    pipeline_file=str(pipeline_file),
+                    target,
                     arguments=arguments,
                     run_name=run_name,
                     experiment_name=settings.experiment_name,
@@ -232,7 +247,8 @@ class BenchmarkOrchestrator:
                     batch_id=batch_id,
                     dataset=ds,
                     row=upload_row,
-                    pipeline_yaml_path=settings.pipeline_yaml,
+                    pipeline_yaml_path=pipeline_file,
+                    kfp_pipeline_name=target.kfp_pipeline_name,
                     arguments=arguments,
                     dataset_filter=dataset_filter,
                     fail_fast=fail_fast,
@@ -257,7 +273,8 @@ class BenchmarkOrchestrator:
                     batch_id=batch_id,
                     dataset=ds,
                     row=error_row,
-                    pipeline_yaml_path=settings.pipeline_yaml,
+                    pipeline_yaml_path=pipeline_file,
+                    kfp_pipeline_name=target.kfp_pipeline_name,
                     arguments=arguments,
                     dataset_filter=dataset_filter,
                     fail_fast=fail_fast,
