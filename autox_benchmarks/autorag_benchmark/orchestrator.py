@@ -28,7 +28,7 @@ from autorag_benchmark.settings import BenchmarkSettings, benchmark_settings_fro
 from benchmark_common.kfp_client import create_kfp_client
 from benchmark_common.managed_pipelines import PipelineRunTarget
 from benchmark_common.manifest import load_dataset_entries
-from benchmark_common.pipeline_run import extract_run_id, filter_pipeline_arguments, submit_pipeline_run, wait_for_terminal_run
+from benchmark_common.pipeline_run import extract_run_id, filter_pipeline_arguments, redact_arguments, submit_pipeline_run, wait_for_terminal_run
 from benchmark_common.pipeline_target_resolve import resolve_autorag_pipeline_target
 from benchmark_common.results_csv import write_results_csv
 from benchmark_common.run_state import is_success_state
@@ -144,7 +144,7 @@ class BenchmarkOrchestrator:
             if dry_run:
                 rows.append(dry_run_row(base, arguments))
                 label = target.kfp_pipeline_name if is_managed else (pipeline_file.name if pipeline_file else "unknown")
-                logger.info("DRY_RUN %s pipeline=%s -> %s", ds_id, label, arguments)
+                logger.info("DRY_RUN %s pipeline=%s -> %s", ds_id, label, redact_arguments(arguments))
                 continue
 
             assert client is not None

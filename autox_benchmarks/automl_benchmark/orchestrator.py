@@ -19,6 +19,7 @@ from automl_benchmark.pipeline_params import (
 from benchmark_common.pipeline_run import (
     extract_run_id,
     filter_pipeline_arguments,
+    redact_arguments,
     submit_pipeline_run,
     wait_for_terminal_run,
 )
@@ -260,7 +261,7 @@ class BenchmarkOrchestrator:
             if dry_run:
                 rows.append(dry_run_row(base, arguments))
                 label = target.kfp_pipeline_name if is_managed else (pipeline_file.name if pipeline_file else "unknown")
-                logger.info("DRY_RUN %s pipeline=%s -> %s", ds_id, label, arguments)
+                logger.info("DRY_RUN %s pipeline=%s -> %s", ds_id, label, redact_arguments(arguments))
                 continue
 
             assert client is not None

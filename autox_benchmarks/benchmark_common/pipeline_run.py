@@ -15,6 +15,19 @@ from benchmark_common.yaml_io import load_yaml_dict
 
 logger = logging.getLogger(__name__)
 
+_SENSITIVE_FRAGMENTS = ("secret", "token", "password", "api_key", "access_key")
+
+
+def redact_arguments(arguments: dict[str, Any]) -> dict[str, Any]:
+    """Return a copy with values redacted for keys that look sensitive."""
+    out: dict[str, Any] = {}
+    for k, v in arguments.items():
+        if any(frag in str(k).lower() for frag in _SENSITIVE_FRAGMENTS):
+            out[k] = "***REDACTED***"
+        else:
+            out[k] = v
+    return out
+
 
 def get_pipeline_supported_params(pipeline_file: str | Path) -> set[str] | None:
     """Return the set of root input parameter names declared in a compiled KFP pipeline YAML.
