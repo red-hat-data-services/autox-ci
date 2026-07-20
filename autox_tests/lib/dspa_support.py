@@ -160,7 +160,7 @@ def create_datascience_pipelines_application(
 
     spec: dict[str, Any] = {
         "objectStorage": object_storage,
-        "podToPodTLS": False,
+        "podToPodTLS": True,
     }
     dsp_version = (dspa_cfg.get("dsp_version") or "").strip()
     if dsp_version:
@@ -359,6 +359,7 @@ def get_dspa_route_kfp_base_url(
                 return f"https://{host}".rstrip("/") + "/"
         time.sleep(5)
     return None
+
 
 
 def verify_kfp_api_health(
