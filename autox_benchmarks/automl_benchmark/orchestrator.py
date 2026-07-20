@@ -209,23 +209,6 @@ class BenchmarkOrchestrator:
         repo_root = _infer_repo_root(self.config_path)
         is_managed = settings.pipeline_mode == "managed"
 
-        if not is_managed:
-            needs_tabular = False
-            needs_ts = False
-            for ds in datasets:
-                if not _dataset_matches_filter(ds, dataset_filter):
-                    continue
-                if is_timeseries_dataset(ds):
-                    needs_ts = True
-                else:
-                    needs_tabular = True
-            if needs_tabular and (settings.pipeline_yaml is None or not settings.pipeline_yaml.is_file()):
-                logger.error("Tabular pipeline package not found: %s", settings.pipeline_yaml)
-                return 1
-            if needs_ts and (settings.timeseries_pipeline_yaml is None or not settings.timeseries_pipeline_yaml.is_file()):
-                logger.error("Time series pipeline package not found: %s", settings.timeseries_pipeline_yaml)
-                return 1
-
         rows: list[dict[str, Any]] = []
 
         for i, ds in enumerate(datasets):

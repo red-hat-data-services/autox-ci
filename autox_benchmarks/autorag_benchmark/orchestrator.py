@@ -90,11 +90,6 @@ class BenchmarkOrchestrator:
 
         is_managed = settings.pipeline_mode == "managed"
 
-        if not is_managed:
-            if settings.pipeline_yaml is None or not settings.pipeline_yaml.is_file():
-                logger.error("RAG pipeline package not found: %s", settings.pipeline_yaml)
-                return 1
-
         # S3 upload preparation
         batch_id = build_batch_id()
         started_at = datetime.now(timezone.utc).isoformat()

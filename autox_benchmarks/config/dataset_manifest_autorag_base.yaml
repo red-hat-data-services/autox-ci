@@ -5,32 +5,32 @@ datasets:
     test_data_key: "datasets/rag/open_ragbench/arxiv/txt/10/benchmark_data.json"
     optimization_metric: "faithfulness"
 
-  - id: open-ragbench-arxiv-100-txt
-    name: "Open RAGBench ArXiv (100) TXT"
-    input_data_key: "datasets/rag/open_ragbench/arxiv/txt/100/knowledge_base"
-    test_data_key: "datasets/rag/open_ragbench/arxiv/txt/100/benchmark_data.json"
-    optimization_metric: "faithfulness"
+  # - id: open-ragbench-arxiv-100-txt
+  #   name: "Open RAGBench ArXiv (100) TXT"
+  #   input_data_key: "datasets/rag/open_ragbench/arxiv/txt/100/knowledge_base"
+  #   test_data_key: "datasets/rag/open_ragbench/arxiv/txt/100/benchmark_data.json"
+  #   optimization_metric: "faithfulness"
 
-  - id: open-ragbench-arxiv-100-md
-    name: "Open RAGBench ArXiv (100) MD"
-    input_data_key: "datasets/rag/open_ragbench/arxiv/md/100/knowledge_base"
-    test_data_key: "datasets/rag/open_ragbench/arxiv/md/100/benchmark_data.json"
-    optimization_metric: "faithfulness"
+  # - id: open-ragbench-arxiv-100-md
+  #   name: "Open RAGBench ArXiv (100) MD"
+  #   input_data_key: "datasets/rag/open_ragbench/arxiv/md/100/knowledge_base"
+  #   test_data_key: "datasets/rag/open_ragbench/arxiv/md/100/benchmark_data.json"
+  #   optimization_metric: "faithfulness"
 
-  - id: open-ragbench-arxiv-100-pdf
-    name: "Open RAGBench ArXiv (100) PDF"
-    input_data_key: "datasets/rag/open_ragbench/arxiv/pdf/100/knowledge_base"
-    test_data_key: "datasets/rag/open_ragbench/arxiv/pdf/100/benchmark_data.json"
-    optimization_metric: "faithfulness"
+  # - id: open-ragbench-arxiv-100-pdf
+  #   name: "Open RAGBench ArXiv (100) PDF"
+  #   input_data_key: "datasets/rag/open_ragbench/arxiv/pdf/100/knowledge_base"
+  #   test_data_key: "datasets/rag/open_ragbench/arxiv/pdf/100/benchmark_data.json"
+  #   optimization_metric: "faithfulness"
    
-  - id: html-rag-nq-validation-10
-    name: "HtmlRag NQ Validation (10) HTML"
-    input_data_key: "datasets/rag/html_rag/validation/html/10/knowledge_base"
-    test_data_key: "datasets/rag/html_rag/validation/html/10/benchmark_data.json"
-    optimization_metric: "faithfulness"
+  # - id: html-rag-nq-validation-10
+  #   name: "HtmlRag NQ Validation (10) HTML"
+  #   input_data_key: "datasets/rag/html_rag/validation/html/10/knowledge_base"
+  #   test_data_key: "datasets/rag/html_rag/validation/html/10/benchmark_data.json"
+  #   optimization_metric: "faithfulness"
 
-  - id: html-rag-nq-validation-50
-    name: "HtmlRag NQ Validation (50) HTML"
-    input_data_key: "datasets/rag/html_rag/validation/html/50/knowledge_base"
-    test_data_key: "datasets/rag/html_rag/validation/html/50/benchmark_data.json"
-    optimization_metric: "faithfulness"
+  # - id: html-rag-nq-validation-50
+  #   name: "HtmlRag NQ Validation (50) HTML"
+  #   input_data_key: "datasets/rag/html_rag/validation/html/50/knowledge_base"
+  #   test_data_key: "datasets/rag/html_rag/validation/html/50/benchmark_data.json"
+  #   optimization_metric: "faithfulness"
