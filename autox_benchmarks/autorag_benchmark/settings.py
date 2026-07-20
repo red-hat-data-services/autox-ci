@@ -14,7 +14,7 @@ from benchmark_common.paths import resolve_under
 @dataclass(frozen=True)
 class BenchmarkSettings:
     config_dir: Path
-    pipeline_yaml: Path
+    pipeline_yaml: Path | None
     input_data_secret_name: str
     input_data_bucket_name: str
     test_data_secret_name: str
@@ -33,18 +33,26 @@ class BenchmarkSettings:
     rhoai_version: str
     benchmark_s3_prefix: str
     upload_benchmark_results: bool
+    pipeline_mode: str = "package"
 
 
 def benchmark_settings_from_config(cfg: dict[str, Any], config_dir: Path) -> BenchmarkSettings:
+    from benchmark_common.managed_pipelines import resolve_benchmark_pipeline_mode
+
     pipeline_cfg = cfg.get("pipeline") or {}
     storage_cfg = cfg.get("storage") or {}
     run_cfg = cfg.get("run") or {}
     kfp_cfg = cfg.get("kfp") or {}
 
-    pipeline_yaml = resolve_under(
-        config_dir,
-        str(pipeline_cfg.get("package_path", "../pipelines/documents-rag-optimization-pipeline.yaml")),
-    )
+    mode = resolve_benchmark_pipeline_mode(cfg)
+
+    if mode == "managed":
+        pipeline_yaml = None
+    else:
+        pipeline_yaml = resolve_under(
+            config_dir,
+            str(pipeline_cfg.get("package_path", "../pipelines/documents-rag-optimization-pipeline.yaml")),
+        )
 
     input_data_secret = pipeline_cfg.get("input_data_secret_name")
     input_data_bucket = storage_cfg.get("input_data_bucket_name")
@@ -109,4 +117,5 @@ def benchmark_settings_from_config(cfg: dict[str, Any], config_dir: Path) -> Ben
         rhoai_version=rhoai_version,
         benchmark_s3_prefix=bench_prefix,
         upload_benchmark_results=upload_benchmark_results,
+        pipeline_mode=mode,
     )

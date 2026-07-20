@@ -70,15 +70,28 @@ def _pipeline_name_from_comment(path: Path) -> str | None:
     return None
 
 
-def pipeline_definition_block(ir_path: Path) -> dict[str, Any]:
-    name = pipeline_template_name_from_ir(ir_path)
-    out: dict[str, Any] = {
-        "compiled_ir_path": str(ir_path),
-        "pipeline_template_name": name,
+def pipeline_definition_block(
+    ir_path: Path | None,
+    *,
+    pipeline_id: str | None = None,
+    pipeline_version_id: str | None = None,
+    kfp_pipeline_name: str | None = None,
+) -> dict[str, Any]:
+    if ir_path is not None:
+        name = pipeline_template_name_from_ir(ir_path)
+        out: dict[str, Any] = {
+            "compiled_ir_path": str(ir_path),
+            "pipeline_template_name": name,
+        }
+        if ir_path.is_file():
+            out["compiled_ir_sha256"] = sha256_file(ir_path)
+        return out
+    return {
+        "pipeline_mode": "managed",
+        "pipeline_id": pipeline_id,
+        "pipeline_version_id": pipeline_version_id,
+        "kfp_pipeline_name": kfp_pipeline_name,
     }
-    if ir_path.is_file():
-        out["compiled_ir_sha256"] = sha256_file(ir_path)
-    return out
 
 
 def task_components_from_metrics_blob(metrics_blob: str) -> list[str]:
@@ -133,11 +146,18 @@ def build_input_params(
     settings: BenchmarkSettings,
     dataset: dict[str, Any],
     arguments: dict[str, Any] | None,
-    pipeline_file: Path,
+    pipeline_file: Path | None,
     dataset_filter: str,
     fail_fast: bool,
     artifact_s3_root: str,
+    kfp_pipeline_name: str | None = None,
 ) -> dict[str, Any]:
+    if pipeline_file is not None:
+        package_name = pipeline_file.name
+    elif kfp_pipeline_name:
+        package_name = kfp_pipeline_name
+    else:
+        package_name = "unknown"
     out: dict[str, Any] = {
         "top_n": settings.top_n,
         "run_name_prefix": settings.run_name_prefix,
@@ -147,7 +167,7 @@ def build_input_params(
         "dataset_filter": dataset_filter,
         "fail_fast": fail_fast,
         "artifact_s3_prefix": artifact_s3_root,
-        "pipeline_package_name": pipeline_file.name,
+        "pipeline_package_name": package_name,
         "manifest_dataset": {k: dataset.get(k) for k in dataset if k is not None},
     }
     if arguments is not None:
@@ -162,7 +182,7 @@ def build_run_metadata(
     settings: BenchmarkSettings,
     cfg: dict[str, Any],
     s3_cfg: dict[str, Any],
-    pipeline_ir_path: Path,
+    pipeline_ir_path: Path | None,
     s3_benchmark_key_prefix: str,
     arguments: dict[str, Any] | None,
     dataset_filter: str,
@@ -170,6 +190,9 @@ def build_run_metadata(
     artifact_s3_root: str,
     repo_root: Path | None,
     experiment_fingerprint: str | None = None,
+    pipeline_id: str | None = None,
+    pipeline_version_id: str | None = None,
+    kfp_pipeline_name: str | None = None,
 ) -> dict[str, Any]:
     metrics_blob = str(row.get("metrics_blob") or "")
     commit = try_git_commit_hash(repo_root)
@@ -178,7 +201,12 @@ def build_run_metadata(
         "schema_version": SCHEMA_VERSION,
         "timestamp": ts,
         "commit_hash": commit,
-        "pipeline_definition": pipeline_definition_block(pipeline_ir_path),
+        "pipeline_definition": pipeline_definition_block(
+            pipeline_ir_path,
+            pipeline_id=pipeline_id,
+            pipeline_version_id=pipeline_version_id,
+            kfp_pipeline_name=kfp_pipeline_name,
+        ),
         "pipeline_components": task_components_from_metrics_blob(metrics_blob),
         "input_params": build_input_params(
             settings=settings,
@@ -188,6 +216,7 @@ def build_run_metadata(
             dataset_filter=dataset_filter,
             fail_fast=fail_fast,
             artifact_s3_root=artifact_s3_root,
+            kfp_pipeline_name=kfp_pipeline_name,
         ),
         "downstream_dependencies": [
             {

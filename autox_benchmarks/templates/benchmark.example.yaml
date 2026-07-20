@@ -5,6 +5,18 @@
 # Do not put host, namespace, bucket, or Kubernetes secret names here.
 
 pipeline:
+  # Pipeline mode: "package" (default) or "managed".
+  # - "package": upload a compiled pipeline YAML to KFP (resolved from config, CLI, or Git compile)
+  # - "managed": use DSPA-managed pipelines already registered in KFP (no local YAML needed)
+  # Override via BENCHMARK_USE_MANAGED_PIPELINES=true env var or --managed-pipelines CLI flag.
+  # mode: managed
+  #
+  # Managed pipeline settings (ignored in package mode):
+  # kfp_pipeline_names:
+  #   tabular: autogluon-tabular-training-pipeline
+  #   timeseries: autogluon-timeseries-training-pipeline
+  # managed_pipeline_wait_timeout: 300
+  #
   # Default: compile pipeline IR from Git (opendatahub-io/pipelines-components). Requires git,
   # network, and Python 3.11+ for an isolated compile venv. Override any key below.
   compile: {}

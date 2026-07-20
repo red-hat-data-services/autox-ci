@@ -68,18 +68,23 @@ def _orchestrator_options(settings: BenchmarkSettings, dataset_filter: str) -> d
 
 def build_fingerprint_payload(
     *,
-    pipeline_ir_path: Path,
+    pipeline_ir_path: Path | None,
     pipeline_arguments: dict[str, Any],
     dataset: dict[str, Any],
     settings: BenchmarkSettings,
     cfg: dict[str, Any],
     s3_cfg: dict[str, Any],
     dataset_filter: str,
+    pipeline_id: str | None = None,
+    pipeline_version_id: str | None = None,
 ) -> dict[str, Any]:
     kind = "timeseries" if is_timeseries_dataset(dataset) else "tabular"
     pipeline: dict[str, Any] = {"pipeline_kind": kind}
-    if pipeline_ir_path.is_file():
+    if pipeline_ir_path is not None and pipeline_ir_path.is_file():
         pipeline["compiled_ir_sha256"] = sha256_file(pipeline_ir_path)
+    elif pipeline_id:
+        pipeline["pipeline_id"] = pipeline_id
+        pipeline["pipeline_version_id"] = pipeline_version_id
     else:
         pipeline["compiled_ir_sha256"] = None
     return {
@@ -93,13 +98,15 @@ def build_fingerprint_payload(
 
 def compute_experiment_fingerprint(
     *,
-    pipeline_ir_path: Path,
+    pipeline_ir_path: Path | None,
     pipeline_arguments: dict[str, Any],
     dataset: dict[str, Any],
     settings: BenchmarkSettings,
     cfg: dict[str, Any],
     s3_cfg: dict[str, Any],
     dataset_filter: str,
+    pipeline_id: str | None = None,
+    pipeline_version_id: str | None = None,
 ) -> str:
     payload = build_fingerprint_payload(
         pipeline_ir_path=pipeline_ir_path,
@@ -109,6 +116,8 @@ def compute_experiment_fingerprint(
         cfg=cfg,
         s3_cfg=s3_cfg,
         dataset_filter=dataset_filter,
+        pipeline_id=pipeline_id,
+        pipeline_version_id=pipeline_version_id,
     )
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
