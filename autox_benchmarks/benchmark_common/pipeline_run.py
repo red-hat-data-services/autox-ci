@@ -110,14 +110,23 @@ def submit_pipeline_run(
         if not target.pipeline_id:
             raise ValueError("managed mode requires pipeline_id on PipelineRunTarget")
         experiment = _get_or_create_experiment(client, experiment_name)
-        return client.run_pipeline(
-            experiment_id=experiment.experiment_id,
-            job_name=run_name,
-            pipeline_id=target.pipeline_id,
-            version_id=target.pipeline_version_id,
-            params=arguments,
-            enable_caching=enable_caching,
-        )
+        try:
+            return client.run_pipeline(
+                experiment_id=experiment.experiment_id,
+                job_name=run_name,
+                pipeline_id=target.pipeline_id,
+                version_id=target.pipeline_version_id,
+                params=arguments,
+                enable_caching=enable_caching,
+            )
+        except TypeError:
+            return client.run_pipeline(
+                experiment_id=experiment.experiment_id,
+                job_name=run_name,
+                pipeline_id=target.pipeline_id,
+                version_id=target.pipeline_version_id,
+                params=arguments,
+            )
 
     raise ValueError(f"Unknown pipeline run mode: {target.mode!r}")
 
@@ -125,9 +134,19 @@ def submit_pipeline_run(
 def _get_or_create_experiment(client: Any, experiment_name: str) -> Any:
     """Create a KFP experiment or return it if it already exists."""
     try:
+        from kfp_server_api.exceptions import ApiException as KfpApiException
+    except ImportError:
+        KfpApiException = None
+
+    try:
         return client.create_experiment(name=experiment_name)
     except Exception as e:
-        if "already exists" in str(e).lower() or "conflict" in str(e).lower():
+        is_conflict = False
+        if KfpApiException is not None and isinstance(e, KfpApiException):
+            is_conflict = getattr(e, "status", None) == 409
+        if not is_conflict:
+            is_conflict = "already exists" in str(e).lower() or "conflict" in str(e).lower()
+        if is_conflict:
             return client.get_experiment(experiment_name=experiment_name)
         raise
 

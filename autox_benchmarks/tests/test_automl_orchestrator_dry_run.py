@@ -180,7 +180,7 @@ class TestDryRunExecution:
             )
             == 0
         )
-        _, settings, _, _, _ = automl_orchestrator.load_config_and_datasets(
+        _, settings, _, _, _, _ = automl_orchestrator.load_config_and_datasets(
             dataset_filter="tabular",
             tabular_package_path_cli=str(tabular_pipeline_path),
         )
@@ -225,7 +225,7 @@ class TestLoadConfig:
         self,
         automl_orchestrator: BenchmarkOrchestrator,
     ) -> None:
-        cfg, settings, datasets, config_dir, _ = automl_orchestrator.load_config_and_datasets()
+        cfg, settings, datasets, config_dir, _, _ = automl_orchestrator.load_config_and_datasets()
         assert str(cfg["kfp"]["host"]).startswith("https://")
         assert settings.train_data_bucket_name == "test-benchmark-bucket"
         assert settings.upload_benchmark_results is False

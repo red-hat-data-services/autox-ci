@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from benchmark_common.managed_pipelines import (
+    PIPELINE_DEFAULT_NAMES,
     PipelineRunTarget,
     get_managed_kfp_pipeline_name,
     get_managed_pipeline_wait_timeout,
@@ -19,6 +20,15 @@ from benchmark_common.pipeline_package_resolve import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _fill_missing_alias(targets: dict[str, PipelineRunTarget]) -> dict[str, PipelineRunTarget]:
+    """If only one of tabular/timeseries is present, alias the other to it."""
+    if "tabular" in targets and "timeseries" not in targets:
+        targets["timeseries"] = targets["tabular"]
+    if "timeseries" in targets and "tabular" not in targets:
+        targets["tabular"] = targets["timeseries"]
+    return targets
 
 
 def resolve_automl_pipeline_targets(
@@ -65,12 +75,7 @@ def resolve_automl_pipeline_targets(
                     kfp_pipeline_name=kfp_name,
                 )
 
-        if needs_tabular and not needs_timeseries and "timeseries" not in targets:
-            targets["timeseries"] = targets["tabular"]
-        if needs_timeseries and not needs_tabular and "tabular" not in targets:
-            targets["tabular"] = targets["timeseries"]
-
-        return targets
+        return _fill_missing_alias(targets)
 
     resolve_automl_pipeline_package_paths(
         cfg,
@@ -86,28 +91,21 @@ def resolve_automl_pipeline_targets(
     tab_path = pipeline_cfg.get("package_path")
     ts_path = pipeline_cfg.get("timeseries_package_path")
 
-    from benchmark_common.managed_pipelines import _PIPELINE_DEFAULT_NAMES
-
     targets = {}
     if tab_path:
         targets["tabular"] = PipelineRunTarget(
             mode="package",
-            artifact_prefix=_PIPELINE_DEFAULT_NAMES["tabular"],
+            artifact_prefix=PIPELINE_DEFAULT_NAMES["tabular"],
             package_path=tab_path,
         )
     if ts_path:
         targets["timeseries"] = PipelineRunTarget(
             mode="package",
-            artifact_prefix=_PIPELINE_DEFAULT_NAMES["timeseries"],
+            artifact_prefix=PIPELINE_DEFAULT_NAMES["timeseries"],
             package_path=ts_path,
         )
 
-    if "tabular" in targets and "timeseries" not in targets:
-        targets["timeseries"] = targets["tabular"]
-    if "timeseries" in targets and "tabular" not in targets:
-        targets["tabular"] = targets["timeseries"]
-
-    return targets
+    return _fill_missing_alias(targets)
 
 
 def resolve_autorag_pipeline_target(
@@ -148,10 +146,9 @@ def resolve_autorag_pipeline_target(
 
     pipeline_cfg = cfg.get("pipeline") or {}
     package_path = pipeline_cfg.get("package_path")
-    from benchmark_common.managed_pipelines import _PIPELINE_DEFAULT_NAMES
 
     return PipelineRunTarget(
         mode="package",
-        artifact_prefix=_PIPELINE_DEFAULT_NAMES["autorag"],
+        artifact_prefix=PIPELINE_DEFAULT_NAMES["autorag"],
         package_path=package_path,
     )

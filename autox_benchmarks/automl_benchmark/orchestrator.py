@@ -14,13 +14,11 @@ from benchmark_common.managed_pipelines import PipelineRunTarget
 from automl_benchmark.pipeline_params import (
     build_pipeline_arguments,
     is_timeseries_dataset,
-    pipeline_file_for_dataset,
     target_for_dataset,
 )
 from benchmark_common.pipeline_run import (
     extract_run_id,
     filter_pipeline_arguments,
-    submit_pipeline_package,
     submit_pipeline_run,
     wait_for_terminal_run,
 )
@@ -153,9 +151,13 @@ class BenchmarkOrchestrator:
         tabular_package_path_cli: str | None = None,
         timeseries_package_path_cli: str | None = None,
         client: Any = None,
-    ) -> tuple[dict[str, Any], BenchmarkSettings, list[dict[str, Any]], Path, dict[str, PipelineRunTarget]]:
+        create_client: bool = False,
+    ) -> tuple[dict[str, Any], BenchmarkSettings, list[dict[str, Any]], Path, dict[str, PipelineRunTarget], Any]:
         cfg, config_dir = load_merged_benchmark_config(self.config_path, self.env_file)
         datasets = load_dataset_entries(cfg, config_dir)
+
+        if client is None and create_client:
+            client = create_kfp_client(cfg)
 
         needs_tabular = False
         needs_ts = False
@@ -177,7 +179,7 @@ class BenchmarkOrchestrator:
             needs_timeseries=needs_ts,
         )
         settings = benchmark_settings_from_config(cfg, config_dir)
-        return cfg, settings, datasets, config_dir, targets
+        return cfg, settings, datasets, config_dir, targets, client
 
     def execute(
         self,
@@ -190,22 +192,12 @@ class BenchmarkOrchestrator:
         tabular_package_path_cli: str | None = None,
         timeseries_package_path_cli: str | None = None,
     ) -> int:
-        # Create KFP client first — managed mode needs it for pipeline discovery
-        client = None
-        if not dry_run:
-            try:
-                cfg_pre, _ = load_merged_benchmark_config(self.config_path, self.env_file)
-                client = create_kfp_client(cfg_pre)
-            except Exception as e:
-                logger.error("KFP client failed: %s", e)
-                return 1
-
         try:
-            cfg, settings, datasets, _, targets = self.load_config_and_datasets(
+            cfg, settings, datasets, _, targets, client = self.load_config_and_datasets(
                 dataset_filter=dataset_filter,
                 tabular_package_path_cli=tabular_package_path_cli,
                 timeseries_package_path_cli=timeseries_package_path_cli,
-                client=client,
+                create_client=not dry_run,
             )
         except Exception as e:
             logger.error("%s", e)

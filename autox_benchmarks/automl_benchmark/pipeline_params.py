@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 
 from benchmark_common.managed_pipelines import PipelineRunTarget
@@ -16,19 +15,18 @@ def is_timeseries_dataset(dataset: dict[str, Any]) -> bool:
     return str(t).strip().lower() == "timeseries"
 
 
-def pipeline_file_for_dataset(dataset: dict[str, Any], settings: BenchmarkSettings) -> Path:
-    if is_timeseries_dataset(dataset):
-        return settings.timeseries_pipeline_yaml
-    return settings.pipeline_yaml
-
-
 def target_for_dataset(
     dataset: dict[str, Any],
     targets: dict[str, PipelineRunTarget],
 ) -> PipelineRunTarget:
-    if is_timeseries_dataset(dataset):
-        return targets["timeseries"]
-    return targets["tabular"]
+    kind = "timeseries" if is_timeseries_dataset(dataset) else "tabular"
+    try:
+        return targets[kind]
+    except KeyError:
+        raise ValueError(
+            f"No pipeline target configured for {kind!r} datasets. "
+            f"Available targets: {sorted(targets)}"
+        ) from None
 
 
 def _merge_manifest_pipeline_overrides(

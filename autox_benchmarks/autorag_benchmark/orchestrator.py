@@ -28,7 +28,7 @@ from autorag_benchmark.settings import BenchmarkSettings, benchmark_settings_fro
 from benchmark_common.kfp_client import create_kfp_client
 from benchmark_common.managed_pipelines import PipelineRunTarget
 from benchmark_common.manifest import load_dataset_entries
-from benchmark_common.pipeline_run import extract_run_id, filter_pipeline_arguments, submit_pipeline_package, submit_pipeline_run, wait_for_terminal_run
+from benchmark_common.pipeline_run import extract_run_id, filter_pipeline_arguments, submit_pipeline_run, wait_for_terminal_run
 from benchmark_common.pipeline_target_resolve import resolve_autorag_pipeline_target
 from benchmark_common.results_csv import write_results_csv
 from benchmark_common.run_state import is_success_state
@@ -58,14 +58,17 @@ class BenchmarkOrchestrator:
         *,
         package_path_cli: str | None = None,
         client: Any = None,
-    ) -> tuple[dict[str, Any], BenchmarkSettings, list[dict[str, Any]], PipelineRunTarget]:
+        create_client: bool = False,
+    ) -> tuple[dict[str, Any], BenchmarkSettings, list[dict[str, Any]], PipelineRunTarget, Any]:
         cfg, config_dir = load_merged_benchmark_config(self.config_path, self.env_file)
+        if client is None and create_client:
+            client = create_kfp_client(cfg)
         target = resolve_autorag_pipeline_target(
             cfg, config_dir, client, cli_package=package_path_cli,
         )
         settings = benchmark_settings_from_config(cfg, config_dir)
         datasets = load_dataset_entries(cfg, config_dir)
-        return cfg, settings, datasets, target
+        return cfg, settings, datasets, target, client
 
     def execute(
         self,
@@ -76,19 +79,10 @@ class BenchmarkOrchestrator:
         dataset_filter: str = "all",
         package_path_cli: str | None = None,
     ) -> int:
-        # Create KFP client first — managed mode needs it for pipeline discovery
-        client = None
-        if not dry_run:
-            try:
-                cfg_pre, _ = load_merged_benchmark_config(self.config_path, self.env_file)
-                client = create_kfp_client(cfg_pre)
-            except Exception as e:
-                logger.error("KFP client failed: %s", e)
-                return 1
-
         try:
-            cfg, settings, datasets, target = self.load_config_and_datasets(
-                package_path_cli=package_path_cli, client=client,
+            cfg, settings, datasets, target, client = self.load_config_and_datasets(
+                package_path_cli=package_path_cli,
+                create_client=not dry_run,
             )
         except Exception as e:
             logger.error("%s", e)

@@ -17,7 +17,7 @@ BENCHMARK_MANAGED_PIPELINE_TABULAR_ENV = "BENCHMARK_MANAGED_PIPELINE_TABULAR"
 BENCHMARK_MANAGED_PIPELINE_TIMESERIES_ENV = "BENCHMARK_MANAGED_PIPELINE_TIMESERIES"
 BENCHMARK_MANAGED_PIPELINE_AUTORAG_ENV = "BENCHMARK_MANAGED_PIPELINE_AUTORAG"
 
-_PIPELINE_DEFAULT_NAMES: dict[str, str] = {
+PIPELINE_DEFAULT_NAMES: dict[str, str] = {
     "tabular": "autogluon-tabular-training-pipeline",
     "timeseries": "autogluon-timeseries-training-pipeline",
     "autorag": "documents-rag-optimization-pipeline",
@@ -74,7 +74,17 @@ def get_managed_kfp_pipeline_name(
         val = str(names[kind]).strip()
         if val:
             return val
-    return _PIPELINE_DEFAULT_NAMES[kind]
+    return PIPELINE_DEFAULT_NAMES[kind]
+
+
+def _clamp_timeout(parsed: int) -> int:
+    clamped = max(30, min(parsed, 600))
+    if parsed != clamped:
+        logger.warning(
+            "Managed pipeline wait timeout %ds out of range [30, 600]; clamping to %ds",
+            parsed, clamped,
+        )
+    return clamped
 
 
 def get_managed_pipeline_wait_timeout(cfg: dict[str, Any]) -> int:
@@ -82,14 +92,14 @@ def get_managed_pipeline_wait_timeout(cfg: dict[str, Any]) -> int:
     env_val = (os.environ.get(BENCHMARK_MANAGED_PIPELINE_WAIT_TIMEOUT_ENV) or "").strip()
     if env_val:
         try:
-            return max(30, min(int(env_val), 600))
+            return _clamp_timeout(int(env_val))
         except ValueError:
             pass
     pipeline_cfg = cfg.get("pipeline") or {}
     raw = pipeline_cfg.get("managed_pipeline_wait_timeout")
     if raw is not None:
         try:
-            return max(30, min(int(raw), 600))
+            return _clamp_timeout(int(raw))
         except (ValueError, TypeError):
             pass
     return 300
