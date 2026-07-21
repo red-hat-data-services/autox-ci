@@ -293,6 +293,9 @@ def get_rhoai_namespace_setup_config() -> dict[str, Any] | None:
 
     Shared by AutoML and AutoRAG. Does **not** require ``RHOAI_KFP_URL`` or ``RHOAI_TEST_DATA_BUCKET``;
     use :func:`get_rhoai_automl_config` when submitting AutoGluon pipelines (those need KFP + data bucket).
+
+    ``RHOAI_URL`` is optional when ``RHOAI_KFP_URL`` is set — namespace and secret setup is skipped
+    and the KFP client connects directly to the existing pipeline server.
     """
     load_tests_env()
     url = os.environ.get(RHOAI_URL_ENV)
@@ -308,11 +311,14 @@ def get_rhoai_namespace_setup_config() -> dict[str, Any] | None:
         or "s3-connection"
     )
 
-    if not all([url, token, endpoint, access, secret]):
+    kfp_url = (os.environ.get(RHOAI_KFP_URL_ENV) or "").strip()
+    if not kfp_url and not url:
+        return None
+    if not all([token, endpoint, access, secret]):
         return None
     insecure, ca_b64 = _kube_tls_for_namespace_config()
     return {
-        "rhoai_url": url.rstrip("/"),
+        "rhoai_url": url.rstrip("/") if url else None,
         "rhoai_token": token.strip(),
         "rhoai_project": (project or "kfp-integration-test").strip(),
         "s3_endpoint": endpoint,
@@ -485,13 +491,18 @@ def get_autorag_config() -> dict[str, Any] | None:
 def describe_rhoai_automl_config_failure() -> str | None:
     """Return ``None`` if :func:`get_rhoai_automl_config` is usable; else a detailed message."""
     load_tests_env()
-    required_ns: list[tuple[str, str]] = [
-        (RHOAI_URL_ENV, "OpenShift/Kubernetes API URL (for namespace + secrets)"),
+    kfp_set = bool((os.environ.get(RHOAI_KFP_URL_ENV) or "").strip())
+    required_ns: list[tuple[str, str]] = []
+    if not kfp_set:
+        required_ns.append(
+            (RHOAI_URL_ENV, "OpenShift/Kubernetes API URL (for namespace + secrets)")
+        )
+    required_ns.extend([
         (RHOAI_TOKEN_ENV, "API bearer token"),
         (S3_ENDPOINT_ENV, "S3 endpoint URL"),
         (S3_ACCESS_KEY_ENV, "S3 access key"),
         (S3_SECRET_KEY_ENV, "S3 secret key"),
-    ]
+    ])
     missing_ns = [
         f"  - {name} ({why})"
         for name, why in required_ns
@@ -522,7 +533,6 @@ def describe_rhoai_automl_config_failure() -> str | None:
         )
 
     dspa = get_dspa_config_from_env()
-    kfp_set = bool((os.environ.get(RHOAI_KFP_URL_ENV) or "").strip())
     if not kfp_set and not (dspa and dspa.get("create")):
         return (
             "Kubeflow Pipelines API URL is not configured:\n"

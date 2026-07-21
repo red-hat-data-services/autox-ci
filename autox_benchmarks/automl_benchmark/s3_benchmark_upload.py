@@ -43,16 +43,18 @@ __all__ = [
 
 def _aggregated_pipeline_ir_uploads(settings: BenchmarkSettings) -> list[tuple[str, Path]]:
     """Stable S3 names under ``aggregated/`` for tabular and time-series compiled IR (dedupe same path)."""
-    tab = settings.pipeline_yaml.resolve()
-    ts = settings.timeseries_pipeline_yaml.resolve()
+    if settings.pipeline_yaml is None and settings.timeseries_pipeline_yaml is None:
+        return []
+    tab = settings.pipeline_yaml.resolve() if settings.pipeline_yaml else None
+    ts = settings.timeseries_pipeline_yaml.resolve() if settings.timeseries_pipeline_yaml else None
     out: list[tuple[str, Path]] = []
-    if tab == ts:
+    if tab and ts and tab == ts:
         if tab.is_file():
             out.append(("autogluon-tabular-training-pipeline.yaml", tab))
         return out
-    if tab.is_file():
+    if tab and tab.is_file():
         out.append(("autogluon-tabular-training-pipeline.yaml", tab))
-    if ts.is_file():
+    if ts and ts.is_file():
         out.append(("autogluon-timeseries-training-pipeline.yaml", ts))
     return out
 
@@ -76,7 +78,7 @@ def upload_single_dataset_results(
     batch_id: str,
     dataset: dict[str, Any],
     row: dict[str, Any],
-    pipeline_ir_path: Path,
+    pipeline_ir_path: Path | None,
     output_csv_parent: Path,
     arguments: dict[str, Any] | None,
     dataset_filter: str,
@@ -84,19 +86,24 @@ def upload_single_dataset_results(
     artifact_s3_root: str,
     repo_root: Path | None,
     experiment_fingerprint: str | None = None,
+    pipeline_id: str | None = None,
+    pipeline_version_id: str | None = None,
+    kfp_pipeline_name: str | None = None,
 ) -> None:
     if not settings.upload_benchmark_results or not s3_cfg_usable(s3_cfg):
         return
     sub = dataset_results_subpath(dataset)
     prefix = join_s3_key(settings.benchmark_s3_prefix, batch_id, "datasets", sub)
     fp = experiment_fingerprint or compute_experiment_fingerprint(
-        pipeline_ir_path=pipeline_ir_path.resolve(),
+        pipeline_ir_path=pipeline_ir_path.resolve() if pipeline_ir_path else None,
         pipeline_arguments=dict(arguments or {}),
         dataset=dataset,
         settings=settings,
         cfg=cfg,
         s3_cfg=s3_cfg,
         dataset_filter=dataset_filter,
+        pipeline_id=pipeline_id,
+        pipeline_version_id=pipeline_version_id,
     )
     meta = build_run_metadata(
         row=row,
@@ -112,6 +119,9 @@ def upload_single_dataset_results(
         artifact_s3_root=artifact_s3_root,
         repo_root=repo_root,
         experiment_fingerprint=fp,
+        pipeline_id=pipeline_id,
+        pipeline_version_id=pipeline_version_id,
+        kfp_pipeline_name=kfp_pipeline_name,
     )
     meta_body = json.dumps(meta, indent=2, default=str).encode("utf-8")
     results_body = row_to_csv_bytes(row)

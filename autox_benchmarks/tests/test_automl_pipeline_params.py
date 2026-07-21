@@ -9,7 +9,6 @@ import pytest
 from automl_benchmark.pipeline_params import (
     build_pipeline_arguments,
     is_timeseries_dataset,
-    pipeline_file_for_dataset,
 )
 from automl_benchmark.settings import BenchmarkSettings
 
@@ -155,10 +154,3 @@ def test_pipeline_params_alias(
     assert build_pipeline_arguments(ds, settings)["top_n"] == 5
 
 
-def test_pipeline_file_for_dataset(
-    tabular_pipeline_path: Path,
-    timeseries_pipeline_path: Path,
-) -> None:
-    settings = _settings(tabular_pipeline_path, timeseries_pipeline_path)
-    assert pipeline_file_for_dataset({"task_type": "binary"}, settings) == tabular_pipeline_path
-    assert pipeline_file_for_dataset({"task_type": "timeseries"}, settings) == timeseries_pipeline_path

@@ -96,6 +96,7 @@ def _ensure_datascience_pipelines_application(
                 "DSPA did not become Ready within %s s; continuing anyway",
                 ready_timeout,
             )
+
         if progress:
             progress(
                 f"Post-ready buffer: sleeping {buffer_seconds}s before tests continue..."
@@ -170,7 +171,7 @@ def rhoai_cluster_kubeconfig(
     rhoai_namespace_setup_config: dict[str, Any] | None,
 ) -> Generator[str | None, None, None]:
     """Minimal kubeconfig for OpenShift API (namespace, secrets, DSPA, routes)."""
-    if rhoai_namespace_setup_config is None:
+    if rhoai_namespace_setup_config is None or not rhoai_namespace_setup_config.get("rhoai_url"):
         yield None
         return
     path = build_temp_kubeconfig(
