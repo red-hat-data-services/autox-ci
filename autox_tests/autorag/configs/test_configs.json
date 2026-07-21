@@ -79,5 +79,19 @@
         "optimization_metric": "answer_correctness",
         "input_data_key": "datasets/rag/rh_summit_2026/documents",
         "test_data_key": "datasets/rag/rh_summit_2026/benchmark_data.json"
+    },
+    {
+        "id": "TC-P-4",
+        "description": "Run scenario with mixed document formats (md, txt, html, xhtml, adoc, tex, eml, qmd, Rmd).",
+        "tags": ["mixed-formats", "inline::milvus", "answer_correctness"],
+        "expected_result": "pass",
+        "vector_io_provider_type": "inline::milvus",
+        "vector_io_provider_id": "milvus-lite",
+        "embedding_models": ["vllm-embedding/bge-m3"],
+        "generation_models": null,
+        "optimization_max_rag_patterns": 4,
+        "optimization_metric": "answer_correctness",
+        "input_data_key": "datasets/rag/mixed_formats/documents",
+        "test_data_key": "datasets/rag/mixed_formats/benchmark_data.json"
     }
 ]
