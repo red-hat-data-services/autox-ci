@@ -35,6 +35,44 @@ def create_s3_client(config: dict[str, Any]):
     )
 
 
+def _extract_scores(pattern_data: dict[str, Any]) -> tuple[float | None, dict[str, Any]]:
+    """Extract final_score and per-metric scores from pattern.json.
+
+    Supports two formats:
+    - Old format: flat ``final_score`` and ``scores`` dict at the top level.
+    - New format: ``evaluation.metrics`` list where each entry has ``name``,
+      ``scores.mean``, and optionally ``optimization_metric: true``.
+    """
+    # Old format: flat top-level keys
+    if "final_score" in pattern_data:
+        return pattern_data["final_score"], pattern_data.get("scores", {})
+
+    # New format: evaluation.metrics list
+    evaluation = pattern_data.get("evaluation")
+    if isinstance(evaluation, dict):
+        metrics = evaluation.get("metrics")
+        if isinstance(metrics, list):
+            scores: dict[str, Any] = {}
+            optimization_score: float | None = None
+            overall_score: float | None = None
+
+            for m in metrics:
+                name = m.get("name", "")
+                score_block = m.get("scores", {})
+                if isinstance(score_block, dict):
+                    scores[name] = score_block
+                    mean = score_block.get("mean")
+                    if m.get("optimization_metric"):
+                        optimization_score = mean
+                    if name == "overall_score":
+                        overall_score = mean
+
+            final_score = optimization_score if optimization_score is not None else overall_score
+            return final_score, scores
+
+    return None, {}
+
+
 def extract_pattern_scores(
     run_id: str,
     config: dict[str, Any],
@@ -117,12 +155,13 @@ def extract_pattern_scores(
                         pattern_data = json.loads(response["Body"].read())
 
                         # Extract relevant fields
+                        final_score, scores = _extract_scores(pattern_data)
                         pattern_info = {
                             "pattern_name": pattern_name,
-                            "final_score": pattern_data.get("final_score"),
-                            "scores": pattern_data.get("scores", {}),
-                            "execution_time": pattern_data.get("execution_time"),
-                            "pattern_id": pattern_data.get("pattern_name"),
+                            "final_score": final_score,
+                            "scores": scores,
+                            "execution_time": pattern_data.get("execution_time") or pattern_data.get("duration_seconds"),
+                            "pattern_id": pattern_data.get("pattern_name") or pattern_data.get("name"),
                         }
 
                         # Include settings if available
@@ -240,7 +279,7 @@ def extract_pattern_scores_tabular(
         scores = pattern.get("scores", {})
         if isinstance(scores, dict):
             # Common RAG metrics
-            for metric in ["faithfulness", "answer_relevance", "answer_correctness", "context_precision", "context_recall", "context_correctness"]:
+            for metric in ["faithfulness", "answer_relevance", "answer_correctness", "context_precision", "context_recall", "context_correctness", "overall_score"]:
                 if metric in scores:
                     score_val = scores[metric]
                     # Handle dict format with mean/ci_low/ci_high
