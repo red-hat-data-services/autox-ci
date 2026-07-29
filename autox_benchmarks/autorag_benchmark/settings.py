@@ -32,6 +32,7 @@ class BenchmarkSettings:
     suite: str
     rhoai_version: str
     benchmark_s3_prefix: str
+    preset: str
     upload_benchmark_results: bool
     pipeline_mode: str = "package"
 
@@ -116,6 +117,7 @@ def benchmark_settings_from_config(cfg: dict[str, Any], config_dir: Path) -> Ben
         suite=suite,
         rhoai_version=rhoai_version,
         benchmark_s3_prefix=bench_prefix,
+        preset=str(run_cfg.get("preset", "")),
         upload_benchmark_results=upload_benchmark_results,
         pipeline_mode=mode,
     )

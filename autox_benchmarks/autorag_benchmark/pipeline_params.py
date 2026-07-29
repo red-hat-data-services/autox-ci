@@ -53,6 +53,10 @@ def build_pipeline_arguments(
     if system_prompt:
         args["system_prompt"] = system_prompt
 
+    preset = str(dataset.get("preset", "")).strip() or settings.preset
+    if preset:
+        args["preset"] = preset
+
     # Handle model lists (embedding_models and generation_models)
     for model_type in ("embedding_models", "generation_models"):
         if model_type in dataset and isinstance(dataset[model_type], list):
