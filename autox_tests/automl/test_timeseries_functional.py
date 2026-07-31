@@ -192,13 +192,6 @@ class TestAutoMLTimeseriesFunctional:
                 )
 
             if DEPLOY_AFTER_TRAINING and model_entries:
-                ts_env_vars: dict[str, str] = {}
-                if test_config.id_column != "item_id":
-                    ts_env_vars["AUTOGLUON_TS_ID_COLUMN"] = test_config.id_column
-                if test_config.timestamp_column != "timestamp":
-                    ts_env_vars["AUTOGLUON_TS_TIMESTAMP_COLUMN"] = (
-                        test_config.timestamp_column
-                    )
                 v2_inputs = (
                     rows_to_v2_inputs(test_config.inference_sample)
                     if test_config.inference_sample
@@ -214,7 +207,6 @@ class TestAutoMLTimeseriesFunctional:
                     automl_functional_config=automl_functional_config,
                     temp_kubeconfig_path=rhoai_cluster_kubeconfig,
                     instances=test_config.inference_sample or None,
-                    isvc_env_vars=ts_env_vars or None,
                     v2_inputs=v2_inputs,
                     known_covariates=test_config.known_covariates_sample or None,
                 )
