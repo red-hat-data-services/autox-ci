@@ -39,9 +39,11 @@ from .utils import (
     download_and_execute_automl_notebook,
     find_leaderboard_html,
     find_test_dataset_csv,
+    find_top_model_predictor_prefix,
     rows_to_v2_inputs,
     run_deployment_test,
 )
+from autox_tests.lib.s3_data import list_s3_objects
 
 logger = logging.getLogger(__name__)
 
@@ -171,6 +173,26 @@ class TestAutoMLTimeseriesFunctional:
                 assert TS_PRIMARY_METRIC in metrics, (
                     f"[{test_config.id}] Model '{entry['model_name']}' metrics missing "
                     f"'{TS_PRIMARY_METRIC}': {list(metrics.keys())}"
+                )
+
+            # Timeseries predictors must ship predictor_metadata.json next to predictor.pkl.
+            top_model_name = model_entries[0]["model_name"]
+            predictor_prefix = find_top_model_predictor_prefix(
+                s3_client_automl_functional, bucket, prefix, top_model_name
+            )
+            assert predictor_prefix is not None, (
+                f"[{test_config.id}] Predictor prefix not found for model '{top_model_name}' under {prefix}"
+            )
+            predictor_files = {
+                obj["Key"].split("/")[-1]
+                for obj in list_s3_objects(
+                    s3_client_automl_functional, bucket, predictor_prefix
+                )
+            }
+            for expected_file in ("predictor.pkl", "predictor_metadata.json"):
+                assert expected_file in predictor_files, (
+                    f"[{test_config.id}] {expected_file} not found under "
+                    f"s3://{bucket}/{predictor_prefix} (found: {sorted(predictor_files) or 'nothing'})"
                 )
 
             assert leaderboard_key is not None, (
