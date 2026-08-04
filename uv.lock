@@ -294,7 +294,7 @@ wheels = [
 
 [[package]]
 name = "autogluon-common"
-version = "1.5.0+rhaiv.4"
+version = "1.5.0+rhaiv.5"
 source = { registry = "https://console.redhat.com/api/pypi/public-rhai/rhoai/3.5/cpu-ubi9/simple/" }
 dependencies = [
     { name = "boto3" },
@@ -308,12 +308,12 @@ dependencies = [
     { name = "tqdm" },
 ]
 wheels = [
-    { url = "https://packages.redhat.com/api/pulp-content/public-rhai/rhoai/3.5/cpu-ubi9/autogluon_common-1.5.0+rhaiv.4-3-py3-none-any.whl", hash = "sha256:05061d70230b005d29980aeaf98303430b3ae1705b56313c60d942063df16001" },
+    { url = "https://packages.redhat.com/api/pulp-content/public-rhai/rhoai/3.5/cpu-ubi9/autogluon_common-1.5.0+rhaiv.5-3-py3-none-any.whl", hash = "sha256:479d0a9367d2c5c6e4dc0e66a94734d65e806988b362a32ac7f5c76fa1552f18" },
 ]
 
 [[package]]
 name = "autogluon-core"
-version = "1.5.0+rhaiv.4"
+version = "1.5.0+rhaiv.5"
 source = { registry = "https://console.redhat.com/api/pypi/public-rhai/rhoai/3.5/cpu-ubi9/simple/" }
 dependencies = [
     { name = "autogluon-common" },
@@ -328,12 +328,12 @@ dependencies = [
     { name = "tqdm" },
 ]
 wheels = [
-    { url = "https://packages.redhat.com/api/pulp-content/public-rhai/rhoai/3.5/cpu-ubi9/autogluon_core-1.5.0+rhaiv.4-3-py3-none-any.whl", hash = "sha256:6803d49d894b62d89f3d5fb622de2eadbedbd0a13b90ca720de7a48494ee5c9e" },
+    { url = "https://packages.redhat.com/api/pulp-content/public-rhai/rhoai/3.5/cpu-ubi9/autogluon_core-1.5.0+rhaiv.5-3-py3-none-any.whl", hash = "sha256:59d70751efeb384b113a92bcf01a6a48eb98306a8e893ec4cd5e9751920897c9" },
 ]
 
 [[package]]
 name = "autogluon-features"
-version = "1.5.0+rhaiv.4"
+version = "1.5.0+rhaiv.5"
 source = { registry = "https://console.redhat.com/api/pypi/public-rhai/rhoai/3.5/cpu-ubi9/simple/" }
 dependencies = [
     { name = "autogluon-common" },
@@ -342,12 +342,12 @@ dependencies = [
     { name = "scikit-learn" },
 ]
 wheels = [
-    { url = "https://packages.redhat.com/api/pulp-content/public-rhai/rhoai/3.5/cpu-ubi9/autogluon_features-1.5.0+rhaiv.4-3-py3-none-any.whl", hash = "sha256:c57c76765980d2e440256dc533dce7688f18aa26d318c79f3da5985e48980809" },
+    { url = "https://packages.redhat.com/api/pulp-content/public-rhai/rhoai/3.5/cpu-ubi9/autogluon_features-1.5.0+rhaiv.5-3-py3-none-any.whl", hash = "sha256:1568faee500c2d7ba2dcdc68f6e12932a39d811d71546f9f1206f8a751b255fc" },
 ]
 
 [[package]]
 name = "autogluon-tabular"
-version = "1.5.0+rhaiv.4"
+version = "1.5.0+rhaiv.5"
 source = { registry = "https://console.redhat.com/api/pypi/public-rhai/rhoai/3.5/cpu-ubi9/simple/" }
 dependencies = [
     { name = "autogluon-core" },
@@ -359,12 +359,13 @@ dependencies = [
     { name = "scipy" },
 ]
 wheels = [
-    { url = "https://packages.redhat.com/api/pulp-content/public-rhai/rhoai/3.5/cpu-ubi9/autogluon_tabular-1.5.0+rhaiv.4-3-py3-none-any.whl", hash = "sha256:6d6bd81a9bbd0c4e072a31a61e89889c5dc3bbc5083018ab58fefeacedbef476" },
+    { url = "https://packages.redhat.com/api/pulp-content/public-rhai/rhoai/3.5/cpu-ubi9/autogluon_tabular-1.5.0+rhaiv.5-3-py3-none-any.whl", hash = "sha256:dbfe5e5f0a59fe969f6da2d68958b0f748260dd2c23764428bf107e524292fe9" },
 ]
 
 [package.optional-dependencies]
 fastai = [
     { name = "fastai" },
+    { name = "fastcore" },
     { name = "spacy" },
     { name = "torch" },
 ]
@@ -380,7 +381,7 @@ xgboost = [
 
 [[package]]
 name = "autogluon-timeseries"
-version = "1.5.0+rhaiv.4"
+version = "1.5.0+rhaiv.5"
 source = { registry = "https://console.redhat.com/api/pypi/public-rhai/rhoai/3.5/cpu-ubi9/simple/" }
 dependencies = [
     { name = "accelerate" },
@@ -410,7 +411,7 @@ dependencies = [
     { name = "utilsforecast" },
 ]
 wheels = [
-    { url = "https://packages.redhat.com/api/pulp-content/public-rhai/rhoai/3.5/cpu-ubi9/autogluon_timeseries-1.5.0+rhaiv.4-3-py3-none-any.whl", hash = "sha256:60085f6af0f94e515bacdf6aed7fbe815b65e8c2fcaaf0dcce87bde64adb9895" },
+    { url = "https://packages.redhat.com/api/pulp-content/public-rhai/rhoai/3.5/cpu-ubi9/autogluon_timeseries-1.5.0+rhaiv.5-3-py3-none-any.whl", hash = "sha256:fd454bde4ebe575481a814cb199e15df838821b4a0f3e9627f367b9dcedb525f" },
 ]
 
 [[package]]
@@ -455,11 +456,11 @@ test-autorag = [
 
 [package.metadata]
 requires-dist = [
-    { name = "autogluon-common", marker = "extra == 'test-automl'", specifier = "==1.5.0+rhaiv.4", index = "https://console.redhat.com/api/pypi/public-rhai/rhoai/3.5/cpu-ubi9/simple/" },
-    { name = "autogluon-core", marker = "extra == 'test-automl'", specifier = "==1.5.0+rhaiv.4", index = "https://console.redhat.com/api/pypi/public-rhai/rhoai/3.5/cpu-ubi9/simple/" },
-    { name = "autogluon-features", marker = "extra == 'test-automl'", specifier = "==1.5.0+rhaiv.4", index = "https://console.redhat.com/api/pypi/public-rhai/rhoai/3.5/cpu-ubi9/simple/" },
-    { name = "autogluon-tabular", extras = ["lightgbm", "xgboost", "tabm", "fastai"], marker = "extra == 'test-automl'", specifier = "==1.5.0+rhaiv.4", index = "https://console.redhat.com/api/pypi/public-rhai/rhoai/3.5/cpu-ubi9/simple/" },
-    { name = "autogluon-timeseries", marker = "extra == 'test-automl'", specifier = "==1.5.0+rhaiv.4", index = "https://console.redhat.com/api/pypi/public-rhai/rhoai/3.5/cpu-ubi9/simple/" },
+    { name = "autogluon-common", marker = "extra == 'test-automl'", specifier = "==1.5.0+rhaiv.5", index = "https://console.redhat.com/api/pypi/public-rhai/rhoai/3.5/cpu-ubi9/simple/" },
+    { name = "autogluon-core", marker = "extra == 'test-automl'", specifier = "==1.5.0+rhaiv.5", index = "https://console.redhat.com/api/pypi/public-rhai/rhoai/3.5/cpu-ubi9/simple/" },
+    { name = "autogluon-features", marker = "extra == 'test-automl'", specifier = "==1.5.0+rhaiv.5", index = "https://console.redhat.com/api/pypi/public-rhai/rhoai/3.5/cpu-ubi9/simple/" },
+    { name = "autogluon-tabular", extras = ["lightgbm", "xgboost", "tabm", "fastai"], marker = "extra == 'test-automl'", specifier = "==1.5.0+rhaiv.5", index = "https://console.redhat.com/api/pypi/public-rhai/rhoai/3.5/cpu-ubi9/simple/" },
+    { name = "autogluon-timeseries", marker = "extra == 'test-automl'", specifier = "==1.5.0+rhaiv.5", index = "https://console.redhat.com/api/pypi/public-rhai/rhoai/3.5/cpu-ubi9/simple/" },
     { name = "beir", marker = "extra == 'benchmarks'", specifier = ">=2.0.0" },
     { name = "boto3", specifier = ">=1.28" },
     { name = "datasets", marker = "extra == 'benchmarks'", specifier = ">=2.0.0" },
