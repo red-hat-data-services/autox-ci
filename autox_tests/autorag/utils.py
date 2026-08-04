@@ -151,7 +151,7 @@ def _validate_artifacts_in_s3(s3_client, bucket, prefix):
                     result["inference_notebook_keys"].append(key)
                 if "evaluation_results.json" in key:
                     result["evaluation_results_keys"].append(key)
-                if "leaderboard" in lower_key or key.endswith(".html"):
+                if "leaderboard" in lower_key or key.endswith(".html") or key.endswith("/html_artifact"):
                     result["leaderboard_keys"].append(key)
                 if "v1_responses_body.json" in key:
                     result["responses_body_keys"].append(key)
@@ -321,6 +321,67 @@ def upload_test_datasets(
             f"Failed to upload {len(failed_uploads)} dataset file(s) to s3://{bucket}: {failed_uploads}"
         )
     return uploaded_keys
+
+
+def _pick_best_pattern_notebooks(s3_client, bucket, artifacts):
+    """Return (indexing_key, inference_key) for the best pattern per the leaderboard.
+
+    Downloads the leaderboard HTML artifact and parses the best pattern name from
+    the ``<div class="best-model-footer">Best pattern: <strong>NAME</strong></div>``
+    footer written by ai4rag's ``build_leaderboard_html()``. Notebooks are always
+    named ``indexing.ipynb`` / ``inference.ipynb`` under ``rag_patterns/{pattern_name}/``,
+    so the best-pattern name is matched against the S3 key suffix.
+
+    Falls back to the first available indexing/inference key pair when the leaderboard
+    is absent or unparseable.
+
+    Args:
+        s3_client: Boto3 S3 client.
+        bucket: S3 bucket name.
+        artifacts: Dict returned by ``_validate_artifacts_in_s3``.
+
+    Returns:
+        Tuple of (indexing_notebook_key, inference_notebook_key).
+
+    Raises:
+        ValueError: If no indexing or inference notebooks are present.
+    """
+    import re
+
+    indexing_keys = artifacts["indexing_notebook_keys"]
+    inference_keys = artifacts["inference_notebook_keys"]
+    leaderboard_keys = artifacts["leaderboard_keys"]
+
+    if not indexing_keys:
+        raise ValueError("No indexing notebooks found in artifacts")
+    if not inference_keys:
+        raise ValueError("No inference notebooks found in artifacts")
+
+    best_pattern_name = None
+    if leaderboard_keys:
+        try:
+            response = s3_client.get_object(Bucket=bucket, Key=leaderboard_keys[0])
+            html = response["Body"].read().decode("utf-8")
+            match = re.search(r'Best pattern: <strong>([^<]+)</strong>', html)
+            if match:
+                best_pattern_name = match.group(1)
+                logger.info("Best pattern from leaderboard: %s", best_pattern_name)
+        except Exception as e:
+            logger.warning("Could not parse leaderboard HTML: %s", e)
+
+    if best_pattern_name:
+        # Notebooks live at rag_patterns/{pattern_name}/indexing.ipynb (inference.ipynb)
+        pattern_prefix = f"{best_pattern_name}/"
+        indexing_match = next((k for k in indexing_keys if f"/{pattern_prefix}" in k), None)
+        inference_match = next((k for k in inference_keys if f"/{pattern_prefix}" in k), None)
+        if indexing_match and inference_match:
+            return indexing_match, inference_match
+        logger.warning(
+            "Best pattern %r not matched in notebook keys — falling back to first available",
+            best_pattern_name,
+        )
+
+    return indexing_keys[0], inference_keys[0]
 
 
 def _download_and_execute_notebooks(s3_client, bucket, notebook_keys):

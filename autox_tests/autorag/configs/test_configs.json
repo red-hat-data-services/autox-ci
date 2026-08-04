@@ -60,7 +60,7 @@
         "description": "Run scenario using remote milvus instance, with defined embedding models.",
         "tags": ["smoke", "remote::milvus", "faithfulness"],
         "expected_result": "pass",
-        "embedding_models": ["vllm-embedding/bge-m3"],
+        "embedding_models": ["maas-embedding/redhataibge-m3"],
         "vector_io_provider_type": "remote::milvus",
         "optimization_max_rag_patterns": 4,
         "vector_io_provider_id": "milvus-remote",
