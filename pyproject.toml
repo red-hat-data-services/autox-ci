@@ -34,11 +34,11 @@ benchmarks = [
 test_automl = [
   "papermill",
   "ipykernel",
-  "autogluon.common==1.5.0+rhaiv.4",
-  "autogluon.core==1.5.0+rhaiv.4",
-  "autogluon.features==1.5.0+rhaiv.4",
-  "autogluon.tabular[lightgbm,xgboost,tabm,fastai]==1.5.0+rhaiv.4",
-  "autogluon.timeseries==1.5.0+rhaiv.4",
+  "autogluon.common==1.5.0+rhaiv.5",
+  "autogluon.core==1.5.0+rhaiv.5",
+  "autogluon.features==1.5.0+rhaiv.5",
+  "autogluon.tabular[lightgbm,xgboost,tabm,fastai]==1.5.0+rhaiv.5",
+  "autogluon.timeseries==1.5.0+rhaiv.5",
 ]
 test_autorag = [
   "nbformat",
