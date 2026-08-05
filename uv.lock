@@ -498,11 +498,11 @@ test-autorag = [
 [package.metadata]
 requires-dist = [
     { name = "ai4rag", marker = "extra == 'test-autorag'", specifier = "~=0.10.4" },
-    { name = "autogluon-common", marker = "extra == 'test-automl'", specifier = "==1.5.0+rhaiv.4", index = "https://console.redhat.com/api/pypi/public-rhai/rhoai/3.5/cpu-ubi9/simple/" },
-    { name = "autogluon-core", marker = "extra == 'test-automl'", specifier = "==1.5.0+rhaiv.4", index = "https://console.redhat.com/api/pypi/public-rhai/rhoai/3.5/cpu-ubi9/simple/" },
-    { name = "autogluon-features", marker = "extra == 'test-automl'", specifier = "==1.5.0+rhaiv.4", index = "https://console.redhat.com/api/pypi/public-rhai/rhoai/3.5/cpu-ubi9/simple/" },
-    { name = "autogluon-tabular", extras = ["lightgbm", "xgboost", "tabm", "fastai"], marker = "extra == 'test-automl'", specifier = "==1.5.0+rhaiv.4", index = "https://console.redhat.com/api/pypi/public-rhai/rhoai/3.5/cpu-ubi9/simple/" },
-    { name = "autogluon-timeseries", marker = "extra == 'test-automl'", specifier = "==1.5.0+rhaiv.4", index = "https://console.redhat.com/api/pypi/public-rhai/rhoai/3.5/cpu-ubi9/simple/" },
+    { name = "autogluon-common", marker = "extra == 'test-automl'", specifier = "==1.5.0+rhaiv.5", index = "https://console.redhat.com/api/pypi/public-rhai/rhoai/3.5/cpu-ubi9/simple/" },
+    { name = "autogluon-core", marker = "extra == 'test-automl'", specifier = "==1.5.0+rhaiv.5", index = "https://console.redhat.com/api/pypi/public-rhai/rhoai/3.5/cpu-ubi9/simple/" },
+    { name = "autogluon-features", marker = "extra == 'test-automl'", specifier = "==1.5.0+rhaiv.5", index = "https://console.redhat.com/api/pypi/public-rhai/rhoai/3.5/cpu-ubi9/simple/" },
+    { name = "autogluon-tabular", extras = ["lightgbm", "xgboost", "tabm", "fastai"], marker = "extra == 'test-automl'", specifier = "==1.5.0+rhaiv.5", index = "https://console.redhat.com/api/pypi/public-rhai/rhoai/3.5/cpu-ubi9/simple/" },
+    { name = "autogluon-timeseries", marker = "extra == 'test-automl'", specifier = "==1.5.0+rhaiv.5", index = "https://console.redhat.com/api/pypi/public-rhai/rhoai/3.5/cpu-ubi9/simple/" },
     { name = "beir", marker = "extra == 'benchmarks'", specifier = ">=2.0.0" },
     { name = "boto3", specifier = ">=1.28" },
     { name = "datasets", marker = "extra == 'benchmarks'", specifier = ">=2.0.0" },
@@ -5074,10 +5074,10 @@ resolution-markers = [
     "python_full_version < '3.13' and extra != 'extra-8-autox-ci-test-automl' and extra != 'extra-8-autox-ci-test-autorag'",
 ]
 dependencies = [
-    { name = "joblib" },
-    { name = "numpy" },
-    { name = "scipy" },
-    { name = "threadpoolctl" },
+    { name = "joblib", marker = "extra == 'extra-8-autox-ci-test-autorag' or extra != 'extra-8-autox-ci-test-automl'" },
+    { name = "numpy", marker = "extra == 'extra-8-autox-ci-test-autorag' or extra != 'extra-8-autox-ci-test-automl'" },
+    { name = "scipy", marker = "extra == 'extra-8-autox-ci-test-autorag' or extra != 'extra-8-autox-ci-test-automl'" },
+    { name = "threadpoolctl", marker = "extra == 'extra-8-autox-ci-test-autorag' or extra != 'extra-8-autox-ci-test-automl'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/0e/d4/40988bf3b8e34feec1d0e6a051446b1f66225f8529b9309becaeef62b6c4/scikit_learn-1.8.0.tar.gz", hash = "sha256:9bccbb3b40e3de10351f8f5068e105d0f4083b1a65fa07b6634fbc401a6287fd", size = 7335585, upload-time = "2025-12-10T07:08:53.618Z" }
 wheels = [
