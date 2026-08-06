@@ -45,6 +45,15 @@ test_autorag = [
   "notebook",
   "papermill",
   "pip",
+  "ai4rag~=0.10.4",
+]
+
+[tool.uv]
+conflicts = [
+  [
+    { extra = "test_automl" },
+    { extra = "test_autorag" },
+  ],
 ]
 
 [[tool.uv.index]]
