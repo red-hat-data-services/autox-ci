@@ -228,6 +228,14 @@ def indexing_functional_env_config():
 
 
 @pytest.fixture(scope="session")
+def s3_client_indexing_functional(indexing_functional_env_config):
+    """Session-scoped S3 client for indexing pipeline artifact checks (optional)."""
+    if indexing_functional_env_config is None:
+        return None
+    return make_s3_client(indexing_functional_env_config)
+
+
+@pytest.fixture(scope="session")
 def kfp_client_indexing_functional(
     indexing_functional_env_config,
     datascience_pipelines_application,
