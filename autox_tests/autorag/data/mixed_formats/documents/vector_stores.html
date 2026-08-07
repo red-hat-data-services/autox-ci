@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Vector Store Integration</title>
+</head>
+<body>
+    <h1>Vector Store Integration in AutoRAG</h1>
+    <p>AutoRAG supports multiple vector store backends for storing and retrieving document embeddings. The choice of vector store affects indexing performance, query latency, and scalability.</p>
+
+    <h2>Supported Vector Stores</h2>
+    <ul>
+        <li><strong>Milvus</strong>: A high-performance vector database that supports both inline (Milvus Lite) and remote deployment modes. Milvus Lite runs embedded within the pipeline process, while remote Milvus connects to an external cluster.</li>
+        <li><strong>ChromaDB</strong>: A lightweight vector store suitable for development and small-scale deployments. ChromaDB stores embeddings locally and provides simple API access.</li>
+        <li><strong>PGVector</strong>: PostgreSQL extension for vector similarity search. PGVector integrates with existing PostgreSQL infrastructure and supports HNSW and IVFFlat indexing.</li>
+    </ul>
+
+    <h2>Embedding Models</h2>
+    <p>Document chunks are embedded using models served through the OGX platform. Common embedding models include BGE-M3 for multilingual support and various sentence transformer models for English-only workloads.</p>
+</body>
+</html>

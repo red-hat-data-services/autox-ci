@@ -1,0 +1,24 @@
+---
+title: "Evaluation Metrics in AutoRAG"
+output: html_document
+---
+
+# Evaluation Metrics
+
+AutoRAG evaluates RAG configurations using multiple metrics to measure the quality of generated answers. The evaluation framework supports both automated metrics and LLM-as-a-judge approaches.
+
+## Answer Correctness
+
+Answer correctness measures how accurately the generated answer matches the reference answer. It combines semantic similarity with factual overlap to produce a score between 0 and 1. This is the most commonly used metric for RAG optimization.
+
+## Faithfulness
+
+Faithfulness measures whether the generated answer is grounded in the retrieved context. A faithful answer only contains claims that can be verified from the source documents. High faithfulness scores indicate that the RAG system is not hallucinating.
+
+## Context Relevance
+
+Context relevance evaluates the quality of the retrieval step. It measures whether the retrieved document chunks contain information relevant to the question. High context relevance combined with low answer correctness suggests issues in the generation step rather than retrieval.
+
+## LLM-as-a-Judge
+
+For subjective quality assessment, AutoRAG supports LLM-as-a-judge evaluation where a foundation model scores the generated answers on dimensions like helpfulness, coherence, and completeness. Judge model selection is configurable through the search space.
