@@ -34,22 +34,31 @@ benchmarks = [
 test_automl = [
   "papermill",
   "ipykernel",
-  "autogluon.common==1.5.0+rhaiv.4",
-  "autogluon.core==1.5.0+rhaiv.4",
-  "autogluon.features==1.5.0+rhaiv.4",
-  "autogluon.tabular[lightgbm,xgboost,tabm,fastai]==1.5.0+rhaiv.4",
-  "autogluon.timeseries==1.5.0+rhaiv.4",
+  "autogluon.common==1.5.0+rhaiv.5",
+  "autogluon.core==1.5.0+rhaiv.5",
+  "autogluon.features==1.5.0+rhaiv.5",
+  "autogluon.tabular[lightgbm,xgboost,tabm,fastai]==1.5.0+rhaiv.5",
+  "autogluon.timeseries==1.5.0+rhaiv.5",
 ]
 test_autorag = [
   "nbformat",
   "notebook",
   "papermill",
   "pip",
+  "ai4rag~=0.10.4",
+]
+
+[tool.uv]
+conflicts = [
+  [
+    { extra = "test_automl" },
+    { extra = "test_autorag" },
+  ],
 ]
 
 [[tool.uv.index]]
 name = "rhai"
-url = "https://console.redhat.com/api/pypi/public-rhai/rhoai/3.5/cpu-ubi9-test/simple/"
+url = "https://console.redhat.com/api/pypi/public-rhai/rhoai/3.5/cpu-ubi9/simple/"
 explicit = true
 
 [tool.uv.sources]

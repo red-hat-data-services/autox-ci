@@ -706,7 +706,6 @@ def create_inference_service(
     hardware_profile_resource_version: str = "",
     predictor_cpu: str = "2",
     predictor_memory: str = "4Gi",
-    env_vars: dict[str, str] | None = None,
     service_account_name: str | None = None,
 ) -> None:
     """Create a KServe InferenceService in RawDeployment mode with an external Route."""
@@ -760,11 +759,6 @@ def create_inference_service(
                         "key": storage_key,
                         "path": storage_path.rstrip("/"),
                     },
-                    **(
-                        {"env": [{"name": k, "value": v} for k, v in env_vars.items()]}
-                        if env_vars
-                        else {}
-                    ),
                 },
             }
         },
@@ -982,6 +976,7 @@ def score_inference_service(
     if known_covariates:
         body["known_covariates"] = known_covariates
     payload = json.dumps(body).encode()
+    logger.info("Sending predict payload to %s: %s", predict_url, json.dumps(body))
     headers = {"Content-Type": "application/json"}
     if token:
         headers["Authorization"] = f"Bearer {token}"
@@ -1133,14 +1128,12 @@ def run_deployment_test(
     automl_functional_config: dict,
     temp_kubeconfig_path: str | None,
     instances: list[dict] | None = None,
-    isvc_env_vars: dict[str, str] | None = None,
     v2_inputs: list[dict] | None = None,
     known_covariates: list[dict] | None = None,
 ) -> dict:
     """Deploy the top-1 model via KServe and validate readiness + scoring.
 
     ``instances`` — pre-computed scoring payload; pass None to skip scoring.
-    ``isvc_env_vars`` — extra env vars for the predictor container (e.g. timeseries column names).
     ``known_covariates`` — future covariate rows required by timeseries models trained with known_covariates_names.
     """
     try:
@@ -1298,7 +1291,6 @@ def run_deployment_test(
             hardware_profile_resource_version=hw_rv,
             predictor_cpu=predictor_cpu,
             predictor_memory=predictor_memory,
-            env_vars=isvc_env_vars,
             service_account_name=precreated_sa_name or None,
         )
         isvc_created = True
