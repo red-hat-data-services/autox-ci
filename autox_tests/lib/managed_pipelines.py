@@ -12,6 +12,7 @@ from autox_tests.lib.env import load_tests_env
 from autox_tests.lib.settings import parse_timeout_seconds_from_env
 from autox_tests.lib.pipeline_yaml_sources import (
     PIPELINE_YAML_AUTORAG_ENV,
+    PIPELINE_YAML_AUTORAG_INDEXING_ENV,
     PIPELINE_YAML_TABULAR_ENV,
     PIPELINE_YAML_TIMESERIES_ENV,
     resolve_precompiled_pipeline_yaml,
@@ -25,15 +26,18 @@ RHOAI_MANAGED_PIPELINE_WAIT_TIMEOUT_ENV = "RHOAI_MANAGED_PIPELINE_WAIT_TIMEOUT"
 KFP_NAME_TABULAR_ENV = "RHOAI_MANAGED_PIPELINE_TABULAR"
 KFP_NAME_TIMESERIES_ENV = "RHOAI_MANAGED_PIPELINE_TIMESERIES"
 KFP_NAME_AUTORAG_ENV = "RHOAI_MANAGED_PIPELINE_AUTORAG"
+KFP_NAME_AUTORAG_INDEXING_ENV = "RHOAI_MANAGED_PIPELINE_AUTORAG_INDEXING"
 
 ARTIFACT_PREFIX_TABULAR_ENV = "RHOAI_TABULAR_PIPELINE_ARTIFACT_PREFIX"
 ARTIFACT_PREFIX_TIMESERIES_ENV = "RHOAI_TIMESERIES_PIPELINE_ARTIFACT_PREFIX"
 ARTIFACT_PREFIX_AUTORAG_ENV = "RHOAI_AUTORAG_PIPELINE_ARTIFACT_PREFIX"
+ARTIFACT_PREFIX_AUTORAG_INDEXING_ENV = "RHOAI_AUTORAG_INDEXING_PIPELINE_ARTIFACT_PREFIX"
 
 _PIPELINE_DEFAULT_NAMES: dict[str, str] = {
     "tabular": "autogluon-tabular-training-pipeline",
     "timeseries": "autogluon-timeseries-training-pipeline",
     "autorag": "documents-rag-optimization-pipeline",
+    "autorag-indexing": "documents-indexing-pipeline",
 }
 
 _LEGACY_PACKAGE_PATH_ENVS = (
@@ -77,19 +81,20 @@ def _env_or_default(env_var: str, default: str) -> str:
 
 
 def get_managed_kfp_pipeline_name(
-    kind: Literal["tabular", "timeseries", "autorag"],
+    kind: Literal["tabular", "timeseries", "autorag", "autorag-indexing"],
 ) -> str:
     """Return the KFP display name for a managed pipeline (from env)."""
     env_by_kind = {
         "tabular": KFP_NAME_TABULAR_ENV,
         "timeseries": KFP_NAME_TIMESERIES_ENV,
         "autorag": KFP_NAME_AUTORAG_ENV,
+        "autorag-indexing": KFP_NAME_AUTORAG_INDEXING_ENV,
     }
     return _env_or_default(env_by_kind[kind], _PIPELINE_DEFAULT_NAMES[kind])
 
 
 def get_pipeline_artifact_prefix(
-    kind: Literal["tabular", "timeseries", "autorag"],
+    kind: Literal["tabular", "timeseries", "autorag", "autorag-indexing"],
 ) -> str:
     """Return the S3 artifact path prefix segment for a pipeline run.
 
@@ -100,6 +105,7 @@ def get_pipeline_artifact_prefix(
         "tabular": ARTIFACT_PREFIX_TABULAR_ENV,
         "timeseries": ARTIFACT_PREFIX_TIMESERIES_ENV,
         "autorag": ARTIFACT_PREFIX_AUTORAG_ENV,
+        "autorag-indexing": ARTIFACT_PREFIX_AUTORAG_INDEXING_ENV,
     }
     override = (os.environ.get(env_by_kind[kind]) or "").strip()
     if override:
@@ -268,7 +274,7 @@ def wait_for_managed_pipeline(
 def resolve_managed_pipeline_target(
     client: Any,
     *,
-    kind: Literal["tabular", "timeseries", "autorag"],
+    kind: Literal["tabular", "timeseries", "autorag", "autorag-indexing"],
     path_env_var: str,
     cache_dir: Any,
     cache_file_name: str,
@@ -303,6 +309,55 @@ def resolve_managed_pipeline_target(
         mode="package",
         artifact_prefix=artifact_prefix,
         package_path=package_path,
+    )
+
+
+def resolve_indexing_pipeline_target(
+    client: Any,
+    *,
+    cache_dir: Any,
+) -> PipelineRunTarget:
+    """Resolve a :class:`PipelineRunTarget` for the documents-indexing-pipeline.
+
+    Works the same way as :func:`resolve_managed_pipeline_target` for the optimization
+    pipeline: mode is determined by ``AUTORAG_INDEXING_PIPELINE_PATH``.
+
+    * Set → legacy package upload from that path (local file or URL).
+    * Unset → managed KFP pipeline (default).
+
+    Uses its own path env var rather than :func:`use_managed_pipelines_from_env` so
+    that providing ``AUTORAG_PIPELINE_PATH`` for the optimization pipeline does not
+    change the indexing pipeline's mode.
+    """
+    artifact_prefix = get_pipeline_artifact_prefix("autorag-indexing")
+
+    if (os.environ.get(PIPELINE_YAML_AUTORAG_INDEXING_ENV) or "").strip():
+        package_path = resolve_precompiled_pipeline_yaml(
+            path_env_var=PIPELINE_YAML_AUTORAG_INDEXING_ENV,
+            cache_dir=cache_dir,
+            cache_file_name="documents-indexing-pipeline.yaml",
+        )
+        return PipelineRunTarget(
+            mode="package",
+            artifact_prefix=artifact_prefix,
+            package_path=package_path,
+        )
+
+    kfp_name = get_managed_kfp_pipeline_name("autorag-indexing")
+    wait_timeout = parse_timeout_seconds_from_env(
+        RHOAI_MANAGED_PIPELINE_WAIT_TIMEOUT_ENV, 300, max_seconds=600
+    )
+    pipeline_id, version_id = wait_for_managed_pipeline(
+        client,
+        kfp_name,
+        timeout_seconds=wait_timeout,
+    )
+    return PipelineRunTarget(
+        mode="managed",
+        artifact_prefix=artifact_prefix,
+        pipeline_id=pipeline_id,
+        pipeline_version_id=version_id,
+        kfp_pipeline_name=kfp_name,
     )
 
 

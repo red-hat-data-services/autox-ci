@@ -11,10 +11,14 @@ from autox_tests.conftest import make_kfp_client_for_session
 from autox_tests.lib.clients import make_s3_client
 from autox_tests.lib.env import load_tests_env
 from autox_tests.lib.managed_pipelines import (
+    resolve_indexing_pipeline_target,
     resolve_managed_pipeline_target,
     use_managed_pipelines_from_env,
 )
-from autox_tests.lib.pipeline_yaml_sources import PIPELINE_YAML_AUTORAG_ENV
+from autox_tests.lib.pipeline_yaml_sources import (
+    PIPELINE_YAML_AUTORAG_ENV,
+    PIPELINE_YAML_AUTORAG_INDEXING_ENV,
+)
 from autox_tests.lib.s3_data import S3CleanupTracker
 from autox_tests.lib.settings import (
     AUTORAG_UPLOAD_TEST_DATASETS_ENV,
@@ -137,11 +141,110 @@ def kfp_client_functional(
 
 
 @pytest.fixture(scope="session")
+def indexing_pipeline_run_target(kfp_client_indexing_functional, tmp_path_factory):
+    """Indexing pipeline: managed KFP registration or legacy ``AUTORAG_INDEXING_PIPELINE_PATH`` package."""
+    if not kfp_client_indexing_functional:
+        pytest.skip(
+            "KFP client not available — skipping indexing pipeline run target resolution"
+        )
+    try:
+        return resolve_indexing_pipeline_target(
+            kfp_client_indexing_functional,
+            cache_dir=tmp_path_factory.mktemp("pipeline-yaml-autorag-indexing"),
+        )
+    except (
+        FileNotFoundError,
+        OSError,
+        RuntimeError,
+        TimeoutError,
+        EnvironmentError,
+    ) as e:
+        pytest.fail(str(e))
+
+
+@pytest.fixture(scope="session")
 def s3_client_functional(functional_env_config):
     """Session-scoped S3 client for functional test artifact checks (optional)."""
     if functional_env_config is None:
         return None
     return make_s3_client(functional_env_config)
+
+
+def get_indexing_functional_config():
+    """Build indexing pipeline functional test config from environment; None if not configured.
+
+    Lighter than ``get_functional_config()`` — does not require test_data_* env vars since
+    the indexing pipeline only reads from input data, not a separate test dataset.
+    """
+    load_tests_env("autorag")
+    base = get_rhoai_namespace_setup_config()
+    if base is None:
+        return None
+
+    kfp_url = (
+        os.environ.get("RHOAI_KFP_URL") or os.environ.get("KFP_HOST") or ""
+    ).strip()
+    if not kfp_url and not should_create_dspa_from_env():
+        return None
+
+    default_secret = (os.environ.get("RHOAI_TRAIN_S3_SECRET_NAME") or "").strip() or (
+        os.environ.get("RHOAI_TEST_S3_SECRET_NAME") or base.get("s3_secret_name") or ""
+    ).strip()
+    i_secret = (os.environ.get("INPUT_DATA_SECRET_NAME") or default_secret).strip()
+    i_bucket = (os.environ.get("INPUT_DATA_BUCKET_NAME") or "").strip()
+    ogx_secret = (os.environ.get("OGX_SECRET_NAME") or "").strip()
+
+    if not all([base.get("rhoai_token"), i_secret, i_bucket, ogx_secret]):
+        return None
+
+    endpoint = (os.environ.get("ARTIFACTS_AWS_S3_ENDPOINT") or "").strip() or base.get("s3_endpoint")
+    access = (os.environ.get("ARTIFACTS_AWS_ACCESS_KEY_ID") or "").strip() or base.get("s3_access_key")
+    secret = (os.environ.get("ARTIFACTS_AWS_SECRET_ACCESS_KEY") or "").strip() or base.get("s3_secret_key")
+    region = (
+        (os.environ.get("ARTIFACTS_AWS_DEFAULT_REGION") or "").strip()
+        or base.get("s3_region")
+        or "us-east-1"
+    )
+    bucket_artifacts = (os.environ.get("RHOAI_TEST_ARTIFACTS_BUCKET") or "").strip()
+
+    return {
+        **base,
+        "rhoai_kfp_url": kfp_url.rstrip("/") if kfp_url else None,
+        "input_data_secret_name": i_secret,
+        "input_data_bucket_name": i_bucket,
+        "ogx_secret_name": ogx_secret,
+        "s3_endpoint": endpoint,
+        "s3_access_key": access,
+        "s3_secret_key": secret,
+        "s3_region": region,
+        "s3_bucket_artifacts": bucket_artifacts or None,
+    }
+
+
+@pytest.fixture(scope="session")
+def indexing_functional_env_config():
+    """Session-scoped indexing pipeline functional test config fixture."""
+    return get_indexing_functional_config()
+
+
+@pytest.fixture(scope="session")
+def kfp_client_indexing_functional(
+    indexing_functional_env_config,
+    datascience_pipelines_application,
+    rhoai_cluster_kubeconfig,
+):
+    """KFP client for indexing pipeline tests."""
+    if indexing_functional_env_config is None:
+        return None
+    try:
+        return make_kfp_client_for_session(
+            namespace_config=indexing_functional_env_config,
+            configured_kfp_url=indexing_functional_env_config.get("rhoai_kfp_url"),
+            datascience_pipelines_application=datascience_pipelines_application,
+            kubeconfig_path=rhoai_cluster_kubeconfig,
+        )
+    except RuntimeError as e:
+        pytest.fail(str(e))
 
 
 @pytest.fixture(scope="session")

@@ -85,6 +85,7 @@ markers = [
   "tabular: tabular AutoML family",
   "timeseries: time series AutoML family",
   "autorag: AutoRAG pipeline family",
+  "indexing: Documents Indexing pipeline",
   "positive: Tests expected to pass covering positive paths",
   "negative: Tests expected to fail covering negative paths",
 ]

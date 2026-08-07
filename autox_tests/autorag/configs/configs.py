@@ -17,6 +17,10 @@ _CONFIGS_JSON_PATH = Path(
     os.getenv("AUTORAG_TEST_CONFIGS_PATH")
     or (Path(__file__).parent / "test_configs.json")
 )
+_INDEXING_CONFIGS_JSON_PATH = Path(
+    os.getenv("AUTORAG_INDEXING_TEST_CONFIGS_PATH")
+    or (Path(__file__).parent / "indexing_test_configs.json")
+)
 
 
 @dataclass
@@ -136,6 +140,145 @@ def get_all_dataset_keys() -> tuple[list[str], list[str]]:
     input_keys = list({item["input_data_key"] for item in all_items if item.get("input_data_key")})
     test_keys = list({item["test_data_key"] for item in all_items if item.get("test_data_key")})
     return input_keys, test_keys
+
+
+@dataclass
+class IndexingTestConfig:
+    """Single test configuration for one documents-indexing-pipeline run.
+
+    Attributes:
+        id: Short identifier for the config (used in pytest parametrize ids).
+        description: Human-readable summary of the test scenario.
+        tags: Optional list of tags for filtering (e.g. ["smoke", "remote::milvus"]).
+        expected_result: "pass" or "fail" — whether the pipeline run should succeed.
+        vector_io_provider_id: OGX vector IO provider ID (e.g. "milvus-remote").
+        embedding_model_id: Embedding model ID for the vector store.
+            Use "env" to read from the ``AUTORAG_INDEXING_EMBEDDING_MODEL_ID`` env var.
+        input_data_key: Path to folder with input documents within the bucket.
+        vector_store_id: OGX vector store / collection id to reuse. Omit to create new.
+        chunking_method: Chunking method (default: "recursive").
+        chunk_size: Maximum chunk size in tokens (default: 1024).
+        chunk_overlap: Token overlap between consecutive chunks (default: 0).
+        batch_size: Number of documents per batch (default: 20).
+        expected_failing_task: For negative scenarios, KFP task display names expected to fail.
+    """
+
+    __test__ = False
+
+    id: str
+    description: str
+    tags: list[str]
+    expected_result: str
+    vector_io_provider_id: str
+    embedding_model_id: str
+    input_data_key: str | None = None
+    vector_store_id: str | None = None
+    chunking_method: str | None = None
+    chunk_size: int | None = None
+    chunk_overlap: int | None = None
+    batch_size: int | None = None
+    expected_failing_task: list[str] | None = None
+
+    def get_pipeline_arguments(self, base_config: dict) -> dict[str, Any]:
+        """Build pipeline arguments dict by merging base config with per-scenario overrides.
+
+        Args:
+            base_config: Functional config dict from get_indexing_functional_config().
+
+        Returns:
+            Pipeline arguments dict ready for KFP submission.
+
+        Raises:
+            EnvironmentError: When embedding_model_id is "env" and
+                AUTORAG_INDEXING_EMBEDDING_MODEL_ID is not set.
+        """
+        embedding_model_id = self.embedding_model_id
+        if embedding_model_id == "env":
+            embedding_model_id = os.getenv("AUTORAG_INDEXING_EMBEDDING_MODEL_ID")
+            if embedding_model_id is None:
+                raise EnvironmentError(
+                    "AUTORAG_INDEXING_EMBEDDING_MODEL_ID env variable must be set "
+                    "for indexing pipeline tests that use embedding_model_id: \"env\"."
+                )
+
+        arguments: dict[str, Any] = {
+            "ogx_secret_name": base_config["ogx_secret_name"],
+            "embedding_model_id": embedding_model_id,
+            "vector_io_provider_id": self.vector_io_provider_id,
+            "input_data_secret_name": base_config["input_data_secret_name"],
+            "input_data_bucket_name": base_config["input_data_bucket_name"],
+            "input_data_key": self.input_data_key or "",
+        }
+        if self.vector_store_id is not None:
+            arguments["vector_store_id"] = self.vector_store_id
+        if self.chunking_method is not None:
+            arguments["chunking_method"] = self.chunking_method
+        if self.chunk_size is not None:
+            arguments["chunk_size"] = self.chunk_size
+        if self.chunk_overlap is not None:
+            arguments["chunk_overlap"] = self.chunk_overlap
+        if self.batch_size is not None:
+            arguments["batch_size"] = self.batch_size
+        return arguments
+
+
+def _load_indexing_configs(pass_type: str) -> list[IndexingTestConfig]:
+    """Load indexing test configs from indexing_test_configs.json."""
+    with open(_INDEXING_CONFIGS_JSON_PATH) as f:
+        all_items = json.load(f)
+
+    expected = "pass" if pass_type == "positive" else "fail"
+    data = [item for item in all_items if item.get("expected_result") == expected]
+
+    configs = []
+    for i, item in enumerate(data):
+        if not isinstance(item, dict):
+            raise ValueError(f"indexing_test_configs[{i}] must be a dict; got {type(item).__name__}")
+        try:
+            item = dict(item)
+            raw_tags = item.pop("tags")
+            if raw_tags is None:
+                tags = []
+            elif isinstance(raw_tags, list):
+                tags = [str(t) for t in raw_tags]
+            else:
+                raise ValueError(
+                    f"indexing_test_configs[{i}] 'tags' must be a list; got {type(raw_tags).__name__}"
+                )
+            expected_result = item["expected_result"]
+            if expected_result not in ("pass", "fail"):
+                raise ValueError(
+                    f"indexing_test_configs[{i}] 'expected_result' must be 'pass' or 'fail'; "
+                    f"got '{expected_result}'"
+                )
+            configs.append(IndexingTestConfig(tags=tags, **item))
+        except KeyError as e:
+            raise ValueError(f"indexing_test_configs[{i}] missing required key {e}") from e
+    return configs
+
+
+def get_indexing_configs_for_run(
+    pass_type: str, tags: None | list[str] = None
+) -> list[IndexingTestConfig]:
+    """Return indexing pipeline configs to run for this session, optionally filtered by tags.
+
+    Args:
+        pass_type (str): 'positive' or 'negative'.
+        tags (None | list[str]): Only return configs that have all of these tags.
+
+    Returns:
+        list[IndexingTestConfig]: Filtered list of IndexingTestConfig instances.
+    """
+    test_configs: list[IndexingTestConfig] = _load_indexing_configs(pass_type)
+
+    tags = tags or []
+    env_tags_raw = os.getenv("TESTS_TAGS")
+    env_tags = [t.strip().lower() for t in env_tags_raw.split(",") if t.strip()] if env_tags_raw else []
+    all_tags = {t.lower() for t in (tags + env_tags)}
+
+    if not all_tags:
+        return test_configs
+    return [c for c in test_configs if all(t.lower() in c.tags for t in all_tags)]
 
 
 def get_test_configs_for_run(pass_type: str, tags: None | list[str] = None) -> list[AutoRAGTestConfig]:
