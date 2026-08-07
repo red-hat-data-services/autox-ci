@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <title>RAG Optimization Process</title>
+</head>
+<body>
+    <h1>RAG Optimization Process</h1>
+    <p>The AutoRAG optimization process uses hyperparameter optimization (HPO) to find the best RAG configuration for a given document corpus and evaluation benchmark.</p>
+
+    <h2>Search Space</h2>
+    <p>The search space defines the parameters to optimize, including chunk size (128 to 2048 tokens), chunk overlap (0 to 256 tokens), chunking method (recursive or hybrid), embedding model selection, and foundation model selection.</p>
+
+    <h2>Optimization Algorithm</h2>
+    <p>AutoRAG uses Generalized Additive Models (GAM) as the primary optimization algorithm. GAM models the relationship between RAG parameters and evaluation scores, enabling efficient exploration of the search space. A random search optimizer is also available as a baseline.</p>
+
+    <h2>Evaluation Metrics</h2>
+    <p>RAG configurations are evaluated using metrics such as answer correctness, faithfulness, and context relevance. These metrics are computed using the Unitxt evaluation framework or LLM-as-a-judge approaches.</p>
+</body>
+</html>
