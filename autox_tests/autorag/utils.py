@@ -151,7 +151,7 @@ def _validate_artifacts_in_s3(s3_client, bucket, prefix):
                     result["inference_notebook_keys"].append(key)
                 if "evaluation_results.json" in key:
                     result["evaluation_results_keys"].append(key)
-                if "leaderboard" in lower_key or key.endswith(".html") or key.endswith("/html_artifact"):
+                if "leaderboard" in lower_key or "html_artifact" in key:
                     result["leaderboard_keys"].append(key)
                 if "v1_responses_body.json" in key:
                     result["responses_body_keys"].append(key)
