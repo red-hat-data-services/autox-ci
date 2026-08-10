@@ -148,20 +148,19 @@ def main():
     )
 
     # EnterpriseRAG-Bench specific options
+    from autorag_benchmark.datasets.enterprise_ragbench import SOURCE_TYPES, QUESTION_CATEGORIES
+
     parser.add_argument(
         "--erb-source-type",
         default="confluence",
-        choices=["slack", "gmail", "linear", "google_drive", "hubspot",
-                 "fireflies", "github", "jira", "confluence", "all"],
+        choices=SOURCE_TYPES + ["all"],
         help="EnterpriseRAG-Bench source type filter "
              "- only for --dataset enterprise_ragbench (default: confluence)",
     )
     parser.add_argument(
         "--erb-category",
         default=None,
-        choices=["basic", "semantic", "intra_document_reasoning", "project_related",
-                 "constrained", "conflicting_info", "completeness", "miscellaneous",
-                 "high_level", "info_not_found"],
+        choices=QUESTION_CATEGORIES,
         help="EnterpriseRAG-Bench question category filter "
              "- only for --dataset enterprise_ragbench (default: all categories)",
     )
@@ -183,7 +182,7 @@ def main():
         "--erb-local-dir",
         default=None,
         help="Path to the onyx 'generated_data' corpus dir "
-             "(default: ENTERPRISE_RAGBENCH_DIR env or known clone locations) "
+             "(default: ENTERPRISE_RAGBENCH_DIR env var) "
              "- only for --dataset enterprise_ragbench",
     )
 

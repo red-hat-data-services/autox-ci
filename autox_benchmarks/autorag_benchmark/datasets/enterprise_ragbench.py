@@ -35,7 +35,6 @@ Resolution order for that directory:
 
   1. explicit ``local_dir`` option
   2. ``ENTERPRISE_RAGBENCH_DIR`` env var
-  3. ``<clone>/generated_data`` for a few well-known clone locations
 """
 
 from __future__ import annotations
@@ -46,8 +45,6 @@ import random
 from pathlib import Path
 
 from autorag_benchmark.datasets import register
-
-HF_REPO_ID = "onyx-dot-app/EnterpriseRAG-Bench"
 
 SOURCE_TYPES = [
     "slack",
@@ -77,11 +74,6 @@ QUESTION_CATEGORIES = [
 # Deterministic distractor sampling so slices are reproducible run-to-run.
 _RANDOM_SEED = 42
 
-# Well-known local clone locations to probe when local_dir/env are not set.
-_DEFAULT_CLONE_DIRS = (
-    "/Users/piotrhelm/RH/EnterpriseRAG-Bench/generated_data",
-)
-
 
 class EnterpriseRAGBenchError(RuntimeError):
     """Raised when the local corpus cannot be located or is malformed."""
@@ -98,7 +90,6 @@ def _resolve_corpus_dir(local_dir: str | Path | None) -> Path:
     env_dir = os.environ.get("ENTERPRISE_RAGBENCH_DIR")
     if env_dir:
         candidates.append(Path(env_dir))
-    candidates.extend(Path(p) for p in _DEFAULT_CLONE_DIRS)
 
     for cand in candidates:
         if (cand / "uuid_index.json").is_file():
@@ -107,10 +98,15 @@ def _resolve_corpus_dir(local_dir: str | Path | None) -> Path:
         if (cand / "generated_data" / "uuid_index.json").is_file():
             return cand / "generated_data"
 
+    if not candidates:
+        raise EnterpriseRAGBenchError(
+            "Could not locate the EnterpriseRAG-Bench corpus. No search paths "
+            "configured — set the ENTERPRISE_RAGBENCH_DIR env var or pass "
+            "--erb-local-dir pointing to the onyx 'generated_data' directory."
+        )
     raise EnterpriseRAGBenchError(
         "Could not locate the EnterpriseRAG-Bench corpus. Expected a directory "
-        "containing uuid_index.json (the onyx 'generated_data' dir). Set the "
-        "ENTERPRISE_RAGBENCH_DIR env var or pass local_dir. Tried: "
+        "containing uuid_index.json (the onyx 'generated_data' dir). Tried: "
         + ", ".join(str(c) for c in candidates)
     )
 
@@ -157,10 +153,11 @@ def _write_kb_doc(
     filename = f"{dsid}{ext}"
     out_path = kb_dir / filename
     if output_format == "md":
+        escaped_title = title.replace("\\", "\\\\").replace('"', '\\"')
         body = (
             f"---\n"
             f"dataset_doc_uuid: {dsid}\n"
-            f'title: "{title}"\n'
+            f'title: "{escaped_title}"\n'
             f"---\n\n{content}"
         )
     else:
@@ -194,7 +191,7 @@ def _select_questions(
     if include_all:
         return list(questions)
 
-    selected = []
+    matched = []
     for q in questions:
         if question_category and q.get("question_type", "").lower() != question_category.lower():
             continue
@@ -204,10 +201,13 @@ def _select_questions(
                 q_sources = [q_sources]
             if source_type not in q_sources:
                 continue
-        selected.append(q)
-        if num_samples and len(selected) >= num_samples:
-            break
-    return selected
+        matched.append(q)
+
+    rng = random.Random(_RANDOM_SEED)
+    rng.shuffle(matched)
+    if num_samples and num_samples > 0:
+        matched = matched[:num_samples]
+    return matched
 
 
 # --------------------------------------------------------------------------- #
@@ -273,7 +273,7 @@ def prepare(
     # Gold documents referenced by the selected questions.
     gold_dsids: set[str] = set()
     for q in selected:
-        for did in q.get("expected_doc_ids", []) or []:
+        for did in q.get("expected_doc_ids") or []:
             gold_dsids.add(did)
     print(f"  gold documents referenced: {len(gold_dsids)}")
 
@@ -319,7 +319,7 @@ def prepare(
             if skipped_docs <= 5:
                 print(f"    skip {dsid}: {exc}")
             continue
-        if not content or len(content.strip()) < 1:
+        if not content.strip():
             skipped_docs += 1
             continue
         written[dsid] = _write_kb_doc(kb_dir, dsid, title, content, output_format)
@@ -335,11 +335,8 @@ def prepare(
     for q in selected:
         # Map gold dsids to their written KB filenames (``{dsid}.{ext}``) so the
         # IDs match what the retriever reports for context_correctness scoring.
-        gold = [written[d] for d in (q.get("expected_doc_ids") or []) if d in written]
-        # Questions in categories without gold docs (e.g. high_level,
-        # info_not_found) legitimately have no expected docs; keep them so the
-        # answer/correctness metrics still cover them.
         expected = q.get("expected_doc_ids") or []
+        gold = [written[d] for d in expected if d in written]
         if expected and not gold:
             skipped_questions += 1
             continue
