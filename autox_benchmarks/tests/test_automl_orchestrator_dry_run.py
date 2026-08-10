@@ -106,6 +106,52 @@ class TestDryRunExecution:
         breast = df[df["dataset_id"] == "breast-w-test"].iloc[0]
         args = dry_run_arguments_from_row(breast)
         assert args["top_n"] == 4  # manifest pipeline_arguments override
+        assert args["preset"] == "speed"
+        assert breast["preset"] == "speed"
+
+    @patch("automl_benchmark.orchestrator.create_kfp_client")
+    def test_preset_sweep_expands_rows(
+        self,
+        _mock_kfp,
+        automl_orchestrator: BenchmarkOrchestrator,
+        tmp_path: Path,
+    ) -> None:
+        out = tmp_path / "sweep.csv"
+        assert (
+            automl_orchestrator.execute(
+                output_csv=out,
+                dry_run=True,
+                dataset_filter="tabular",
+                presets_cli="speed,balanced",
+            )
+            == 0
+        )
+        df = read_results_csv(out)
+        # 2 tabular datasets × 2 presets
+        assert len(df) == 4
+        assert set(df["preset"]) == {"speed", "balanced"}
+        breast = df[df["dataset_id"] == "breast-w-test"]
+        assert set(breast["preset"]) == {"speed", "balanced"}
+        for _, row in breast.iterrows():
+            args = dry_run_arguments_from_row(row)
+            assert args["preset"] == row["preset"]
+            assert f"-{row['preset']}-" in str(row["run_name"])
+
+    @patch("automl_benchmark.orchestrator.create_kfp_client")
+    def test_invalid_presets_cli_returns_one(
+        self,
+        _mock_kfp,
+        automl_orchestrator: BenchmarkOrchestrator,
+        tmp_path: Path,
+    ) -> None:
+        out = tmp_path / "bad_presets.csv"
+        code = automl_orchestrator.execute(
+            output_csv=out,
+            dry_run=True,
+            presets_cli="best_quality",
+        )
+        assert code == 1
+        assert not out.is_file()
 
     @patch("automl_benchmark.orchestrator.create_kfp_client")
     def test_tabular_and_timeseries_pipeline_names(
@@ -230,6 +276,7 @@ class TestLoadConfig:
         assert settings.train_data_bucket_name == "test-benchmark-bucket"
         assert settings.upload_benchmark_results is False
         assert settings.top_n == 2
+        assert settings.presets == ("speed",)
         assert config_dir == automl_orchestrator.config_path.parent
         assert len(datasets) == 4
 

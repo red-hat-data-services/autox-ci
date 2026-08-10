@@ -16,6 +16,8 @@ def base_row_for_dataset(
     dataset_index: int,
     run_name: str,
     top_n: int,
+    *,
+    preset: str,
 ) -> dict[str, Any]:
     ds_id = str(dataset.get("id", dataset.get("name", f"dataset_{dataset_index}")))
     name = str(dataset.get("name", ds_id))
@@ -27,6 +29,7 @@ def base_row_for_dataset(
         "train_data_file_key": dataset.get("train_data_file_key"),
         "run_name": run_name,
         "top_n": top_n,
+        "preset": preset,
     }
 
 
@@ -101,5 +104,8 @@ def submit_error_row(base: dict[str, Any], message: str) -> dict[str, Any]:
     }
 
 
-def run_name_for_dataset(prefix: str, dataset_id: str) -> str:
-    return f"{prefix}-{dataset_id}-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
+def run_name_for_dataset(prefix: str, dataset_id: str, *, preset: str) -> str:
+    return (
+        f"{prefix}-{dataset_id}-{preset}-"
+        f"{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
+    )

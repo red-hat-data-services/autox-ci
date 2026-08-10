@@ -18,6 +18,7 @@ BENCHMARK_META_COLUMNS: tuple[str, ...] = (
     "train_data_file_key",
     "run_name",
     "top_n",
+    "preset",
     "run_id",
     "state",
     "started_at",

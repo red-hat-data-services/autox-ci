@@ -114,6 +114,7 @@ python scripts/benchmark_orchestrator.py \
 
 **Options:**
 - `--dataset-filter` — `all`, `tabular` (binary/multiclass/regression), or `timeseries`
+- `--presets` — Comma-separated AutoML presets to sweep (`speed`, `balanced`); default is `speed` only
 - `--dry-run` — Build arguments and print them; do not call KFP
 - `--fail-fast` — Stop after the first failed dataset run
 - `--tabular-package-path` / `--timeseries-package-path` — Use a pre-compiled pipeline YAML (skip Git compile for that slot)
@@ -192,6 +193,33 @@ datasets:
 Arguments are sent to KFP **as-is**. Names not declared in the compiled pipeline IR are logged at INFO; **invalid or unknown parameters are rejected by KFP / the pipeline run**, not pre-validated (and dropped) in the orchestrator. Use `--dry-run -v` to inspect the payload before submitting.
 
 Declared root inputs are read from the compiled YAML when possible; see `benchmark_common/pipeline_run.py`.
+
+### AutoML preset sweep (`speed` / `balanced`)
+
+Each (dataset × preset) combination becomes one KFP run and one CSV row. The `preset` pipeline input must be present on the compiled IR (pipelines-components main after the experiment-settings PRs); compile from Git or point at a current package YAML.
+
+```yaml
+# config/benchmark.yaml
+run:
+  presets: [speed, balanced]   # default if omitted: [speed]
+```
+
+Or via CLI / env:
+
+```bash
+python scripts/benchmark_orchestrator.py --presets speed,balanced --dry-run -v
+# or: BENCHMARK_PRESETS=speed,balanced
+```
+
+Per-dataset override (limits that row’s sweep):
+
+```yaml
+pipeline_arguments:
+  preset: balanced          # single
+  # presets: [speed, balanced]  # or a list
+```
+
+Results CSV includes a `preset` column; run names are `{prefix}-{dataset_id}-{preset}-{timestamp}`.
 
 ## AutoRAG Dataset Generation
 
@@ -400,6 +428,7 @@ pipeline:
 
 run:
   top_n: 3
+  presets: [speed, balanced]
   poll_interval_seconds: 30
   timeout_seconds: 86400
   enable_caching: false

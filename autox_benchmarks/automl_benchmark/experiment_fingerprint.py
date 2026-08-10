@@ -60,6 +60,7 @@ def _orchestrator_options(settings: BenchmarkSettings, dataset_filter: str) -> d
         "dataset_filter": dataset_filter,
         "enable_caching": settings.enable_caching,
         "top_n": settings.top_n,
+        "presets": list(settings.presets),
         "poll_interval_seconds": settings.poll_interval_seconds,
         "timeout_seconds": settings.timeout_seconds,
         "run_name_prefix": settings.run_name_prefix,

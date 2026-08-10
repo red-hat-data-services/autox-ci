@@ -3,6 +3,8 @@ pipeline:
 
 run:
   top_n: 3
+  # Sweep both AutoML presets (speed + balanced). Override with --presets or BENCHMARK_PRESETS.
+  presets: [speed, balanced]
   poll_interval_seconds: 30
   timeout_seconds: 86400
   enable_caching: false
