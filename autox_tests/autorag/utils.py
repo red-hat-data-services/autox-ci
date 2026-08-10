@@ -8,6 +8,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from autox_tests.lib.kfp_run_state import _normalize_state
+from autox_tests.lib.notebooks import NOTEBOOK_KERNEL_NAME as _NOTEBOOK_KERNEL_NAME
+from autox_tests.lib.notebooks import ensure_notebook_kernel_registered as _ensure_notebook_kernel_registered
 from autox_tests.lib.s3_data import upload_file_to_s3
 
 logger = logging.getLogger(__name__)
@@ -184,37 +186,6 @@ def _validate_artifacts_in_s3(s3_client, bucket, prefix):
 
 _NOTEBOOK_ENV_PREFIXES = ("OGX_CLIENT_", "AWS_")
 _SYSTEM_ENV_KEYS = frozenset({"PATH", "HOME", "TMPDIR", "TEMP", "TMP", "LANG", "LC_ALL", "USER", "LOGNAME", "SHELL"})
-
-_NOTEBOOK_KERNEL_NAME = "autox-notebook-runner"
-_notebook_kernel_registered = False
-
-
-def _ensure_notebook_kernel_registered() -> None:
-    """Register the current Python interpreter as a Jupyter kernel (once per process).
-
-    This ensures papermill executes notebooks in the same environment as the tests,
-    so packages installed via test extras (e.g. ai4rag) are already importable and
-    notebook install guards (try/except ImportError) skip the pip install.
-    """
-    global _notebook_kernel_registered
-    if _notebook_kernel_registered:
-        return
-    import subprocess
-    import sys
-
-    subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "ipykernel",
-            "install",
-            "--user",
-            f"--name={_NOTEBOOK_KERNEL_NAME}",
-        ],
-        check=True,
-        capture_output=True,
-    )
-    _notebook_kernel_registered = True
 
 
 def _inject_and_run(notebook_path: Path, output_path: Path) -> None:
