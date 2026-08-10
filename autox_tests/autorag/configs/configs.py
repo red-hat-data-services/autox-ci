@@ -1,6 +1,6 @@
 """Test configurations for parametrized functional tests of the Documents RAG Optimization pipeline.
 
-Configurations are loaded from test_configs.json in this directory by default.
+Configurations are loaded from optimisation_test_configs.json in this directory by default.
 Set AUTORAG_TEST_CONFIGS_PATH to load from a custom JSON file instead.
 Each entry specifies pipeline parameter overrides, expected result (pass/fail),
 and optional tags for filtering. Use TESTS_TAGS (comma-separated) to
@@ -11,11 +11,11 @@ import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
 _CONFIGS_JSON_PATH = Path(
     os.getenv("AUTORAG_TEST_CONFIGS_PATH")
-    or (Path(__file__).parent / "test_configs.json")
+    or (Path(__file__).parent / "optimisation_test_configs.json")
 )
 _INDEXING_CONFIGS_JSON_PATH = Path(
     os.getenv("AUTORAG_INDEXING_TEST_CONFIGS_PATH")
@@ -100,37 +100,53 @@ class AutoRAGTestConfig:
         return arguments
 
 
-def _load_configs(pass_type: str) -> list[AutoRAGTestConfig]:
-    """Load test configs from test_configs.json and return AutoRAGTestConfig instances."""
-    with open(_CONFIGS_JSON_PATH) as f:
+_C = TypeVar("_C")
+
+
+def _load_test_configs_from_json(path: Path, cls: type[_C], label: str, pass_type: str) -> list[_C]:
+    """Load and validate test configs from a JSON file, filtered by pass_type."""
+    with open(path) as f:
         all_items = json.load(f)
 
     expected = "pass" if pass_type == "positive" else "fail"
     data = [item for item in all_items if item.get("expected_result") == expected]
 
     configs = []
-    for i, item in enumerate(data):
-        if not isinstance(item, dict):
-            raise ValueError(f"test_configs[{i}] must be a dict; got {type(item).__name__}")
+    for i, raw in enumerate(data):
+        if not isinstance(raw, dict):
+            raise ValueError(f"{label}[{i}] must be a dict; got {type(raw).__name__}")
         try:
+            item = dict(raw)
             raw_tags = item.pop("tags")
             if raw_tags is None:
                 tags = []
             elif isinstance(raw_tags, list):
                 tags = [str(t) for t in raw_tags]
             else:
-                raise ValueError(f"test_configs[{i}] 'tags' must be a list; got {type(raw_tags).__name__}")
-
-            expected_result = item["expected_result"]
-            if expected_result not in ("pass", "fail"):
+                raise ValueError(f"{label}[{i}] 'tags' must be a list; got {type(raw_tags).__name__}")
+            if item.get("expected_result") not in ("pass", "fail"):
                 raise ValueError(
-                    f"test_configs[{i}] 'expected_result' must be 'pass' or 'fail'; got '{expected_result}'"
+                    f"{label}[{i}] 'expected_result' must be 'pass' or 'fail'; "
+                    f"got '{item.get('expected_result')}'"
                 )
-
-            configs.append(AutoRAGTestConfig(tags=tags, **item))
-        except KeyError as e:
-            raise ValueError(f"test_configs[{i}] missing required key {e}") from e
+            configs.append(cls(tags=tags, **item))
+        except (KeyError, TypeError) as e:
+            raise ValueError(f"{label}[{i}] missing or invalid required field: {e}") from e
     return configs
+
+
+def _filter_by_tags(configs: list, tags: list[str]) -> list:
+    """Filter configs to those matching all given tags plus any tags from TESTS_TAGS env var."""
+    env_tags_raw = os.getenv("TESTS_TAGS")
+    env_tags = [t.strip().lower() for t in env_tags_raw.split(",") if t.strip()] if env_tags_raw else []
+    all_tags = {t.lower() for t in (tags + env_tags)}
+    if not all_tags:
+        return configs
+    return [c for c in configs if all(t in c.tags for t in all_tags)]
+
+
+def _load_configs(pass_type: str) -> list[AutoRAGTestConfig]:
+    return _load_test_configs_from_json(_CONFIGS_JSON_PATH, AutoRAGTestConfig, "optimisation_test_configs", pass_type)
 
 
 def get_all_dataset_keys() -> tuple[list[str], list[str]]:
@@ -223,38 +239,9 @@ class IndexingTestConfig:
 
 
 def _load_indexing_configs(pass_type: str) -> list[IndexingTestConfig]:
-    """Load indexing test configs from indexing_test_configs.json."""
-    with open(_INDEXING_CONFIGS_JSON_PATH) as f:
-        all_items = json.load(f)
-
-    expected = "pass" if pass_type == "positive" else "fail"
-    data = [item for item in all_items if item.get("expected_result") == expected]
-
-    configs = []
-    for i, item in enumerate(data):
-        if not isinstance(item, dict):
-            raise ValueError(f"indexing_test_configs[{i}] must be a dict; got {type(item).__name__}")
-        try:
-            item = dict(item)
-            raw_tags = item.pop("tags")
-            if raw_tags is None:
-                tags = []
-            elif isinstance(raw_tags, list):
-                tags = [str(t) for t in raw_tags]
-            else:
-                raise ValueError(
-                    f"indexing_test_configs[{i}] 'tags' must be a list; got {type(raw_tags).__name__}"
-                )
-            expected_result = item["expected_result"]
-            if expected_result not in ("pass", "fail"):
-                raise ValueError(
-                    f"indexing_test_configs[{i}] 'expected_result' must be 'pass' or 'fail'; "
-                    f"got '{expected_result}'"
-                )
-            configs.append(IndexingTestConfig(tags=tags, **item))
-        except KeyError as e:
-            raise ValueError(f"indexing_test_configs[{i}] missing required key {e}") from e
-    return configs
+    return _load_test_configs_from_json(
+        _INDEXING_CONFIGS_JSON_PATH, IndexingTestConfig, "indexing_test_configs", pass_type
+    )
 
 
 def get_indexing_configs_for_run(
@@ -269,16 +256,7 @@ def get_indexing_configs_for_run(
     Returns:
         list[IndexingTestConfig]: Filtered list of IndexingTestConfig instances.
     """
-    test_configs: list[IndexingTestConfig] = _load_indexing_configs(pass_type)
-
-    tags = tags or []
-    env_tags_raw = os.getenv("TESTS_TAGS")
-    env_tags = [t.strip().lower() for t in env_tags_raw.split(",") if t.strip()] if env_tags_raw else []
-    all_tags = {t.lower() for t in (tags + env_tags)}
-
-    if not all_tags:
-        return test_configs
-    return [c for c in test_configs if all(t.lower() in c.tags for t in all_tags)]
+    return _filter_by_tags(_load_indexing_configs(pass_type), list(tags or []))
 
 
 def get_test_configs_for_run(pass_type: str, tags: None | list[str] = None) -> list[AutoRAGTestConfig]:
@@ -288,21 +266,10 @@ def get_test_configs_for_run(pass_type: str, tags: None | list[str] = None) -> l
     All configs are returned otherwise.
 
     Args:
-        pass_type (str): Type of pass to run for this session. 'positive' or negative'
+        pass_type (str): Type of pass to run for this session. 'positive' or 'negative'.
         tags (None | list[str]): List of tags to run for this session.
 
     Returns:
         list[AutoRAGTestConfig]: List of TestConfig instances.
     """
-    test_configs: list[AutoRAGTestConfig] = _load_configs(pass_type)
-
-    tags = tags or []
-
-    env_tags_raw = os.getenv("TESTS_TAGS")
-    env_tags = [t.strip().lower() for t in env_tags_raw.split(",") if t.strip()] if env_tags_raw else []
-
-    all_tags = {t.lower() for t in (tags + env_tags)}
-
-    if not all_tags:
-        return test_configs
-    return [c for c in test_configs if all(t.lower() in c.tags for t in all_tags)]
+    return _filter_by_tags(_load_configs(pass_type), list(tags or []))

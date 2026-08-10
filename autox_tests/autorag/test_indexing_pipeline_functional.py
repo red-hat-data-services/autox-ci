@@ -16,20 +16,21 @@ Passing criteria for negative scenarios:
 - At least one of the expected_failing_task names appears in the run's failed tasks
 """
 
-import json
 import logging
+import os
 import time
 
 import pytest
 
 from autox_tests.lib.k8s_utils import add_kubeconfig_to_config
-from autox_tests.lib.s3_data import list_s3_objects
+from autox_tests.lib.s3_data import list_s3_objects, read_s3_json
 
 from .conftest import get_indexing_functional_config
 from .configs.configs import IndexingTestConfig, get_indexing_configs_for_run
 from autox_tests.lib.kfp_run_state import _get_run_state, _run_failed, _run_succeeded
 from .utils import (
     _collect_failure_details,
+    _get_failed_task_names,
     _run_pipeline_and_wait,
 )
 
@@ -40,26 +41,6 @@ INDEXING_POSITIVE_CONFIGS = get_indexing_configs_for_run(pass_type="positive")
 INDEXING_NEGATIVE_CONFIGS = get_indexing_configs_for_run(pass_type="negative")
 
 _EXPECTED_FAIL_TIMEOUT_CAP = 600
-
-
-def _get_failed_task_names(client, run_id: str) -> list[str]:
-    """Return display names of tasks that reached a FAILED/ERROR state in a run."""
-    try:
-        run_detail = client.get_run(run_id)
-        run_obj = getattr(run_detail, "run", run_detail)
-        rd = getattr(run_obj, "run_details", None)
-        task_list = getattr(rd, "task_details", None) if rd else None
-        if not task_list:
-            return []
-        from autox_tests.lib.kfp_run_state import _normalize_state
-        return [
-            getattr(t, "display_name", None) or getattr(t, "task_id", "?")
-            for t in task_list
-            if _normalize_state(getattr(t, "state", None)) in ("FAILED", "ERROR", "SYSTEM_ERROR")
-        ]
-    except Exception as e:
-        logger.warning("Could not fetch task details for run %s: %s", run_id, e)
-        return []
 
 
 def _fetch_indexing_report(
@@ -82,8 +63,9 @@ def _fetch_indexing_report(
     try:
         objects = list_s3_objects(s3_client, bucket, prefix)
     except Exception as exc:
-        logger.warning("[%s] Could not list S3 objects under %s: %s", test_id, prefix, exc)
-        return None
+        pytest.fail(
+            f"[{test_id}] Failed to list S3 artifacts under s3://{bucket}/{prefix}: {exc}"
+        )
 
     report_key = next(
         (obj["Key"] for obj in objects if "indexing_report" in obj["Key"].lower()),
@@ -95,11 +77,10 @@ def _fetch_indexing_report(
             f"found keys: {[o['Key'] for o in objects]}"
         )
 
-    try:
-        response = s3_client.get_object(Bucket=bucket, Key=report_key)
-        return json.loads(response["Body"].read())
-    except Exception as exc:
-        pytest.fail(f"[{test_id}] Failed to download/parse {report_key}: {exc}")
+    report = read_s3_json(s3_client, bucket, report_key)
+    if report is None:
+        pytest.fail(f"[{test_id}] Failed to download/parse s3://{bucket}/{report_key}")
+    return report
 
 
 def _assert_indexing_report(report: dict, test_config: "IndexingTestConfig") -> None:
@@ -128,8 +109,12 @@ def _assert_indexing_report(report: dict, test_config: "IndexingTestConfig") -> 
     assert report.get("total_documents", 0) > 0, (
         f"[{tid}] total_documents is 0 — documents_discovery or text_extraction produced no output"
     )
-    assert report.get("failed", -1) == 0, (
-        f"[{tid}] {report.get('failed')} document(s) failed indexing: "
+    failed = report.get("failed")
+    assert failed is not None, (
+        f"[{tid}] indexing_report missing 'failed' field — report may be malformed"
+    )
+    assert failed == 0, (
+        f"[{tid}] {failed} document(s) failed indexing: "
         + str([e for e in report.get("documents", []) if e.get("status") == "failed"])
     )
     assert report.get("total_chunks", 0) > 0, (
@@ -144,9 +129,16 @@ def _assert_indexing_report(report: dict, test_config: "IndexingTestConfig") -> 
         f"expected {test_config.vector_io_provider_id!r}"
     )
 
-    assert emb.get("model_id") == test_config.embedding_model_id, (
+    expected_model_id = test_config.embedding_model_id
+    if expected_model_id == "env":
+        expected_model_id = os.getenv("AUTORAG_INDEXING_EMBEDDING_MODEL_ID")
+        if expected_model_id is None:
+            pytest.skip(
+                f"[{tid}] AUTORAG_INDEXING_EMBEDDING_MODEL_ID not set — cannot assert embedding model"
+            )
+    assert emb.get("model_id") == expected_model_id, (
         f"[{tid}] embedding model_id mismatch: got {emb.get('model_id')!r}, "
-        f"expected {test_config.embedding_model_id!r}"
+        f"expected {expected_model_id!r}"
     )
 
     if test_config.chunk_size is not None:
@@ -169,7 +161,7 @@ def _assert_indexing_report(report: dict, test_config: "IndexingTestConfig") -> 
     reason=(
         "Indexing pipeline env incomplete "
         "(RHOAI_URL or RHOAI_KFP_URL, RHOAI_TOKEN, INPUT_DATA_BUCKET_NAME, "
-        "OGX_SECRET_NAME, AUTORAG_INDEXING_EMBEDDING_MODEL_ID; see .env.rag.example)"
+        "OGX_SECRET_NAME; see .env.rag.example)"
     ),
 )
 class TestAutoRAGIndexingFunctional:
@@ -206,6 +198,11 @@ class TestAutoRAGIndexingFunctional:
             timeout,
         )
         elapsed = time.monotonic() - start
+        bucket = (indexing_functional_env_config or {}).get("s3_bucket_artifacts")
+        if bucket:
+            s3_cleanup_tracker.track_artifact_prefix(
+                bucket, f"{indexing_pipeline_run_target.artifact_prefix}/{run_id}"
+            )
         state = _get_run_state(detail)
         failed_task_names = _get_failed_task_names(kfp_client_indexing_functional, run_id)
 
@@ -283,6 +280,11 @@ class TestAutoRAGIndexingFunctional:
             pipeline_run_timeout,
         )
         elapsed = time.monotonic() - start
+        bucket = (indexing_functional_env_config or {}).get("s3_bucket_artifacts")
+        if bucket:
+            s3_cleanup_tracker.track_artifact_prefix(
+                bucket, f"{indexing_pipeline_run_target.artifact_prefix}/{run_id}"
+            )
         state = _get_run_state(detail)
 
         logger.info(

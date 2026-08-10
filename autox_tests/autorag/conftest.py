@@ -17,7 +17,6 @@ from autox_tests.lib.managed_pipelines import (
 )
 from autox_tests.lib.pipeline_yaml_sources import (
     PIPELINE_YAML_AUTORAG_ENV,
-    PIPELINE_YAML_AUTORAG_INDEXING_ENV,
 )
 from autox_tests.lib.s3_data import S3CleanupTracker
 from autox_tests.lib.settings import (
@@ -322,11 +321,45 @@ def s3_teardown(s3_client_functional, s3_cleanup_tracker):
 
 
 @pytest.fixture(scope="session", autouse=True)
+def s3_teardown_indexing(s3_client_indexing_functional, s3_cleanup_tracker):
+    """Session-scoped teardown: delete indexing pipeline artifacts from S3.
+
+    Mirrors s3_teardown but uses the indexing-pipeline S3 client so cleanup
+    works even when the optimization pipeline is not configured.
+    Set ``AUTORAG_FUNCTIONAL_TEST_KEEP_ARTIFACTS=true`` to skip deletion.
+    """
+    yield
+    if s3_client_indexing_functional is None:
+        return
+
+    keep_artifacts = os.environ.get(
+        "AUTORAG_FUNCTIONAL_TEST_KEEP_ARTIFACTS", ""
+    ).strip().lower() in ("1", "true", "yes")
+    if keep_artifacts:
+        return
+
+    from autox_tests.lib.s3_data import delete_s3_objects, list_s3_objects
+
+    for bucket, prefixes in s3_cleanup_tracker.artifact_prefixes.items():
+        for prefix in prefixes:
+            objects = list_s3_objects(s3_client_indexing_functional, bucket, prefix)
+            if objects:
+                keys = [o["Key"] for o in objects]
+                count = delete_s3_objects(s3_client_indexing_functional, bucket, keys)
+                logger.info(
+                    "Deleted %d indexing artifact objects from s3://%s/%s",
+                    count,
+                    bucket,
+                    prefix,
+                )
+
+
+@pytest.fixture(scope="session", autouse=True)
 def upload_datasets_if_requested(functional_env_config, s3_client_functional):
     """Upload test datasets to S3 at session start when ``AUTORAG_UPLOAD_TEST_DATASETS`` is set.
 
     When set to ``1``, ``true``, or ``yes``, input and test datasets referenced in
-    test_configs.json are uploaded from the local ``data/`` directory to S3 before any
+    optimisation_test_configs.json are uploaded from the local ``data/`` directory to S3 before any
     tests run. When unset, datasets are assumed to already be present in S3.
 
     Input data keys are uploaded to ``INPUT_DATA_BUCKET_NAME``; test data keys to

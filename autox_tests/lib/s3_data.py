@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import mimetypes
 from pathlib import Path
@@ -117,6 +118,16 @@ def upload_tree_to_s3_prefix(
         rel = path.relative_to(local_root)
         key = f"{prefix}/{rel.as_posix()}" if prefix else rel.as_posix()
         upload_file_to_s3(s3_client, bucket=bucket, key=key, local_path=path)
+
+
+def read_s3_json(s3_client: Any, bucket: str, key: str) -> dict | None:
+    """Download and JSON-parse an S3 object; returns None and warns on failure."""
+    try:
+        resp = s3_client.get_object(Bucket=bucket, Key=key)
+        return json.loads(resp["Body"].read().decode("utf-8"))
+    except Exception as exc:
+        logger.warning("Failed to read s3://%s/%s: %s", bucket, key, exc)
+        return None
 
 
 def list_s3_objects(s3_client: Any, bucket: str, prefix: str) -> list[dict]:
