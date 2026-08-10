@@ -43,6 +43,7 @@ from autorag_benchmark.datasets import html_rag  # noqa: E402, F401
 from autorag_benchmark.datasets import nomiracl_dataset  # noqa: E402, F401
 from autorag_benchmark.datasets import mlqa_dataset  # noqa: E402, F401
 from autorag_benchmark.datasets import mkqa_dataset  # noqa: E402, F401
+from autorag_benchmark.datasets import enterprise_ragbench  # noqa: E402, F401
 
 __all__ = [
     "REGISTRY",

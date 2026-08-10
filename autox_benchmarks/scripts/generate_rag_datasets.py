@@ -63,7 +63,7 @@ def main():
     parser.add_argument(
         "--dataset",
         required=True,
-        choices=["beir", "open_ragbench", "slidevqa", "html_rag", "nomiracl", "mlqa", "mkqa"],
+        choices=["beir", "open_ragbench", "slidevqa", "html_rag", "nomiracl", "mlqa", "mkqa", "enterprise_ragbench"],
         help="Dataset to generate",
     )
 
@@ -147,6 +147,46 @@ def main():
              "- only for --dataset mkqa (default: en)",
     )
 
+    # EnterpriseRAG-Bench specific options
+    parser.add_argument(
+        "--erb-source-type",
+        default="confluence",
+        choices=["slack", "gmail", "linear", "google_drive", "hubspot",
+                 "fireflies", "github", "jira", "confluence", "all"],
+        help="EnterpriseRAG-Bench source type filter "
+             "- only for --dataset enterprise_ragbench (default: confluence)",
+    )
+    parser.add_argument(
+        "--erb-category",
+        default=None,
+        choices=["basic", "semantic", "intra_document_reasoning", "project_related",
+                 "constrained", "conflicting_info", "completeness", "miscellaneous",
+                 "high_level", "info_not_found"],
+        help="EnterpriseRAG-Bench question category filter "
+             "- only for --dataset enterprise_ragbench (default: all categories)",
+    )
+    parser.add_argument(
+        "--erb-include-all",
+        action="store_true",
+        help="Include all 500 questions and all documents from EnterpriseRAG-Bench "
+             "(overrides --num-samples and --erb-source-type)",
+    )
+    parser.add_argument(
+        "--erb-distractor-docs",
+        type=int,
+        default=500,
+        help="Number of non-gold documents to add to the KB so retrieval is a "
+             "real task during HPO (seeded sample) "
+             "- only for --dataset enterprise_ragbench (default: 500)",
+    )
+    parser.add_argument(
+        "--erb-local-dir",
+        default=None,
+        help="Path to the onyx 'generated_data' corpus dir "
+             "(default: ENTERPRISE_RAGBENCH_DIR env or known clone locations) "
+             "- only for --dataset enterprise_ragbench",
+    )
+
     # S3 upload options
     parser.add_argument(
         "--upload-to-s3",
@@ -195,6 +235,10 @@ def main():
             dataset_name = f"mlqa_{args.mlqa_language}_{args.mlqa_split}"
         elif args.dataset == "mkqa":
             dataset_name = f"mkqa_{args.mkqa_language}"
+        elif args.dataset == "enterprise_ragbench":
+            dataset_name = f"enterprise_ragbench_{args.erb_source_type}"
+            if args.erb_category:
+                dataset_name += f"_{args.erb_category}"
         args.output_dir = Path("./generated_datasets") / dataset_name / args.output_format
 
     kb_dir = args.output_dir / "knowledge_base"
@@ -220,6 +264,14 @@ def main():
         options["split"] = args.mlqa_split
     elif args.dataset == "mkqa":
         options["language"] = args.mkqa_language
+    elif args.dataset == "enterprise_ragbench":
+        options["source_type"] = args.erb_source_type
+        options["include_all"] = args.erb_include_all
+        options["distractor_docs"] = args.erb_distractor_docs
+        if args.erb_local_dir:
+            options["local_dir"] = args.erb_local_dir
+        if args.erb_category:
+            options["question_category"] = args.erb_category
 
     # Generate dataset
     print(f"\n{'='*60}")
@@ -243,6 +295,12 @@ def main():
         print(f"Split: {args.mlqa_split}")
     elif args.dataset == "mkqa":
         print(f"Language: {args.mkqa_language}")
+    elif args.dataset == "enterprise_ragbench":
+        print(f"Source type: {args.erb_source_type}")
+        if args.erb_category:
+            print(f"Category: {args.erb_category}")
+        if args.erb_include_all:
+            print(f"Include all: True (overrides num_samples and source_type)")
     print()
 
     try:
@@ -323,6 +381,11 @@ def main():
             elif args.dataset == "mkqa":
                 # Structure: datasets/rag/mkqa/{language}/{format}/{num_samples}
                 args.s3_prefix = f"datasets/rag/mkqa/{args.mkqa_language}/{args.output_format}/{args.num_samples}"
+            elif args.dataset == "enterprise_ragbench":
+                # Structure: datasets/rag/enterprise_ragbench/{source_type}/{format}/{num_samples}
+                src = "all" if args.erb_include_all else args.erb_source_type
+                samples = "all" if args.erb_include_all else str(args.num_samples)
+                args.s3_prefix = f"datasets/rag/enterprise_ragbench/{src}/{args.output_format}/{samples}"
             else:
                 # Fallback for other datasets
                 args.s3_prefix = f"datasets/rag/{args.dataset}/{args.output_format}/{args.num_samples}"
@@ -379,6 +442,12 @@ def main():
     elif args.dataset == "mkqa":
         dataset_id = f"mkqa-{args.mkqa_language}-{args.num_samples}-{args.output_format}"
         dataset_name = f"MKQA {args.mkqa_language.upper()} ({args.num_samples}) {args.output_format.upper()}"
+    elif args.dataset == "enterprise_ragbench":
+        src = "all" if args.erb_include_all else args.erb_source_type
+        samples = "all" if args.erb_include_all else str(args.num_samples)
+        dataset_id = f"enterprise-ragbench-{src}-{samples}-{args.output_format}"
+        src_label = src.replace("_", " ").title()
+        dataset_name = f"EnterpriseRAG-Bench {src_label} ({samples}) {args.output_format.upper()}"
 
     if args.upload_to_s3:
         print(f"""

@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 # Import existing S3 utilities
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / "e2e-tests" / "lib"))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "autox_tests" / "lib"))
 from s3_data import upload_file_to_s3, upload_tree_to_s3_prefix, ensure_s3_bucket_exists  # noqa: E402
 
 from benchmark_common.credentials import load_credentials_overlay  # noqa: E402
