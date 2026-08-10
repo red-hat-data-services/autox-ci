@@ -1,0 +1,32 @@
+---
+title: "AutoRAG Pipeline Architecture"
+format: html
+---
+
+# Pipeline Architecture
+
+The AutoRAG pipeline consists of six sequential stages, each implemented as a Kubeflow Pipeline component running in a container based on the `odh-autorag` image.
+
+## Stage 1: Document Discovery
+
+The document discovery stage lists objects in the configured S3 bucket and filters them by supported file extension. It applies optional size-based sampling to limit the corpus size, with a default maximum of 1 GB. Documents referenced in benchmark test data are prioritized during sampling to ensure evaluation coverage.
+
+## Stage 2: Text Extraction
+
+Text extraction downloads documents from S3 and converts them to DoclingDocument JSON files using the Docling library. Processing runs in parallel using a multiprocessing pool with configurable worker count. An error tolerance parameter allows the pipeline to continue even if some documents fail to convert.
+
+## Stage 3: Test Data Loading
+
+Benchmark data consisting of questions and reference answers is loaded from S3. The questions are used to evaluate RAG configurations during optimization.
+
+## Stage 4: Search Space Preparation
+
+The search space defines the hyperparameters to optimize. This stage builds the search space from available models and configurable parameter ranges, optionally pre-selecting models based on language detection results.
+
+## Stage 5: RAG Templates Optimization
+
+The core optimization stage runs the HPO loop. For each parameter combination, it indexes documents, queries the vector store, generates answers, and evaluates quality using the benchmark data. The GAM optimizer guides the search toward high-performing configurations.
+
+## Stage 6: Assets Generation
+
+The final stage produces output artifacts including the best RAG pattern (JSON), indexing and inference Jupyter notebooks, evaluation results, and a leaderboard HTML report.

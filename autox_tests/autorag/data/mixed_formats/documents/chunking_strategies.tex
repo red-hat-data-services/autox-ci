@@ -1,0 +1,23 @@
+\documentclass{article}
+\title{Chunking Strategies in AutoRAG}
+\author{AutoRAG Documentation}
+\date{2026}
+
+\begin{document}
+\maketitle
+
+\section{Introduction}
+Document chunking is a critical step in the RAG pipeline. The choice of chunking strategy directly impacts retrieval quality and the overall performance of the RAG system. AutoRAG supports two chunking methods: hybrid and recursive.
+
+\section{Hybrid Chunking}
+The hybrid chunking method uses Docling's HybridChunker, which is structure-aware. It preserves document hierarchy by respecting heading boundaries, table cells, and figure captions. Chunks are enriched with contextual information from parent headings, improving retrieval relevance.
+
+Hybrid chunking does not support chunk overlap. Each chunk boundary aligns with a structural element in the document. The maximum chunk size is configurable between 128 and 2048 tokens.
+
+\section{Recursive Chunking}
+The recursive chunking method uses LangChain's RecursiveCharacterTextSplitter. It first exports the DoclingDocument to markdown format, then splits the text recursively using a hierarchy of separators (paragraph breaks, newlines, spaces). This method supports configurable chunk overlap from 0 to 256 tokens.
+
+\section{Token Estimation}
+Both chunkers use an approximate tokenizer that estimates one token per four characters. This avoids the overhead of loading a full tokenizer model while providing reasonable chunk size control.
+
+\end{document}

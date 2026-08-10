@@ -39,9 +39,11 @@ from .utils import (
     download_and_execute_automl_notebook,
     find_leaderboard_html,
     find_test_dataset_csv,
+    find_top_model_predictor_prefix,
     rows_to_v2_inputs,
     run_deployment_test,
 )
+from autox_tests.lib.s3_data import list_s3_objects
 
 logger = logging.getLogger(__name__)
 
@@ -173,6 +175,26 @@ class TestAutoMLTimeseriesFunctional:
                     f"'{TS_PRIMARY_METRIC}': {list(metrics.keys())}"
                 )
 
+            # Timeseries predictors must ship predictor_metadata.json next to predictor.pkl.
+            top_model_name = model_entries[0]["model_name"]
+            predictor_prefix = find_top_model_predictor_prefix(
+                s3_client_automl_functional, bucket, prefix, top_model_name
+            )
+            assert predictor_prefix is not None, (
+                f"[{test_config.id}] Predictor prefix not found for model '{top_model_name}' under {prefix}"
+            )
+            predictor_files = {
+                obj["Key"].split("/")[-1]
+                for obj in list_s3_objects(
+                    s3_client_automl_functional, bucket, predictor_prefix
+                )
+            }
+            for expected_file in ("predictor.pkl", "predictor_metadata.json"):
+                assert expected_file in predictor_files, (
+                    f"[{test_config.id}] {expected_file} not found under "
+                    f"s3://{bucket}/{predictor_prefix} (found: {sorted(predictor_files) or 'nothing'})"
+                )
+
             assert leaderboard_key is not None, (
                 f"[{test_config.id}] No leaderboard HTML artifact found under {prefix}"
             )
@@ -192,13 +214,6 @@ class TestAutoMLTimeseriesFunctional:
                 )
 
             if DEPLOY_AFTER_TRAINING and model_entries:
-                ts_env_vars: dict[str, str] = {}
-                if test_config.id_column != "item_id":
-                    ts_env_vars["AUTOGLUON_TS_ID_COLUMN"] = test_config.id_column
-                if test_config.timestamp_column != "timestamp":
-                    ts_env_vars["AUTOGLUON_TS_TIMESTAMP_COLUMN"] = (
-                        test_config.timestamp_column
-                    )
                 v2_inputs = (
                     rows_to_v2_inputs(test_config.inference_sample)
                     if test_config.inference_sample
@@ -214,7 +229,6 @@ class TestAutoMLTimeseriesFunctional:
                     automl_functional_config=automl_functional_config,
                     temp_kubeconfig_path=rhoai_cluster_kubeconfig,
                     instances=test_config.inference_sample or None,
-                    isvc_env_vars=ts_env_vars or None,
                     v2_inputs=v2_inputs,
                     known_covariates=test_config.known_covariates_sample or None,
                 )
