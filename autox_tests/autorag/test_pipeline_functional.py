@@ -4,7 +4,7 @@ These tests require a Red Hat OpenShift AI (RHOAI) cluster with Data Science Pip
 enabled, and environment variables set for cluster URL, credentials, and pipeline
 parameters. When not set, tests are skipped. See .env.example for required variables.
 
-Test scenarios are defined in test_configs.json and loaded via test_configs.py. Each
+Test scenarios are defined in optimisation_test_configs.json and loaded via configs.py. Each
 scenario specifies pipeline parameter overrides and an expected result (pass or fail).
 Filter scenarios by tags with RHOAI_TEST_CONFIG_TAGS (e.g. smoke, milvus-lite).
 

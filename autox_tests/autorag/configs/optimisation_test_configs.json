@@ -2,7 +2,7 @@
     {
         "id": "TC-F-1",
         "description": "Verify failure on not supported 'vector_io_provider_id'.",
-        "tags": ["negative"],
+        "tags": ["negative", "optimization", "optimisation"],
         "expected_result": "fail",
         "vector_io_provider_type": null,
         "vector_io_provider_id": "not-supported-provider-id",
@@ -16,7 +16,7 @@
     {
         "id": "TC-F-2",
         "description": "Verify failure on provided incorrect models.",
-        "tags": [],
+        "tags": ["optimisation"],
         "expected_result": "fail",
         "vector_io_provider_type": "remote::milvus",
         "vector_io_provider_id": "milvus-remote",
@@ -30,7 +30,7 @@
     {
         "id": "TC-F-3",
         "description": "Verify failure on incorrect input_data_key.",
-        "tags": [],
+        "tags": ["optimisation"],
         "expected_result": "fail",
         "vector_io_provider_type": "remote::milvus",
         "vector_io_provider_id": "milvus-remote",
@@ -44,7 +44,7 @@
     {
         "id": "TC-P-1",
         "description": "Run simple scenario using remote milvus and 4 patterns.",
-        "tags": ["smoke", "remote::milvus", "answer_correctness", "default_models"],
+        "tags": ["smoke", "remote::milvus", "answer_correctness", "default_models", "optimisation"],
         "expected_result": "pass",
         "vector_io_provider_type": "remote::milvus",
         "vector_io_provider_id": "milvus-remote",
@@ -57,7 +57,7 @@
     {
         "id": "TC-P-2",
         "description": "Run scenario using remote milvus instance, with defined embedding models.",
-        "tags": ["smoke", "remote::milvus", "faithfulness"],
+        "tags": ["smoke", "remote::milvus", "faithfulness", "optimisation"],
         "expected_result": "pass",
         "vector_io_provider_type": "remote::milvus",
         "optimization_max_rag_patterns": 4,
@@ -69,7 +69,7 @@
     {
         "id": "TC-P-3",
         "description": "Run scenario using pgvector with all available embedding and foundation models.",
-        "tags": ["remote::pgvector", "answer_correctness"],
+        "tags": ["remote::pgvector", "answer_correctness", "optimisation"],
         "expected_result": "pass",
         "vector_io_provider_type": "remote::pgvector",
         "optimization_max_rag_patterns": 6,
@@ -81,7 +81,7 @@
     {
         "id": "TC-P-4",
         "description": "Run scenario with mixed document formats (md, txt, html, xhtml, adoc, tex, eml, qmd, Rmd).",
-        "tags": ["mixed-formats", "remote::milvus", "answer_correctness"],
+        "tags": ["mixed-formats", "remote::milvus", "answer_correctness", "optimisation"],
         "expected_result": "pass",
         "vector_io_provider_type": "remote::milvus",
         "vector_io_provider_id": "milvus-remote",
