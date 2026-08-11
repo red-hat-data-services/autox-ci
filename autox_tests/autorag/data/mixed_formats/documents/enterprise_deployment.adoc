@@ -1,0 +1,26 @@
+= Enterprise Deployment Guide for AutoRAG
+
+== Overview
+
+AutoRAG is designed for enterprise deployment on Red Hat OpenShift AI. It runs as a set of Kubeflow Pipeline components that can be orchestrated through the RHOAI dashboard or programmatically via the KFP SDK.
+
+== Prerequisites
+
+* Red Hat OpenShift cluster version 4.14 or later
+* Red Hat OpenShift AI operator installed
+* Data Science Pipelines Application (DSPA) configured
+* S3-compatible object storage for document corpus and artifacts
+* OGX platform for embedding and foundation model serving
+
+== Deployment Steps
+
+. Configure S3 credentials as a Kubernetes secret in the RHOAI namespace.
+. Upload your document corpus to the configured S3 bucket.
+. Prepare benchmark data in the expected JSON format with questions and reference answers.
+. Submit the Documents RAG Optimization pipeline through the RHOAI dashboard.
+. Monitor pipeline progress through the KFP UI.
+. Download the generated RAG pattern and notebooks from the output S3 bucket.
+
+== Security Considerations
+
+All data remains within the customer's OpenShift cluster. Document processing, embedding generation, and vector store operations run as containerized workloads with configurable resource limits and network policies.

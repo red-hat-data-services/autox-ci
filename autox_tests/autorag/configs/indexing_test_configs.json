@@ -1,0 +1,52 @@
+[
+    {
+        "id": "IDX-F-1",
+        "description": "Verify failure on unsupported vector_io_provider_id.",
+        "tags": ["negative", "indexing"],
+        "expected_result": "fail",
+        "vector_io_provider_id": "not-supported-provider-id",
+        "embedding_model_id": "maas-embedding/redhataibge-m3",
+        "input_data_key": "datasets/rag/rh_summit_2026/documents",
+        "expected_failing_task": ["documents-indexing"]
+    },
+    {
+        "id": "IDX-F-2",
+        "description": "Verify failure on non-existing input_data_key.",
+        "tags": ["negative", "indexing", "remote::milvus"],
+        "expected_result": "fail",
+        "vector_io_provider_id": "milvus-remote",
+        "embedding_model_id": "maas-embedding/redhataibge-m3",
+        "input_data_key": "non/existing/path/to/documents",
+        "expected_failing_task": ["documents-discovery"]
+    },
+    {
+        "id": "IDX-F-3",
+        "description": "Verify failure on non-existing embedding_model_id.",
+        "tags": ["negative", "indexing", "remote::milvus"],
+        "expected_result": "fail",
+        "vector_io_provider_id": "milvus-remote",
+        "embedding_model_id": "non-existing-embedding-model-id-for-failure",
+        "input_data_key": "datasets/rag/rh_summit_2026/documents",
+        "expected_failing_task": ["documents-indexing"]
+    },
+    {
+        "id": "IDX-P-1",
+        "description": "Smoke test: index documents with remote milvus and default chunking settings.",
+        "tags": ["smoke", "remote::milvus", "indexing"],
+        "expected_result": "pass",
+        "vector_io_provider_id": "milvus-remote",
+        "embedding_model_id": "maas-embedding/redhataibge-m3",
+        "input_data_key": "datasets/rag/rh_summit_2026/documents"
+    },
+    {
+        "id": "IDX-P-2",
+        "description": "Index documents with custom chunk_size and chunk_overlap.",
+        "tags": ["remote::milvus", "indexing"],
+        "expected_result": "pass",
+        "vector_io_provider_id": "milvus-remote",
+        "embedding_model_id": "maas-embedding/redhataibge-m3",
+        "input_data_key": "datasets/rag/rh_summit_2026/documents",
+        "chunk_size": 512,
+        "chunk_overlap": 50
+    }
+]

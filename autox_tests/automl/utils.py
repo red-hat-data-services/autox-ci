@@ -16,7 +16,8 @@ from pathlib import Path
 from autox_tests.lib.clients import make_kfp_client, make_s3_client  # noqa: F401
 from autox_tests.lib.k8s_utils import load_k8s_config
 from autox_tests.lib.kfp_run_state import _normalize_state
-from autox_tests.lib.s3_data import list_s3_objects
+from autox_tests.lib.s3_data import list_s3_objects, read_s3_json
+from autox_tests.lib.notebooks import NOTEBOOK_KERNEL_NAME, ensure_notebook_kernel_registered
 
 logger = logging.getLogger(__name__)
 
@@ -176,14 +177,6 @@ def _get_failed_task_names(client, run_id: str) -> list[str]:
         return []
 
 
-def read_s3_json(s3_client, bucket: str, key: str) -> dict | None:
-    """Read and parse a JSON file from S3; returns None on failure."""
-    try:
-        resp = s3_client.get_object(Bucket=bucket, Key=key)
-        return json.loads(resp["Body"].read().decode("utf-8"))
-    except Exception as e:
-        logger.warning("Failed to read s3://%s/%s: %s", bucket, key, e)
-        return None
 
 
 def collect_model_metrics_and_sizes(
@@ -1539,8 +1532,9 @@ def download_and_execute_automl_notebook(
             os.environ.clear()
             os.environ.update(filtered_env)
 
+            ensure_notebook_kernel_registered()
             pm.execute_notebook(
-                str(input_path), str(output_path), kernel_name="python3"
+                str(input_path), str(output_path), kernel_name=NOTEBOOK_KERNEL_NAME
             )
         except pm.PapermillExecutionError as e:
             raise AssertionError(

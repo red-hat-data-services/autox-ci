@@ -1,0 +1,29 @@
+From: releases@redhat.com
+To: platform-users@redhat.com
+Subject: AutoRAG Document Format Support Expansion - RHOAI 3.6
+Date: Thu, 17 Jul 2026 10:00:00 +0000
+MIME-Version: 1.0
+Content-Type: text/plain; charset="UTF-8"
+
+Dear RHOAI Users,
+
+We are pleased to announce expanded document format support in AutoRAG for RHOAI 3.6.
+
+In addition to the existing supported formats (PDF, DOCX, PPTX, Markdown, HTML, and plain text), AutoRAG now supports the following document formats:
+
+- OpenDocument Text (.odt)
+- OpenDocument Presentation (.odp)
+- AsciiDoc (.adoc)
+- LaTeX (.tex)
+- EPUB (.epub)
+- Email (.eml)
+- Quarto Markdown (.qmd)
+- R Markdown (.Rmd)
+- XHTML (.xhtml)
+
+These formats are supported end-to-end through the document discovery, text extraction, and indexing stages of the AutoRAG pipeline. All formats are converted to the DoclingDocument representation using the Docling library version 2.113.0.
+
+For questions or feedback, please contact the RHOAI platform team.
+
+Best regards,
+The Red Hat OpenShift AI Team

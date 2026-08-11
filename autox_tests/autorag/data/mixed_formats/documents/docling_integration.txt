@@ -1,0 +1,13 @@
+Docling Integration in AutoRAG
+
+Docling is the document conversion library used by AutoRAG for text extraction. It converts documents from various formats into a unified DoclingDocument representation that preserves document structure including headings, paragraphs, tables, and figures.
+
+The text extraction pipeline works as follows:
+1. Documents are downloaded from S3 storage concurrently.
+2. Each document is converted using the Docling DocumentConverter.
+3. The resulting DoclingDocument is saved as a JSON file for downstream processing.
+4. Plain text files bypass the converter and are wrapped directly into a DoclingDocument.
+
+Docling supports format-specific pipeline options. For example, PDF processing can optionally enable OCR and table structure recognition using the TableFormer model. Word and PowerPoint documents use paginated pipeline options that preserve page-level structure.
+
+The chunking stage then splits DoclingDocument objects into smaller chunks using either the structure-aware HybridChunker or the token-based RecursiveCharacterTextSplitter from LangChain.

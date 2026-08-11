@@ -246,6 +246,19 @@ def datascience_pipelines_application(
     )
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _notebook_kernel_cleanup():
+    """Remove the test Jupyter kernel spec after the session if it was registered."""
+    yield
+    from autox_tests.lib.notebooks import (
+        cleanup_notebook_kernel,
+        ensure_notebook_kernel_registered,
+    )
+
+    if ensure_notebook_kernel_registered.cache_info().currsize > 0:
+        cleanup_notebook_kernel()
+
+
 def make_kfp_client_for_session(
     *,
     namespace_config: dict[str, Any],

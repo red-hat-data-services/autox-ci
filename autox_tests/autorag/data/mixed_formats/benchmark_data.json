@@ -1,0 +1,79 @@
+[
+  {
+    "question": "What document formats does AutoRAG support for text extraction?",
+    "correct_answers": [
+      "AutoRAG supports PDF, DOCX, PPTX, Markdown, HTML, plain text, OpenDocument formats (ODT, ODP), AsciiDoc, LaTeX, EPUB, email formats (EML), Quarto Markdown (.qmd), R Markdown (.Rmd), and XHTML."
+    ],
+    "correct_answer_document_ids": ["openshift_ai_overview.md", "release_announcement.eml"]
+  },
+  {
+    "question": "What vector store backends does AutoRAG support?",
+    "correct_answers": [
+      "AutoRAG supports Milvus (both inline Milvus Lite and remote deployment), ChromaDB for development and small-scale deployments, and PGVector as a PostgreSQL extension for vector similarity search."
+    ],
+    "correct_answer_document_ids": ["vector_stores.html"]
+  },
+  {
+    "question": "What chunking methods are available in AutoRAG and how do they differ?",
+    "correct_answers": [
+      "AutoRAG supports two chunking methods: hybrid chunking using Docling's HybridChunker which is structure-aware and preserves document hierarchy but does not support overlap, and recursive chunking using LangChain's RecursiveCharacterTextSplitter which exports to markdown first and supports configurable chunk overlap from 0 to 256 tokens."
+    ],
+    "correct_answer_document_ids": ["chunking_strategies.tex"]
+  },
+  {
+    "question": "How does the text extraction pipeline process documents?",
+    "correct_answers": [
+      "Documents are downloaded from S3 storage concurrently, each document is converted using the Docling DocumentConverter, the resulting DoclingDocument is saved as a JSON file, and plain text files bypass the converter and are wrapped directly into a DoclingDocument."
+    ],
+    "correct_answer_document_ids": ["docling_integration.txt"]
+  },
+  {
+    "question": "What optimization algorithm does AutoRAG use for hyperparameter search?",
+    "correct_answers": [
+      "AutoRAG uses Generalized Additive Models (GAM) as the primary optimization algorithm. GAM models the relationship between RAG parameters and evaluation scores, enabling efficient exploration of the search space. A random search optimizer is also available as a baseline."
+    ],
+    "correct_answer_document_ids": ["optimization_process.xhtml"]
+  },
+  {
+    "question": "What are the prerequisites for deploying AutoRAG on OpenShift?",
+    "correct_answers": [
+      "Prerequisites include Red Hat OpenShift cluster version 4.14 or later, Red Hat OpenShift AI operator installed, Data Science Pipelines Application (DSPA) configured, S3-compatible object storage for document corpus and artifacts, and OGX platform for embedding and foundation model serving."
+    ],
+    "correct_answer_document_ids": ["enterprise_deployment.adoc"]
+  },
+  {
+    "question": "What are the six stages of the AutoRAG pipeline?",
+    "correct_answers": [
+      "The six stages are: Document Discovery (list and filter S3 objects), Text Extraction (convert to DoclingDocument), Test Data Loading (load benchmark Q&A data), Search Space Preparation (build hyperparameter search space), RAG Templates Optimization (run HPO loop), and Assets Generation (produce pattern JSON, notebooks, and reports)."
+    ],
+    "correct_answer_document_ids": ["pipeline_architecture.qmd"]
+  },
+  {
+    "question": "What evaluation metrics does AutoRAG use to measure RAG quality?",
+    "correct_answers": [
+      "AutoRAG uses answer correctness (semantic similarity and factual overlap), faithfulness (whether answers are grounded in retrieved context), context relevance (quality of retrieval), and LLM-as-a-judge for subjective quality assessment on dimensions like helpfulness, coherence, and completeness."
+    ],
+    "correct_answer_document_ids": ["evaluation_metrics.Rmd"]
+  },
+  {
+    "question": "How does AutoRAG manage S3 credentials and download documents concurrently?",
+    "correct_answers": [
+      "S3 credentials are managed through Kubernetes secrets and resolved from explicit parameters first, then environment variables (AWS_S3_ENDPOINT, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_DEFAULT_REGION). During text extraction, documents are downloaded concurrently using a ThreadPoolExecutor with a maximum of 8 threads, sorted by size in descending order to avoid straggler problems."
+    ],
+    "correct_answer_document_ids": ["s3_storage.odt"]
+  },
+  {
+    "question": "How does AutoRAG handle embedding model selection for multilingual corpora?",
+    "correct_answers": [
+      "The search space preparation stage can automatically detect the language of the document corpus and pre-select appropriate embedding models. For multilingual corpora, BGE-M3 is commonly used. For English-only workloads, specialized sentence transformer models may provide better performance."
+    ],
+    "correct_answer_document_ids": ["model_serving.odp"]
+  },
+  {
+    "question": "How does AutoRAG ensure data privacy and what access controls are in place?",
+    "correct_answers": [
+      "All document processing occurs within the customer's OpenShift cluster, ensuring sensitive corporate documents never leave the organization's infrastructure boundary. Pipeline access is controlled through OpenShift RBAC. S3 credentials and OGX API keys are stored as Kubernetes secrets and injected into pipeline pods at runtime."
+    ],
+    "correct_answer_document_ids": ["security_compliance.epub"]
+  }
+]
