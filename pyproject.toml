@@ -45,6 +45,7 @@ test_autorag = [
   "notebook",
   "papermill",
   "pip",
+  "ipykernel",
   "ai4rag~=0.10.4",
 ]
 

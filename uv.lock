@@ -503,6 +503,7 @@ test-automl = [
 ]
 test-autorag = [
     { name = "ai4rag" },
+    { name = "ipykernel" },
     { name = "nbformat" },
     { name = "notebook" },
     { name = "papermill" },
@@ -523,6 +524,7 @@ requires-dist = [
     { name = "huggingface-hub", marker = "extra == 'benchmarks'", specifier = ">=0.20.0" },
     { name = "ipykernel", specifier = ">=7.2.0" },
     { name = "ipykernel", marker = "extra == 'test-automl'" },
+    { name = "ipykernel", marker = "extra == 'test-autorag'" },
     { name = "kfp", specifier = ">=2.16.1" },
     { name = "kubernetes", specifier = ">=28.0" },
     { name = "lxml", marker = "extra == 'benchmarks'", specifier = ">=5.0,<6" },
@@ -1257,20 +1259,20 @@ resolution-markers = [
     "extra != 'extra-8-autox-ci-test-automl' and extra != 'extra-8-autox-ci-test-autorag'",
 ]
 dependencies = [
-    { name = "dill", version = "0.4.1", source = { registry = "https://pypi.org/simple" } },
-    { name = "filelock" },
+    { name = "dill", version = "0.4.1", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-8-autox-ci-test-autorag' or extra != 'extra-8-autox-ci-test-automl'" },
+    { name = "filelock", marker = "extra == 'extra-8-autox-ci-test-autorag' or extra != 'extra-8-autox-ci-test-automl'" },
     { name = "fsspec", version = "2026.6.0", source = { registry = "https://pypi.org/simple" }, extra = ["http"], marker = "extra == 'extra-8-autox-ci-test-autorag' or extra != 'extra-8-autox-ci-test-automl'" },
-    { name = "httpx" },
-    { name = "huggingface-hub" },
-    { name = "multiprocess", version = "0.70.19", source = { registry = "https://pypi.org/simple" } },
-    { name = "numpy", version = "2.5.1", source = { registry = "https://pypi.org/simple" } },
-    { name = "packaging" },
-    { name = "pandas" },
-    { name = "pyarrow", version = "25.0.0", source = { registry = "https://pypi.org/simple" } },
-    { name = "pyyaml" },
-    { name = "requests" },
-    { name = "tqdm" },
-    { name = "xxhash" },
+    { name = "httpx", marker = "extra == 'extra-8-autox-ci-test-autorag' or extra != 'extra-8-autox-ci-test-automl'" },
+    { name = "huggingface-hub", marker = "extra == 'extra-8-autox-ci-test-autorag' or extra != 'extra-8-autox-ci-test-automl'" },
+    { name = "multiprocess", version = "0.70.19", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-8-autox-ci-test-autorag' or extra != 'extra-8-autox-ci-test-automl'" },
+    { name = "numpy", version = "2.5.1", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-8-autox-ci-test-autorag' or extra != 'extra-8-autox-ci-test-automl'" },
+    { name = "packaging", marker = "extra == 'extra-8-autox-ci-test-autorag' or extra != 'extra-8-autox-ci-test-automl'" },
+    { name = "pandas", marker = "extra == 'extra-8-autox-ci-test-autorag' or extra != 'extra-8-autox-ci-test-automl'" },
+    { name = "pyarrow", version = "25.0.0", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-8-autox-ci-test-autorag' or extra != 'extra-8-autox-ci-test-automl'" },
+    { name = "pyyaml", marker = "extra == 'extra-8-autox-ci-test-autorag' or extra != 'extra-8-autox-ci-test-automl'" },
+    { name = "requests", marker = "extra == 'extra-8-autox-ci-test-autorag' or extra != 'extra-8-autox-ci-test-automl'" },
+    { name = "tqdm", marker = "extra == 'extra-8-autox-ci-test-autorag' or extra != 'extra-8-autox-ci-test-automl'" },
+    { name = "xxhash", marker = "extra == 'extra-8-autox-ci-test-autorag' or extra != 'extra-8-autox-ci-test-automl'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/0a/5b/836516269d4f618efe621661cfb6f9acc57e6f95265db3efaee48a5ffe04/datasets-5.0.1.tar.gz", hash = "sha256:ce22bb851efd7494f08aad33b940803784434f6e77763d00679a0dc45fcf686a", size = 641498, upload-time = "2026-07-28T11:09:12.016Z" }
 wheels = [
@@ -1837,7 +1839,7 @@ wheels = [
 
 [package.optional-dependencies]
 http = [
-    { name = "aiohttp" },
+    { name = "aiohttp", marker = "extra == 'extra-8-autox-ci-test-autorag' or extra != 'extra-8-autox-ci-test-automl'" },
 ]
 
 [[package]]
@@ -3249,7 +3251,7 @@ resolution-markers = [
     "extra != 'extra-8-autox-ci-test-automl' and extra != 'extra-8-autox-ci-test-autorag'",
 ]
 dependencies = [
-    { name = "dill", version = "0.4.1", source = { registry = "https://pypi.org/simple" } },
+    { name = "dill", version = "0.4.1", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-8-autox-ci-test-autorag' or extra != 'extra-8-autox-ci-test-automl'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/a2/f2/e783ac7f2aeeed14e9e12801f22529cc7e6b7ab80928d6dcce4e9f00922d/multiprocess-0.70.19.tar.gz", hash = "sha256:952021e0e6c55a4a9fe4cd787895b86e239a40e76802a789d6305398d3975897", size = 2079989, upload-time = "2026-01-19T06:47:39.744Z" }
 wheels = [
@@ -5370,10 +5372,10 @@ resolution-markers = [
     "extra != 'extra-8-autox-ci-test-automl' and extra != 'extra-8-autox-ci-test-autorag'",
 ]
 dependencies = [
-    { name = "joblib" },
-    { name = "numpy", version = "2.5.1", source = { registry = "https://pypi.org/simple" } },
-    { name = "scipy" },
-    { name = "threadpoolctl" },
+    { name = "joblib", marker = "extra == 'extra-8-autox-ci-test-autorag' or extra != 'extra-8-autox-ci-test-automl'" },
+    { name = "numpy", version = "2.5.1", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-8-autox-ci-test-autorag' or extra != 'extra-8-autox-ci-test-automl'" },
+    { name = "scipy", marker = "extra == 'extra-8-autox-ci-test-autorag' or extra != 'extra-8-autox-ci-test-automl'" },
+    { name = "threadpoolctl", marker = "extra == 'extra-8-autox-ci-test-autorag' or extra != 'extra-8-autox-ci-test-automl'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/0e/d4/40988bf3b8e34feec1d0e6a051446b1f66225f8529b9309becaeef62b6c4/scikit_learn-1.8.0.tar.gz", hash = "sha256:9bccbb3b40e3de10351f8f5068e105d0f4083b1a65fa07b6634fbc401a6287fd", size = 7335585, upload-time = "2025-12-10T07:08:53.618Z" }
 wheels = [

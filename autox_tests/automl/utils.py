@@ -17,6 +17,7 @@ from autox_tests.lib.clients import make_kfp_client, make_s3_client  # noqa: F40
 from autox_tests.lib.k8s_utils import load_k8s_config
 from autox_tests.lib.kfp_run_state import _normalize_state
 from autox_tests.lib.s3_data import list_s3_objects, read_s3_json
+from autox_tests.lib.notebooks import NOTEBOOK_KERNEL_NAME, ensure_notebook_kernel_registered
 
 logger = logging.getLogger(__name__)
 
@@ -1531,8 +1532,9 @@ def download_and_execute_automl_notebook(
             os.environ.clear()
             os.environ.update(filtered_env)
 
+            ensure_notebook_kernel_registered()
             pm.execute_notebook(
-                str(input_path), str(output_path), kernel_name="python3"
+                str(input_path), str(output_path), kernel_name=NOTEBOOK_KERNEL_NAME
             )
         except pm.PapermillExecutionError as e:
             raise AssertionError(
