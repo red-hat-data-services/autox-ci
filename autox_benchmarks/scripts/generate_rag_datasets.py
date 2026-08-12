@@ -223,7 +223,7 @@ def main():
     if args.output_dir is None:
         dataset_name = args.dataset
         if args.dataset == "beir":
-            dataset_name = f"beir_{args.beir_dataset}"
+            dataset_name = f"beir_{args.beir_dataset}_{args.beir_split}"
         elif args.dataset == "slidevqa":
             dataset_name = f"slidevqa_{args.slidevqa_split}"
         elif args.dataset == "html_rag":
@@ -360,8 +360,8 @@ def main():
         # Determine S3 prefix with proper granulation including format
         if args.s3_prefix is None:
             if args.dataset == "beir":
-                # Structure: datasets/rag/beir/{beir_dataset}/{format}/{num_samples}
-                args.s3_prefix = f"datasets/rag/beir/{args.beir_dataset}/{args.output_format}/{args.num_samples}"
+                # Structure: datasets/rag/beir/{beir_dataset}/{split}/{format}/{num_samples}
+                args.s3_prefix = f"datasets/rag/beir/{args.beir_dataset}/{args.beir_split}/{args.output_format}/{args.num_samples}"
             elif args.dataset == "open_ragbench":
                 # Structure: datasets/rag/open_ragbench/arxiv/{format}/{num_samples}
                 args.s3_prefix = f"datasets/rag/open_ragbench/arxiv/{args.output_format}/{args.num_samples}"
@@ -381,10 +381,11 @@ def main():
                 # Structure: datasets/rag/mkqa/{language}/{format}/{num_samples}
                 args.s3_prefix = f"datasets/rag/mkqa/{args.mkqa_language}/{args.output_format}/{args.num_samples}"
             elif args.dataset == "enterprise_ragbench":
-                # Structure: datasets/rag/enterprise_ragbench/{source_type}/{format}/{num_samples}
+                # Structure: datasets/rag/enterprise_ragbench/{source_type}[/{category}]/{format}/{num_samples}
                 src = "all" if args.erb_include_all else args.erb_source_type
                 samples = "all" if args.erb_include_all else str(args.num_samples)
-                args.s3_prefix = f"datasets/rag/enterprise_ragbench/{src}/{args.output_format}/{samples}"
+                category = f"/{args.erb_category}" if args.erb_category else ""
+                args.s3_prefix = f"datasets/rag/enterprise_ragbench/{src}{category}/{args.output_format}/{samples}"
             else:
                 # Fallback for other datasets
                 args.s3_prefix = f"datasets/rag/{args.dataset}/{args.output_format}/{args.num_samples}"
@@ -421,14 +422,14 @@ def main():
     dataset_name = args.dataset.replace("_", " ").title()
 
     if args.dataset == "beir":
-        dataset_id = f"beir-{args.beir_dataset}-{args.num_samples}"
-        dataset_name = f"BEIR {args.beir_dataset.title()} ({args.num_samples} samples)"
+        dataset_id = f"beir-{args.beir_dataset}-{args.beir_split}-{args.num_samples}-{args.output_format}"
+        dataset_name = f"BEIR {args.beir_dataset.title()} {args.beir_split.title()} ({args.num_samples} samples) {args.output_format.upper()}"
     elif args.dataset == "open_ragbench":
-        dataset_id = f"open-ragbench-arxiv-{args.num_samples}"
-        dataset_name = f"Open RAGBench ArXiv ({args.num_samples} samples)"
+        dataset_id = f"open-ragbench-arxiv-{args.num_samples}-{args.output_format}"
+        dataset_name = f"Open RAGBench ArXiv ({args.num_samples} samples) {args.output_format.upper()}"
     elif args.dataset == "slidevqa":
-        dataset_id = f"slidevqa-{args.slidevqa_split}-{args.num_samples}"
-        dataset_name = f"SlideVQA {args.slidevqa_split.title()} ({args.num_samples} samples)"
+        dataset_id = f"slidevqa-{args.slidevqa_split}-{args.num_samples}-{args.output_format}"
+        dataset_name = f"SlideVQA {args.slidevqa_split.title()} ({args.num_samples} samples) {args.output_format.upper()}"
     elif args.dataset == "html_rag":
         dataset_id = f"html-rag-nq-{args.nq_split}-{args.num_samples}"
         dataset_name = f"HtmlRag NQ {args.nq_split.title()} ({args.num_samples} samples)"
@@ -444,9 +445,11 @@ def main():
     elif args.dataset == "enterprise_ragbench":
         src = "all" if args.erb_include_all else args.erb_source_type
         samples = "all" if args.erb_include_all else str(args.num_samples)
-        dataset_id = f"enterprise-ragbench-{src}-{samples}-{args.output_format}"
+        category = f"-{args.erb_category}" if args.erb_category else ""
+        dataset_id = f"enterprise-ragbench-{src}{category}-{samples}-{args.output_format}"
         src_label = src.replace("_", " ").title()
-        dataset_name = f"EnterpriseRAG-Bench {src_label} ({samples}) {args.output_format.upper()}"
+        category_label = f" {args.erb_category.replace('_', ' ').title()}" if args.erb_category else ""
+        dataset_name = f"EnterpriseRAG-Bench {src_label}{category_label} ({samples}) {args.output_format.upper()}"
 
     if args.upload_to_s3:
         print(f"""
