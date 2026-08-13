@@ -1,5 +1,25 @@
 [
   {
+    "id": "TC-B-0_timeseries_two_column_synthetic_id",
+    "target": "sales",
+    "id_column": "",
+    "timestamp_column": "timestamp",
+    "known_covariates_names": [],
+    "prediction_length": 7,
+    "top_n": 2,
+    "train_data_file_key": "functional-test/timeseries/demand_single_item.csv",
+    "tags": ["timeseries", "smoke", "two_column", "synthetic_id"],
+    "inference_sample": [
+      { "__synthetic_item_id": "item_0", "timestamp": "2024-01-05 00:00:00", "sales": 50.1 },
+      { "__synthetic_item_id": "item_0", "timestamp": "2024-01-05 01:00:00", "sales": 47.8 },
+      { "__synthetic_item_id": "item_0", "timestamp": "2024-01-05 02:00:00", "sales": 44.5 },
+      { "__synthetic_item_id": "item_0", "timestamp": "2024-01-05 03:00:00", "sales": 41.2 },
+      { "__synthetic_item_id": "item_0", "timestamp": "2024-01-05 04:00:00", "sales": 38.9 },
+      { "__synthetic_item_id": "item_0", "timestamp": "2024-01-05 05:00:00", "sales": 36.7 },
+      { "__synthetic_item_id": "item_0", "timestamp": "2024-01-05 06:00:00", "sales": 35.6 }
+    ]
+  },
+  {
     "id": "TC-B-1_timeseries_fruits_with_covariate",
     "target": "Price_min",
     "id_column": "Fruit",
