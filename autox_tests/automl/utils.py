@@ -15,7 +15,7 @@ from pathlib import Path
 
 from autox_tests.lib.clients import make_kfp_client, make_s3_client  # noqa: F401
 from autox_tests.lib.k8s_utils import load_k8s_config
-from autox_tests.lib.kfp_run_state import _normalize_state
+from autox_tests.lib.kfp_run_state import _get_failed_task_names, _normalize_state  # noqa: F401
 from autox_tests.lib.s3_data import list_s3_objects
 
 logger = logging.getLogger(__name__)
@@ -152,28 +152,6 @@ def _collect_failure_details(client, run_id, config=None):
     return "\n".join(lines)
 
 
-def _get_failed_task_names(client, run_id: str) -> list[str]:
-    """Return display names of user-visible FAILED/ERROR tasks from a pipeline run."""
-    try:
-        run_detail = client.get_run(run_id)
-        run_obj = getattr(run_detail, "run", run_detail)
-        rd = getattr(run_obj, "run_details", None)
-        task_list = getattr(rd, "task_details", None) if rd else None
-        if not task_list:
-            return []
-        failed = []
-        for task in task_list:
-            name = getattr(task, "display_name", None) or getattr(task, "task_id", "?")
-            state = getattr(task, "state", None)
-            state_str = _normalize_state(state) or ""
-            if name in ("root", "executor") or name.endswith("-driver"):
-                continue
-            if state_str in ("FAILED", "ERROR", "SYSTEM_ERROR"):
-                failed.append(name)
-        return failed
-    except Exception as exc:
-        logger.warning("Could not get failed task names for run %s: %s", run_id, exc)
-        return []
 
 
 def read_s3_json(s3_client, bucket: str, key: str) -> dict | None:

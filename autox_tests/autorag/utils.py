@@ -7,7 +7,7 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-from autox_tests.lib.kfp_run_state import _normalize_state
+from autox_tests.lib.kfp_run_state import _get_failed_task_names, _normalize_state  # noqa: F401
 from autox_tests.lib.s3_data import upload_file_to_s3
 
 logger = logging.getLogger(__name__)
