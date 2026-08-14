@@ -6,7 +6,20 @@ import logging
 import os
 import time
 from dataclasses import dataclass
+from http.client import RemoteDisconnected as _RemoteDisconnected
 from typing import Any, Literal
+
+try:
+    import urllib3.exceptions as _urllib3_exc
+
+    _CONNECTION_ERRORS: tuple[type[Exception], ...] = (
+        _urllib3_exc.ProtocolError,
+        _urllib3_exc.NewConnectionError,
+        ConnectionError,
+        _RemoteDisconnected,
+    )
+except ImportError:
+    _CONNECTION_ERRORS = (ConnectionError, _RemoteDisconnected)
 
 from autox_tests.lib.env import load_tests_env
 from autox_tests.lib.settings import parse_timeout_seconds_from_env
@@ -364,6 +377,37 @@ def resolve_indexing_pipeline_target(
 _KF_DEFAULT_EXPERIMENT = "KF_PIPELINES_DEFAULT_EXPERIMENT_NAME"
 _KF_OVERRIDE_EXPERIMENT = "KF_PIPELINES_OVERRIDE_EXPERIMENT_NAME"
 
+_RUN_PIPELINE_RETRIES = 3
+_RUN_PIPELINE_RETRY_DELAY = 5  # seconds
+
+
+def _submit_run_with_retry(fn: Any, label: str, **kwargs: Any) -> Any:
+    """Call a KFP run-submission callable with retries for transient connection errors.
+
+    ``label`` is used only in warning messages (e.g. ``"run_pipeline"``).
+    """
+    last_exc: Exception | None = None
+    for attempt in range(_RUN_PIPELINE_RETRIES):
+        try:
+            return fn(**kwargs)
+        except _CONNECTION_ERRORS as e:
+            last_exc = e
+            if attempt < _RUN_PIPELINE_RETRIES - 1:
+                logger.warning(
+                    "%s connection error (attempt %d/%d), retrying in %ds: %s. "
+                    "Note: if the server processed the request before dropping the connection, "
+                    "a duplicate run may have been created.",
+                    label,
+                    attempt + 1,
+                    _RUN_PIPELINE_RETRIES,
+                    _RUN_PIPELINE_RETRY_DELAY,
+                    e,
+                )
+                time.sleep(_RUN_PIPELINE_RETRY_DELAY)
+            else:
+                raise
+    raise last_exc  # type: ignore[misc]  # unreachable when _RUN_PIPELINE_RETRIES > 0
+
 
 def submit_pipeline_run_and_wait(
     client: Any,
@@ -379,8 +423,10 @@ def submit_pipeline_run_and_wait(
     if target.mode == "package":
         if not target.package_path:
             raise ValueError("package mode requires package_path on PipelineRunTarget")
-        run = client.create_run_from_pipeline_package(
-            target.package_path,
+        run = _submit_run_with_retry(
+            client.create_run_from_pipeline_package,
+            "create_run_from_pipeline_package",
+            pipeline_file=target.package_path,
             arguments=arguments,
             run_name=run_name,
             enable_caching=False,
@@ -414,7 +460,9 @@ def submit_pipeline_run_and_wait(
             else:
                 logger.error("Failed to create experiment %r: %s", exp_name, e)
                 raise
-        run = client.run_pipeline(
+        run = _submit_run_with_retry(
+            client.run_pipeline,
+            "run_pipeline",
             experiment_id=experiment.experiment_id,
             job_name=run_name,
             pipeline_id=target.pipeline_id,
