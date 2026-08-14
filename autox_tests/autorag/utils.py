@@ -7,7 +7,7 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-from autox_tests.lib.kfp_run_state import _normalize_state
+from autox_tests.lib.kfp_run_state import _get_failed_task_names, _normalize_state  # noqa: F401
 from autox_tests.lib.notebooks import NOTEBOOK_KERNEL_NAME as _NOTEBOOK_KERNEL_NAME
 from autox_tests.lib.notebooks import ensure_notebook_kernel_registered as _ensure_notebook_kernel_registered
 from autox_tests.lib.s3_data import upload_file_to_s3
@@ -15,26 +15,6 @@ from autox_tests.lib.s3_data import upload_file_to_s3
 logger = logging.getLogger(__name__)
 
 
-def _get_failed_task_names(client, run_id: str) -> list[str]:
-    """Return display names of user-visible FAILED/ERROR tasks from a pipeline run."""
-    try:
-        run_detail = client.get_run(run_id)
-        run_obj = getattr(run_detail, "run", run_detail)
-        rd = getattr(run_obj, "run_details", None)
-        task_list = getattr(rd, "task_details", None) if rd else None
-        if not task_list:
-            return []
-        failed = []
-        for task in task_list:
-            name = getattr(task, "display_name", None) or getattr(task, "task_id", "?")
-            if name in ("root", "executor") or name.endswith("-driver"):
-                continue
-            if _normalize_state(getattr(task, "state", None)) in ("FAILED", "ERROR", "SYSTEM_ERROR"):
-                failed.append(name)
-        return failed
-    except Exception as exc:
-        logger.warning("Could not get failed task names for run %s: %s", run_id, exc)
-        return []
 
 
 def _make_docrag_run_name():
