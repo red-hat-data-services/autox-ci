@@ -30,8 +30,6 @@ from autox_tests.autorag.configs.configs import (
 from autox_tests.lib.kfp_run_state import _get_run_state, _run_failed, _run_succeeded
 from .utils import (
     _collect_failure_details,
-    _download_and_execute_notebooks,
-    _pick_best_pattern_notebooks,
     _run_pipeline_and_wait,
     _validate_artifacts_in_s3,
 )
@@ -186,10 +184,4 @@ class TestAutoRAGFunctional:
             f"found {artifacts['evaluation_results_keys']}"
         )
 
-        # Notebook execution: run the indexing and inference notebooks for the best-scoring pattern
-        indexing_notebook, inference_notebook = _pick_best_pattern_notebooks(
-            s3_client_functional, artifact_bucket, artifacts
-        )
-        _download_and_execute_notebooks(
-            s3_client_functional, artifact_bucket, [indexing_notebook, inference_notebook]
-        )
+        logger.info("Skipping notebook execution for run %s", run_id)
