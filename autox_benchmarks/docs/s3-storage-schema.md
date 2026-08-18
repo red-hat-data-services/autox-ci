@@ -41,7 +41,7 @@ flowchart TB
 ```
 
 - **Training data**: Objects at keys given by each manifest row’s `train_data_file_key` (often under a `datasets/` prefix). Not moved by the orchestrator.
-- **KFP runtime artifacts**: Under `{artifact_s3_prefix}/{run_id}/…` (e.g. `leaderboard-evaluation/…/html_artifact`). Owned by the pipeline runtime, not rewritten by this tool.
+- **KFP runtime artifacts**: Under `{artifact_s3_prefix}/{run_id}/…` (e.g. `autogluon-models-training/…/html_artifact` and `…/models_artifact/<Model>/metrics/metrics.json`). Owned by the pipeline runtime, not rewritten by this tool.
 - **Benchmark bundles** (this feature): Under `{benchmark_s3_prefix}/{batch_id}/…`, written after each dataset run and again at the end of the suite.
 
 Default `benchmark_s3_prefix` is `benchmarks` (configurable in `[storage]`).

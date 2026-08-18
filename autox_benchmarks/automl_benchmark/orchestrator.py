@@ -29,9 +29,11 @@ from automl_benchmark.s3_benchmark_upload import (
     upload_single_dataset_results,
 )
 from automl_benchmark.s3_experiment_dedupe import try_load_cached_result_row
+from automl_benchmark.leaderboard_merge import enrich_result_row_with_scores
 from automl_benchmark.s3_leaderboard_artifact import (
     discover_leaderboard_html_s3_uri,
     download_leaderboard_html_to_dir,
+    download_leaderboard_scores_from_models_artifact,
 )
 from automl_benchmark.settings import (
     BenchmarkSettings,
@@ -142,6 +144,64 @@ def _validate_dataset_entry(ds: dict[str, Any], ds_id: str) -> str | None:
     if not ds.get("label_column") or not ds.get("task_type"):
         return f"Dataset {ds_id} missing label_column or task_type"
     return None
+
+
+def _attach_leaderboard_artifacts_to_row(
+    *,
+    row: dict[str, Any],
+    ds: dict[str, Any],
+    settings: BenchmarkSettings,
+    s3_cfg: dict[str, Any],
+    output_csv: Path,
+) -> dict[str, Any]:
+    """Download scores/HTML for a finished run and flatten best_* score columns onto the row."""
+    rid = str(row.get("run_id") or "").strip()
+    if not rid or not s3_cfg_usable(s3_cfg):
+        return row
+
+    root = (
+        settings.artifact_s3_root_timeseries
+        if is_timeseries_dataset(ds)
+        else settings.artifact_s3_root_tabular
+    )
+    out_parent = output_csv.resolve().parent
+
+    if not str(row.get("leaderboard_scores_path") or "").strip():
+        row["leaderboard_scores_path"] = download_leaderboard_scores_from_models_artifact(
+            bucket=settings.train_data_bucket_name,
+            s3_cfg=s3_cfg,
+            run_id=rid,
+            is_timeseries=is_timeseries_dataset(ds),
+            output_csv_parent=out_parent,
+            artifact_root_prefix=root,
+        )
+
+    if not str(row.get("leaderboard_html_s3_uri") or "").strip():
+        row["leaderboard_html_s3_uri"] = discover_leaderboard_html_s3_uri(
+            bucket=settings.train_data_bucket_name,
+            s3_cfg=s3_cfg,
+            run_id=rid,
+            is_timeseries=is_timeseries_dataset(ds),
+            artifact_root_prefix=root,
+        )
+
+    uri = str(row.get("leaderboard_html_s3_uri") or "").strip()
+    if uri and not str(row.get("leaderboard_html_path") or "").strip():
+        local_rel = download_leaderboard_html_to_dir(
+            s3_cfg,
+            uri,
+            out_parent,
+            run_id=rid,
+        )
+        if local_rel:
+            row["leaderboard_html_path"] = local_rel
+
+    return enrich_result_row_with_scores(row, out_parent)
+
+
+def _flush_results_csv(rows: list[dict[str, Any]], output_csv: Path) -> None:
+    write_results_csv(rows, output_csv)
+    logger.info("Updated %s (%d row(s))", output_csv, len(rows))
 
 
 class BenchmarkOrchestrator:
@@ -281,6 +341,7 @@ class BenchmarkOrchestrator:
                         label,
                         redact_arguments(arguments),
                     )
+                    _flush_results_csv(rows, output_csv)
                     continue
 
                 assert client is not None
@@ -307,7 +368,16 @@ class BenchmarkOrchestrator:
                             fingerprint=experiment_fp,
                         )
                         if cached is not None:
+                            # Backfill scores onto cached rows when local/S3 artifacts exist.
+                            cached = _attach_leaderboard_artifacts_to_row(
+                                row=cached,
+                                ds=ds,
+                                settings=settings,
+                                s3_cfg=s3_cfg_dedupe,
+                                output_csv=output_csv,
+                            )
                             rows.append(cached)
+                            _flush_results_csv(rows, output_csv)
                             continue
 
                 try:
@@ -331,6 +401,7 @@ class BenchmarkOrchestrator:
                     if timed_out:
                         tout = timeout_row(base, rid, settings.timeout_seconds)
                         rows.append(tout)
+                        _flush_results_csv(rows, output_csv)
                         _maybe_upload_benchmark_row(
                             cfg=cfg,
                             settings=settings,
@@ -358,29 +429,15 @@ class BenchmarkOrchestrator:
                     if is_success_state(state) and rid.strip():
                         s3_cfg = cfg.get("s3")
                         if isinstance(s3_cfg, dict) and s3_cfg:
-                            root = (
-                                settings.artifact_s3_root_timeseries
-                                if is_timeseries_dataset(ds)
-                                else settings.artifact_s3_root_tabular
-                            )
-                            row["leaderboard_html_s3_uri"] = discover_leaderboard_html_s3_uri(
-                                bucket=settings.train_data_bucket_name,
+                            row = _attach_leaderboard_artifacts_to_row(
+                                row=row,
+                                ds=ds,
+                                settings=settings,
                                 s3_cfg=s3_cfg,
-                                run_id=rid,
-                                is_timeseries=is_timeseries_dataset(ds),
-                                artifact_root_prefix=root,
+                                output_csv=output_csv,
                             )
-                            uri = str(row.get("leaderboard_html_s3_uri") or "").strip()
-                            if uri:
-                                local_rel = download_leaderboard_html_to_dir(
-                                    s3_cfg,
-                                    uri,
-                                    output_csv.resolve().parent,
-                                    run_id=rid,
-                                )
-                                if local_rel:
-                                    row["leaderboard_html_path"] = local_rel
                     rows.append(row)
+                    _flush_results_csv(rows, output_csv)
                     _maybe_upload_benchmark_row(
                         cfg=cfg,
                         settings=settings,
@@ -405,11 +462,13 @@ class BenchmarkOrchestrator:
                 except Exception as e:
                     logger.exception("Run failed for dataset %s preset=%s", ds_id, preset)
                     rows.append(submit_error_row(base, str(e)))
+                    _flush_results_csv(rows, output_csv)
                     if fail_fast:
                         stop = True
                         break
 
-        write_results_csv(rows, output_csv)
+        if not rows:
+            write_results_csv(rows, output_csv)
         logger.info("Wrote %d row(s) to %s", len(rows), output_csv)
 
         if not dry_run:

@@ -180,8 +180,10 @@ class TestDryRunExecution:
         out = tmp_path / "ff.csv"
         code = automl_orchestrator.execute(output_csv=out, dry_run=True, fail_fast=True, dataset_filter="all")
         assert code == 1
-        # fail_fast returns before write_results_csv when the invalid row is reached
-        assert not out.is_file()
+        # fail_fast may still flush earlier successful dry-run rows before the invalid entry
+        if out.is_file():
+            df = read_results_csv(out)
+            assert "broken-tabular" not in set(df["dataset_id"])
 
     @patch("automl_benchmark.orchestrator.create_kfp_client")
     def test_without_fail_fast_skips_invalid_and_continues(

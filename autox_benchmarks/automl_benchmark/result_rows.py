@@ -45,6 +45,7 @@ def dry_run_row(base: dict[str, Any], arguments: dict[str, Any]) -> dict[str, An
         "metrics_blob": json.dumps(arguments),
         "leaderboard_html_s3_uri": "",
         "leaderboard_html_path": "",
+        "leaderboard_scores_path": "",
     }
 
 
@@ -60,6 +61,7 @@ def timeout_row(base: dict[str, Any], run_id: str, timeout_seconds: float) -> di
         "metrics_blob": "",
         "leaderboard_html_s3_uri": "",
         "leaderboard_html_path": "",
+        "leaderboard_scores_path": "",
     }
 
 
@@ -86,6 +88,7 @@ def completed_row(base: dict[str, Any], run_id: str, run_detail: Any) -> dict[st
         "metrics_blob": extract_metrics_blob(run_detail),
         "leaderboard_html_s3_uri": "",
         "leaderboard_html_path": "",
+        "leaderboard_scores_path": "",
     }
 
 
@@ -101,6 +104,7 @@ def submit_error_row(base: dict[str, Any], message: str) -> dict[str, Any]:
         "metrics_blob": "",
         "leaderboard_html_s3_uri": "",
         "leaderboard_html_path": "",
+        "leaderboard_scores_path": "",
     }
 
 

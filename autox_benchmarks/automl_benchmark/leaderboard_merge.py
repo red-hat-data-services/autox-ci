@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import json
 import logging
 from pathlib import Path
 from typing import Any
@@ -27,6 +28,7 @@ BENCHMARK_META_COLUMNS: tuple[str, ...] = (
     "error",
     "leaderboard_html_s3_uri",
     "leaderboard_html_path",
+    "leaderboard_scores_path",
 )
 
 
@@ -93,6 +95,122 @@ def _rename_colliding_columns(lb: Any, reserved: set[str]) -> Any:
     return lb
 
 
+def _leaderboard_df_from_scores_json(path: Path) -> Any:
+    import pandas as pd
+
+    doc = json.loads(path.read_text(encoding="utf-8"))
+    rows = doc.get("leaderboard") if isinstance(doc, dict) else None
+    if not isinstance(rows, list) or not rows:
+        return pd.DataFrame()
+    return pd.DataFrame(rows)
+
+
+def _best_score_fields_from_leaderboard(lb: Any) -> dict[str, Any]:
+    """Flatten the top-ranked leaderboard row into ``best_model`` / ``best_<metric>`` fields."""
+    out: dict[str, Any] = {
+        "best_model": "",
+        "leaderboard_parse_ok": False,
+        "leaderboard_parse_note": "",
+    }
+    if lb is None or getattr(lb, "empty", True):
+        out["leaderboard_parse_note"] = "no_table"
+        return out
+
+    best = lb.iloc[0]
+    model_col = next((c for c in lb.columns if str(c).lower() == "model"), None)
+    if model_col is not None:
+        out["best_model"] = str(best[model_col])
+
+    skip = {"model", "rank", "notebook", "predictor"}
+    for col in lb.columns:
+        cl = str(col).lower()
+        if cl in skip:
+            continue
+        key = f"best_{col}" if not str(col).startswith("best_") else str(col)
+        val = best[col]
+        if hasattr(val, "item"):
+            try:
+                val = val.item()
+            except Exception:
+                pass
+        out[key] = val
+
+    out["leaderboard_parse_ok"] = True
+    return out
+
+
+def enrich_result_row_with_scores(row: dict[str, Any], results_dir: Path) -> dict[str, Any]:
+    """
+    Add ``best_model`` / ``best_<metric>`` onto a benchmark result row from local artifacts.
+
+    Preference: ``leaderboard_scores_path`` (metrics.json aggregate) then HTML parse.
+    Mutates and returns ``row``.
+    """
+    results_dir = results_dir.resolve()
+    scores_rel = str(row.get("leaderboard_scores_path") or "").strip()
+    html_rel = str(row.get("leaderboard_html_path") or "").strip()
+
+    lb = None
+    note = ""
+    if scores_rel:
+        scores_path = results_dir / scores_rel
+        if scores_path.is_file():
+            try:
+                lb = _leaderboard_df_from_scores_json(scores_path)
+                note = "scores_json"
+            except Exception as e:
+                logger.warning("Failed to parse scores JSON %s: %s", scores_path, e)
+                row["leaderboard_parse_ok"] = False
+                row["leaderboard_parse_note"] = f"scores_json:{e}"[:500]
+                return row
+
+    if (lb is None or getattr(lb, "empty", True)) and html_rel:
+        html_path = results_dir / html_rel
+        if html_path.is_file():
+            try:
+                html = html_path.read_text(encoding="utf-8", errors="replace")
+                lb = pick_leaderboard_table(html)
+                note = "html"
+            except Exception as e:
+                logger.warning("Failed to parse leaderboard HTML %s: %s", html_path, e)
+                row["leaderboard_parse_ok"] = False
+                row["leaderboard_parse_note"] = str(e)[:500]
+                return row
+
+    if lb is None or getattr(lb, "empty", True):
+        row["best_model"] = ""
+        row["leaderboard_parse_ok"] = False
+        row["leaderboard_parse_note"] = "no_leaderboard_artifact"
+        return row
+
+    fields = _best_score_fields_from_leaderboard(lb)
+    fields["leaderboard_parse_note"] = note or fields.get("leaderboard_parse_note") or ""
+    row.update(fields)
+    return row
+
+
+def _append_merged_part(
+    parts: list[Any],
+    *,
+    meta: dict[str, Any],
+    lb: Any,
+    reserved: set[str],
+    note: str = "",
+) -> None:
+    import pandas as pd
+
+    if lb is None or lb.empty:
+        return
+    lb = _rename_colliding_columns(lb, reserved)
+    n = len(lb)
+    meta_df = pd.DataFrame([meta] * n).reset_index(drop=True)
+    lb = lb.reset_index(drop=True)
+    merged = pd.concat([meta_df, lb], axis=1)
+    merged["leaderboard_parse_ok"] = True
+    merged["leaderboard_parse_note"] = note
+    parts.append(merged)
+
+
 def merge_benchmark_csv_with_leaderboards(
     benchmark_csv: Path,
     *,
@@ -102,7 +220,9 @@ def merge_benchmark_csv_with_leaderboards(
     """
     Build one long-form DataFrame: benchmark metadata repeated per leaderboard row.
 
-    ``benchmark_csv`` parent directory resolves ``leaderboard_html_path`` (relative paths).
+    Preference order per run:
+    1. ``leaderboard_scores_path`` (JSON from ``models_artifact/*/metrics/metrics.json``)
+    2. ``leaderboard_html_path`` (parsed HTML table; legacy / fallback)
     """
     import csv
 
@@ -123,54 +243,59 @@ def merge_benchmark_csv_with_leaderboards(
 
     for rec in records:
         meta = _meta_row_from_record(rec, include_metrics_blob=include_metrics_blob)
-        rel = (rec.get("leaderboard_html_path") or "").strip()
-        path = (base / rel) if rel else Path()
+        scores_rel = (rec.get("leaderboard_scores_path") or "").strip()
+        html_rel = (rec.get("leaderboard_html_path") or "").strip()
+        scores_path = (base / scores_rel) if scores_rel else Path()
+        html_path = (base / html_rel) if html_rel else Path()
 
-        if not rel or not path.is_file():
+        lb = None
+        note = ""
+        if scores_rel and scores_path.is_file():
+            try:
+                lb = _leaderboard_df_from_scores_json(scores_path)
+                note = "scores_json"
+            except Exception as e:
+                logger.warning("Failed to parse scores JSON %s: %s", scores_path, e)
+                if include_rows_without_leaderboard:
+                    row = {
+                        **meta,
+                        "leaderboard_parse_ok": False,
+                        "leaderboard_parse_note": f"scores_json:{e}"[:500],
+                    }
+                    parts.append(pd.DataFrame([row]))
+                    continue
+
+        if (lb is None or lb.empty) and html_rel and html_path.is_file():
+            try:
+                html = html_path.read_text(encoding="utf-8", errors="replace")
+                lb = pick_leaderboard_table(html)
+                note = "html"
+            except Exception as e:
+                logger.warning("Failed to parse leaderboard HTML %s: %s", html_path, e)
+                if include_rows_without_leaderboard:
+                    row = {
+                        **meta,
+                        "leaderboard_parse_ok": False,
+                        "leaderboard_parse_note": str(e)[:500],
+                    }
+                    parts.append(pd.DataFrame([row]))
+                continue
+
+        if lb is None or lb.empty:
             if include_rows_without_leaderboard:
                 row = {**meta, "leaderboard_parse_ok": False, "leaderboard_parse_note": "no_file"}
                 parts.append(pd.DataFrame([row]))
             else:
                 logger.warning(
-                    "Skipping dataset_id=%s run_id=%s: missing leaderboard file (%r)",
+                    "Skipping dataset_id=%s run_id=%s: missing scores JSON and HTML",
                     rec.get("dataset_id", ""),
                     rec.get("run_id", ""),
-                    str(path) if rel else "",
                 )
             continue
 
-        try:
-            html = path.read_text(encoding="utf-8", errors="replace")
-            lb = pick_leaderboard_table(html)
-        except Exception as e:
-            logger.warning("Failed to parse leaderboard HTML %s: %s", path, e)
-            if include_rows_without_leaderboard:
-                row = {
-                    **meta,
-                    "leaderboard_parse_ok": False,
-                    "leaderboard_parse_note": str(e)[:500],
-                }
-                parts.append(pd.DataFrame([row]))
-            continue
-
-        if lb.empty:
-            logger.warning("No tables parsed from %s", path)
-            if include_rows_without_leaderboard:
-                row = {**meta, "leaderboard_parse_ok": False, "leaderboard_parse_note": "no_table"}
-                parts.append(pd.DataFrame([row]))
-            continue
-
-        lb = _rename_colliding_columns(lb, reserved)
-        n = len(lb)
-        meta_df = pd.DataFrame([meta] * n).reset_index(drop=True)
-        lb = lb.reset_index(drop=True)
-        merged = pd.concat([meta_df, lb], axis=1)
-        merged["leaderboard_parse_ok"] = True
-        merged["leaderboard_parse_note"] = ""
-        parts.append(merged)
+        _append_merged_part(parts, meta=meta, lb=lb, reserved=reserved, note=note)
 
     if not parts:
         return pd.DataFrame()
 
-    out = pd.concat(parts, ignore_index=True)
-    return out
+    return pd.concat(parts, ignore_index=True)
