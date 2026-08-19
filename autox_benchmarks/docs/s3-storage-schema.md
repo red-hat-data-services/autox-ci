@@ -41,7 +41,7 @@ flowchart TB
 ```
 
 - **Training data**: Objects at keys given by each manifest row’s `train_data_file_key` (often under a `datasets/` prefix). Not moved by the orchestrator.
-- **KFP runtime artifacts**: Under `{artifact_s3_prefix}/{run_id}/…` (e.g. `leaderboard-evaluation/…/html_artifact`). Owned by the pipeline runtime, not rewritten by this tool.
+- **KFP runtime artifacts**: Under `{artifact_s3_prefix}/{run_id}/…` (e.g. `autogluon-models-training/…/html_artifact` and `…/models_artifact/<Model>/metrics/metrics.json`). Owned by the pipeline runtime, not rewritten by this tool.
 - **Benchmark bundles** (this feature): Under `{benchmark_s3_prefix}/{batch_id}/…`, written after each dataset run and again at the end of the suite.
 
 Default `benchmark_s3_prefix` is `benchmarks` (configurable in `[storage]`).
@@ -90,7 +90,7 @@ After each batch upload, if the merged leaderboard DataFrame is non-empty, the o
 | `commit_hash` | `git rev-parse HEAD` from a detected repo root, or `null`. |
 | `pipeline_definition` | `compiled_ir_path`, `compiled_ir_sha256`, `pipeline_template_name` (from IR `pipelineInfo.name`). |
 | `pipeline_components` | Ordered `display_name` values from `metrics_blob.task_details` when present. |
-| `input_params` | `top_n`, caching, timeouts, `dataset_filter`, `fail_fast`, manifest row, pipeline arguments, `artifact_s3_prefix`. |
+| `input_params` | `top_n`, `presets`, caching, timeouts, `dataset_filter`, `fail_fast`, manifest row, pipeline arguments, `artifact_s3_prefix`. |
 | `downstream_dependencies` | Pointers to aggregated outputs (e.g. `aggregated/merged_leaderboards.csv`). |
 | `environment_context` | `kfp_host`, `kfp_namespace`, `kfp_experiment_name`, bucket name, S3 region, endpoint **hostname** (no secrets), Python and platform. |
 | `run_id`, `dataset_id` | KFP run UUID and manifest id. |

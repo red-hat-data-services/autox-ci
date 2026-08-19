@@ -32,6 +32,9 @@ pipeline:
 
 run:
   top_n: 3
+  # AutoML training quality tiers to sweep (each dataset × each preset).
+  # Valid: speed (default), balanced. Example sweep: [speed, balanced]
+  presets: [speed]
   poll_interval_seconds: 30
   timeout_seconds: 86400
   enable_caching: false

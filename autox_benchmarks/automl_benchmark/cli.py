@@ -88,6 +88,16 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     parser.add_argument(
+        "--presets",
+        type=str,
+        default=None,
+        metavar="LIST",
+        help=(
+            "Comma-separated AutoML presets to sweep (e.g. speed,balanced). "
+            "Overrides run.presets / $BENCHMARK_PRESETS. Default: speed only."
+        ),
+    )
+    parser.add_argument(
         "--managed-pipelines",
         action="store_true",
         help=(
@@ -123,6 +133,7 @@ def main(argv: list[str] | None = None) -> int:
         skip_identical_runs=not args.rerun_identical_experiments,
         tabular_package_path_cli=args.tabular_package_path,
         timeseries_package_path_cli=args.timeseries_package_path,
+        presets_cli=args.presets,
     )
 
 

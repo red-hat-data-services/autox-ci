@@ -177,6 +177,9 @@ def credentials_dict_from_env() -> dict[str, Any]:
     top_n = _get_env("BENCHMARK_TOP_N")
     if top_n:
         run["top_n"] = int(top_n)
+    presets = _get_env("BENCHMARK_PRESETS")
+    if presets:
+        run["presets"] = presets
     opt_metric = _get_env("BENCHMARK_OPTIMIZATION_METRIC")
     if opt_metric:
         run["optimization_metric"] = opt_metric

@@ -3,30 +3,18 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from automl_benchmark.config_loader import load_merged_benchmark_config
-from benchmark_common.kfp_client import create_kfp_client
-from benchmark_common.manifest import load_dataset_entries
-from benchmark_common.managed_pipelines import PipelineRunTarget
+from automl_benchmark.experiment_fingerprint import compute_experiment_fingerprint
 from automl_benchmark.pipeline_params import (
     build_pipeline_arguments,
     is_timeseries_dataset,
+    presets_for_dataset,
     target_for_dataset,
-)
-from benchmark_common.pipeline_run import (
-    extract_run_id,
-    filter_pipeline_arguments,
-    redact_arguments,
-    submit_pipeline_run,
-    wait_for_terminal_run,
-)
-from benchmark_common.pipeline_target_resolve import resolve_automl_pipeline_targets
-from automl_benchmark.s3_leaderboard_artifact import (
-    discover_leaderboard_html_s3_uri,
-    download_leaderboard_html_to_dir,
 )
 from automl_benchmark.result_rows import (
     base_row_for_dataset,
@@ -36,17 +24,37 @@ from automl_benchmark.result_rows import (
     submit_error_row,
     timeout_row,
 )
-from benchmark_common.results_csv import write_results_csv
-from benchmark_common.run_state import is_success_state
-from automl_benchmark.settings import benchmark_settings_from_config, BenchmarkSettings
-from automl_benchmark.experiment_fingerprint import compute_experiment_fingerprint
 from automl_benchmark.s3_benchmark_upload import (
     upload_batch_aggregated,
     upload_single_dataset_results,
 )
-from benchmark_common.s3_upload import build_batch_id
-from benchmark_common.s3_client import s3_cfg_usable
 from automl_benchmark.s3_experiment_dedupe import try_load_cached_result_row
+from automl_benchmark.leaderboard_merge import enrich_result_row_with_scores
+from automl_benchmark.s3_leaderboard_artifact import (
+    discover_leaderboard_html_s3_uri,
+    download_leaderboard_html_to_dir,
+    download_leaderboard_scores_from_models_artifact,
+)
+from automl_benchmark.settings import (
+    BenchmarkSettings,
+    benchmark_settings_from_config,
+    normalize_presets,
+)
+from benchmark_common.kfp_client import create_kfp_client
+from benchmark_common.managed_pipelines import PipelineRunTarget
+from benchmark_common.manifest import load_dataset_entries
+from benchmark_common.pipeline_run import (
+    extract_run_id,
+    filter_pipeline_arguments,
+    redact_arguments,
+    submit_pipeline_run,
+    wait_for_terminal_run,
+)
+from benchmark_common.pipeline_target_resolve import resolve_automl_pipeline_targets
+from benchmark_common.results_csv import write_results_csv
+from benchmark_common.run_state import is_success_state
+from benchmark_common.s3_client import s3_cfg_usable
+from benchmark_common.s3_upload import build_batch_id
 
 logger = logging.getLogger(__name__)
 
@@ -138,8 +146,66 @@ def _validate_dataset_entry(ds: dict[str, Any], ds_id: str) -> str | None:
     return None
 
 
+def _attach_leaderboard_artifacts_to_row(
+    *,
+    row: dict[str, Any],
+    ds: dict[str, Any],
+    settings: BenchmarkSettings,
+    s3_cfg: dict[str, Any],
+    output_csv: Path,
+) -> dict[str, Any]:
+    """Download scores/HTML for a finished run and flatten best_* score columns onto the row."""
+    rid = str(row.get("run_id") or "").strip()
+    if not rid or not s3_cfg_usable(s3_cfg):
+        return row
+
+    root = (
+        settings.artifact_s3_root_timeseries
+        if is_timeseries_dataset(ds)
+        else settings.artifact_s3_root_tabular
+    )
+    out_parent = output_csv.resolve().parent
+
+    if not str(row.get("leaderboard_scores_path") or "").strip():
+        row["leaderboard_scores_path"] = download_leaderboard_scores_from_models_artifact(
+            bucket=settings.train_data_bucket_name,
+            s3_cfg=s3_cfg,
+            run_id=rid,
+            is_timeseries=is_timeseries_dataset(ds),
+            output_csv_parent=out_parent,
+            artifact_root_prefix=root,
+        )
+
+    if not str(row.get("leaderboard_html_s3_uri") or "").strip():
+        row["leaderboard_html_s3_uri"] = discover_leaderboard_html_s3_uri(
+            bucket=settings.train_data_bucket_name,
+            s3_cfg=s3_cfg,
+            run_id=rid,
+            is_timeseries=is_timeseries_dataset(ds),
+            artifact_root_prefix=root,
+        )
+
+    uri = str(row.get("leaderboard_html_s3_uri") or "").strip()
+    if uri and not str(row.get("leaderboard_html_path") or "").strip():
+        local_rel = download_leaderboard_html_to_dir(
+            s3_cfg,
+            uri,
+            out_parent,
+            run_id=rid,
+        )
+        if local_rel:
+            row["leaderboard_html_path"] = local_rel
+
+    return enrich_result_row_with_scores(row, out_parent)
+
+
+def _flush_results_csv(rows: list[dict[str, Any]], output_csv: Path) -> None:
+    write_results_csv(rows, output_csv)
+    logger.info("Updated %s (%d row(s))", output_csv, len(rows))
+
+
 class BenchmarkOrchestrator:
-    """High-level benchmark run: one pipeline run per dataset entry, then aggregate CSV."""
+    """High-level benchmark run: one pipeline run per (dataset, preset), then aggregate CSV."""
 
     def __init__(self, config_path: Path, env_file: Path | None = None) -> None:
         self.config_path = config_path.resolve()
@@ -192,6 +258,7 @@ class BenchmarkOrchestrator:
         skip_identical_runs: bool = True,
         tabular_package_path_cli: str | None = None,
         timeseries_package_path_cli: str | None = None,
+        presets_cli: str | list[str] | None = None,
     ) -> int:
         try:
             cfg, settings, datasets, _, targets, client = self.load_config_and_datasets(
@@ -204,14 +271,24 @@ class BenchmarkOrchestrator:
             logger.error("%s", e)
             return 1
 
+        if presets_cli is not None:
+            try:
+                settings = replace(settings, presets=normalize_presets(presets_cli))
+            except ValueError as e:
+                logger.error("%s", e)
+                return 1
+
         batch_id = build_batch_id()
         started_at = datetime.now(timezone.utc).isoformat()
         repo_root = _infer_repo_root(self.config_path)
         is_managed = settings.pipeline_mode == "managed"
 
         rows: list[dict[str, Any]] = []
+        stop = False
 
         for i, ds in enumerate(datasets):
+            if stop:
+                break
             ds_id = str(ds.get("id", ds.get("name", f"dataset_{i}")))
             if not _dataset_matches_filter(ds, dataset_filter):
                 logger.info("Skipping dataset %s (dataset_filter=%s)", ds_id, dataset_filter)
@@ -225,7 +302,7 @@ class BenchmarkOrchestrator:
                 continue
 
             try:
-                arguments = build_pipeline_arguments(ds, settings)
+                presets = presets_for_dataset(ds, settings)
             except ValueError as e:
                 logger.error("Dataset %s: %s", ds_id, e)
                 if fail_fast:
@@ -235,72 +312,138 @@ class BenchmarkOrchestrator:
             target = target_for_dataset(ds, targets)
             pipeline_file = Path(target.package_path) if target.package_path else None
 
-            if not is_managed and pipeline_file is not None:
-                arguments = filter_pipeline_arguments(arguments, pipeline_file)
+            for preset in presets:
+                try:
+                    arguments = build_pipeline_arguments(ds, settings, preset=preset)
+                except ValueError as e:
+                    logger.error("Dataset %s preset=%s: %s", ds_id, preset, e)
+                    if fail_fast:
+                        return 1
+                    continue
 
-            run_name = run_name_for_dataset(settings.run_name_prefix, ds_id)
-            base = base_row_for_dataset(ds, i, run_name, settings.top_n)
+                if not is_managed and pipeline_file is not None:
+                    arguments = filter_pipeline_arguments(arguments, pipeline_file)
 
-            if dry_run:
-                rows.append(dry_run_row(base, arguments))
-                label = target.kfp_pipeline_name if is_managed else (pipeline_file.name if pipeline_file else "unknown")
-                logger.info("DRY_RUN %s pipeline=%s -> %s", ds_id, label, redact_arguments(arguments))
-                continue
+                run_name = run_name_for_dataset(settings.run_name_prefix, ds_id, preset=preset)
+                base = base_row_for_dataset(ds, i, run_name, settings.top_n, preset=preset)
 
-            assert client is not None
-
-            experiment_fp: str | None = None
-            if skip_identical_runs:
-                s3_cfg_dedupe = cfg.get("s3")
-                if isinstance(s3_cfg_dedupe, dict) and s3_cfg_usable(s3_cfg_dedupe):
-                    experiment_fp = compute_experiment_fingerprint(
-                        pipeline_ir_path=pipeline_file.resolve() if pipeline_file else None,
-                        pipeline_arguments=dict(arguments),
-                        dataset=ds,
-                        settings=settings,
-                        cfg=cfg,
-                        s3_cfg=s3_cfg_dedupe,
-                        dataset_filter=dataset_filter,
-                        pipeline_id=target.pipeline_id,
-                        pipeline_version_id=target.pipeline_version_id,
+                if dry_run:
+                    rows.append(dry_run_row(base, arguments))
+                    label = (
+                        target.kfp_pipeline_name
+                        if is_managed
+                        else (pipeline_file.name if pipeline_file else "unknown")
                     )
-                    cached = try_load_cached_result_row(
-                        s3_cfg=s3_cfg_dedupe,
-                        bucket=settings.train_data_bucket_name,
-                        benchmark_s3_prefix=settings.benchmark_s3_prefix,
-                        fingerprint=experiment_fp,
+                    logger.info(
+                        "DRY_RUN %s preset=%s pipeline=%s -> %s",
+                        ds_id,
+                        preset,
+                        label,
+                        redact_arguments(arguments),
                     )
-                    if cached is not None:
-                        rows.append(cached)
+                    _flush_results_csv(rows, output_csv)
+                    continue
+
+                assert client is not None
+
+                experiment_fp: str | None = None
+                if skip_identical_runs:
+                    s3_cfg_dedupe = cfg.get("s3")
+                    if isinstance(s3_cfg_dedupe, dict) and s3_cfg_usable(s3_cfg_dedupe):
+                        experiment_fp = compute_experiment_fingerprint(
+                            pipeline_ir_path=pipeline_file.resolve() if pipeline_file else None,
+                            pipeline_arguments=dict(arguments),
+                            dataset=ds,
+                            settings=settings,
+                            cfg=cfg,
+                            s3_cfg=s3_cfg_dedupe,
+                            dataset_filter=dataset_filter,
+                            pipeline_id=target.pipeline_id,
+                            pipeline_version_id=target.pipeline_version_id,
+                        )
+                        cached = try_load_cached_result_row(
+                            s3_cfg=s3_cfg_dedupe,
+                            bucket=settings.train_data_bucket_name,
+                            benchmark_s3_prefix=settings.benchmark_s3_prefix,
+                            fingerprint=experiment_fp,
+                        )
+                        if cached is not None:
+                            # Backfill scores onto cached rows when local/S3 artifacts exist.
+                            cached = _attach_leaderboard_artifacts_to_row(
+                                row=cached,
+                                ds=ds,
+                                settings=settings,
+                                s3_cfg=s3_cfg_dedupe,
+                                output_csv=output_csv,
+                            )
+                            rows.append(cached)
+                            _flush_results_csv(rows, output_csv)
+                            continue
+
+                try:
+                    run_result = submit_pipeline_run(
+                        client,
+                        target,
+                        arguments=arguments,
+                        run_name=run_name,
+                        experiment_name=settings.experiment_name,
+                        enable_caching=settings.enable_caching,
+                    )
+                    rid = extract_run_id(run_result)
+                    logger.info("Started run_id=%s dataset=%s preset=%s", rid, ds_id, preset)
+
+                    detail, timed_out = wait_for_terminal_run(
+                        client,
+                        rid,
+                        timeout_seconds=settings.timeout_seconds,
+                        poll_interval_seconds=settings.poll_interval_seconds,
+                    )
+                    if timed_out:
+                        tout = timeout_row(base, rid, settings.timeout_seconds)
+                        rows.append(tout)
+                        _flush_results_csv(rows, output_csv)
+                        _maybe_upload_benchmark_row(
+                            cfg=cfg,
+                            settings=settings,
+                            batch_id=batch_id,
+                            ds=ds,
+                            row=tout,
+                            target=target,
+                            arguments=arguments,
+                            output_csv=output_csv,
+                            dataset_filter=dataset_filter,
+                            fail_fast=fail_fast,
+                            repo_root=repo_root,
+                            experiment_fingerprint=experiment_fp,
+                        )
+                        logger.error("Timeout waiting for run %s", rid)
+                        if fail_fast:
+                            stop = True
+                            break
                         continue
 
-            try:
-                run_result = submit_pipeline_run(
-                    client,
-                    target,
-                    arguments=arguments,
-                    run_name=run_name,
-                    experiment_name=settings.experiment_name,
-                    enable_caching=settings.enable_caching,
-                )
-                rid = extract_run_id(run_result)
-                logger.info("Started run_id=%s dataset=%s", rid, ds_id)
-
-                detail, timed_out = wait_for_terminal_run(
-                    client,
-                    rid,
-                    timeout_seconds=settings.timeout_seconds,
-                    poll_interval_seconds=settings.poll_interval_seconds,
-                )
-                if timed_out:
-                    tout = timeout_row(base, rid, settings.timeout_seconds)
-                    rows.append(tout)
+                    if detail is None:
+                        detail = client.get_run(rid)
+                    row = completed_row(base, rid, detail)
+                    state = str(row.get("state", ""))
+                    if is_success_state(state) and rid.strip():
+                        s3_cfg = cfg.get("s3")
+                        if isinstance(s3_cfg, dict) and s3_cfg:
+                            row = _attach_leaderboard_artifacts_to_row(
+                                row=row,
+                                ds=ds,
+                                settings=settings,
+                                s3_cfg=s3_cfg,
+                                output_csv=output_csv,
+                            )
+                    rows.append(row)
+                    _flush_results_csv(rows, output_csv)
                     _maybe_upload_benchmark_row(
                         cfg=cfg,
                         settings=settings,
                         batch_id=batch_id,
                         ds=ds,
-                        row=tout,
+                        row=row,
                         target=target,
                         arguments=arguments,
                         output_csv=output_csv,
@@ -309,68 +452,23 @@ class BenchmarkOrchestrator:
                         repo_root=repo_root,
                         experiment_fingerprint=experiment_fp,
                     )
-                    logger.error("Timeout waiting for run %s", rid)
-                    if fail_fast:
+
+                    state = rows[-1].get("state", "")
+                    if not is_success_state(str(state)) and fail_fast:
+                        logger.error("Run %s ended with state=%s", rid, state)
+                        stop = True
                         break
-                    continue
 
-                if detail is None:
-                    detail = client.get_run(rid)
-                row = completed_row(base, rid, detail)
-                state = str(row.get("state", ""))
-                if is_success_state(state) and rid.strip():
-                    s3_cfg = cfg.get("s3")
-                    if isinstance(s3_cfg, dict) and s3_cfg:
-                        root = (
-                            settings.artifact_s3_root_timeseries
-                            if is_timeseries_dataset(ds)
-                            else settings.artifact_s3_root_tabular
-                        )
-                        row["leaderboard_html_s3_uri"] = discover_leaderboard_html_s3_uri(
-                            bucket=settings.train_data_bucket_name,
-                            s3_cfg=s3_cfg,
-                            run_id=rid,
-                            is_timeseries=is_timeseries_dataset(ds),
-                            artifact_root_prefix=root,
-                        )
-                        uri = str(row.get("leaderboard_html_s3_uri") or "").strip()
-                        if uri:
-                            local_rel = download_leaderboard_html_to_dir(
-                                s3_cfg,
-                                uri,
-                                output_csv.resolve().parent,
-                                run_id=rid,
-                            )
-                            if local_rel:
-                                row["leaderboard_html_path"] = local_rel
-                rows.append(row)
-                _maybe_upload_benchmark_row(
-                    cfg=cfg,
-                    settings=settings,
-                    batch_id=batch_id,
-                    ds=ds,
-                    row=row,
-                    target=target,
-                    arguments=arguments,
-                    output_csv=output_csv,
-                    dataset_filter=dataset_filter,
-                    fail_fast=fail_fast,
-                    repo_root=repo_root,
-                    experiment_fingerprint=experiment_fp,
-                )
+                except Exception as e:
+                    logger.exception("Run failed for dataset %s preset=%s", ds_id, preset)
+                    rows.append(submit_error_row(base, str(e)))
+                    _flush_results_csv(rows, output_csv)
+                    if fail_fast:
+                        stop = True
+                        break
 
-                state = rows[-1].get("state", "")
-                if not is_success_state(str(state)) and fail_fast:
-                    logger.error("Run %s ended with state=%s", rid, state)
-                    break
-
-            except Exception as e:
-                logger.exception("Run failed for dataset %s", ds_id)
-                rows.append(submit_error_row(base, str(e)))
-                if fail_fast:
-                    break
-
-        write_results_csv(rows, output_csv)
+        if not rows:
+            write_results_csv(rows, output_csv)
         logger.info("Wrote %d row(s) to %s", len(rows), output_csv)
 
         if not dry_run:

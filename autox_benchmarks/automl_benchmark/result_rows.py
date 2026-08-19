@@ -16,6 +16,8 @@ def base_row_for_dataset(
     dataset_index: int,
     run_name: str,
     top_n: int,
+    *,
+    preset: str,
 ) -> dict[str, Any]:
     ds_id = str(dataset.get("id", dataset.get("name", f"dataset_{dataset_index}")))
     name = str(dataset.get("name", ds_id))
@@ -27,6 +29,7 @@ def base_row_for_dataset(
         "train_data_file_key": dataset.get("train_data_file_key"),
         "run_name": run_name,
         "top_n": top_n,
+        "preset": preset,
     }
 
 
@@ -42,6 +45,7 @@ def dry_run_row(base: dict[str, Any], arguments: dict[str, Any]) -> dict[str, An
         "metrics_blob": json.dumps(arguments),
         "leaderboard_html_s3_uri": "",
         "leaderboard_html_path": "",
+        "leaderboard_scores_path": "",
     }
 
 
@@ -57,6 +61,7 @@ def timeout_row(base: dict[str, Any], run_id: str, timeout_seconds: float) -> di
         "metrics_blob": "",
         "leaderboard_html_s3_uri": "",
         "leaderboard_html_path": "",
+        "leaderboard_scores_path": "",
     }
 
 
@@ -83,6 +88,7 @@ def completed_row(base: dict[str, Any], run_id: str, run_detail: Any) -> dict[st
         "metrics_blob": extract_metrics_blob(run_detail),
         "leaderboard_html_s3_uri": "",
         "leaderboard_html_path": "",
+        "leaderboard_scores_path": "",
     }
 
 
@@ -98,8 +104,12 @@ def submit_error_row(base: dict[str, Any], message: str) -> dict[str, Any]:
         "metrics_blob": "",
         "leaderboard_html_s3_uri": "",
         "leaderboard_html_path": "",
+        "leaderboard_scores_path": "",
     }
 
 
-def run_name_for_dataset(prefix: str, dataset_id: str) -> str:
-    return f"{prefix}-{dataset_id}-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
+def run_name_for_dataset(prefix: str, dataset_id: str, *, preset: str) -> str:
+    return (
+        f"{prefix}-{dataset_id}-{preset}-"
+        f"{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
+    )

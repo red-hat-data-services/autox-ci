@@ -46,6 +46,13 @@ class TestMainArgumentForwarding:
         assert kwargs["skip_identical_runs"] is True
         assert kwargs["tabular_package_path_cli"] is None
         assert kwargs["timeseries_package_path_cli"] is None
+        assert kwargs["presets_cli"] is None
+
+    @patch("automl_benchmark.cli.BenchmarkOrchestrator.execute", return_value=0)
+    def test_presets_flag(self, mock_execute, base_argv: list[str]) -> None:
+        argv = [*base_argv, "--presets", "speed,balanced"]
+        assert main(argv) == 0
+        assert mock_execute.call_args.kwargs["presets_cli"] == "speed,balanced"
 
     @patch("automl_benchmark.cli.BenchmarkOrchestrator.execute", return_value=0)
     def test_fail_fast_flag(self, mock_execute, base_argv: list[str]) -> None:
