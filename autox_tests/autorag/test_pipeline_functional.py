@@ -6,7 +6,7 @@ parameters. When not set, tests are skipped. See .env.example for required varia
 
 Test scenarios are defined in optimisation_test_configs.json and loaded via configs.py. Each
 scenario specifies pipeline parameter overrides and an expected result (pass or fail).
-Filter scenarios by tags with RHOAI_TEST_CONFIG_TAGS (e.g. smoke, milvus-lite).
+Filter scenarios by tags with AUTORAG_FUNCTIONAL_TESTS_TAGS (e.g. smoke, milvus-lite).
 
 Passing criteria for expected-pass tests (from RHAIENG-4142):
 - Pipeline run finishes with status success

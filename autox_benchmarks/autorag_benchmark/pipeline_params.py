@@ -32,8 +32,8 @@ def build_pipeline_arguments(
         "test_data_bucket_name": settings.test_data_bucket_name,
         "test_data_secret_name": settings.test_data_secret_name,
         "test_data_key": str(dataset["test_data_key"]),
-        "ogx_secret_name": settings.ogx_secret_name,
-        "vector_io_provider_id": settings.vector_io_provider_id,
+        "maas_secret_name": settings.maas_secret_name,
+        "vector_db_secret_name": settings.vector_db_secret_name,
     }
 
     if "input_data_key" in dataset and dataset["input_data_key"]:
@@ -49,17 +49,17 @@ def build_pipeline_arguments(
     else:
         args["optimization_max_rag_patterns"] = settings.optimization_max_rag_patterns
 
-    system_prompt = str(dataset.get("system_prompt", "")).strip() or settings.system_prompt
-    if system_prompt:
-        args["system_prompt"] = system_prompt
-
     preset = str(dataset.get("preset", "")).strip() or settings.preset
     if preset:
         args["preset"] = preset
 
-    # Handle model lists (embedding_models and generation_models)
-    for model_type in ("embedding_models", "generation_models"):
-        if model_type in dataset and isinstance(dataset[model_type], list):
-            args[model_type] = dataset[model_type]
+    # Model lists are required by the MaaS pipeline: prefer per-dataset overrides,
+    # else fall back to the benchmark-wide defaults from settings.
+    embedding_models = dataset.get("embedding_models") or settings.embedding_models
+    if embedding_models:
+        args["embedding_models"] = list(embedding_models)
+    generation_models = dataset.get("generation_models") or settings.generation_models
+    if generation_models:
+        args["generation_models"] = list(generation_models)
 
     return _merge_manifest_pipeline_overrides(args, dataset)
