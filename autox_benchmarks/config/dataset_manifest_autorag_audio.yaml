@@ -1,0 +1,41 @@
+# Audio-only dataset manifest — Spoken-SQuAD (spoken-document QA).
+# The knowledge_base is AUDIO; the whisper-base pipeline transcribes (ASR)
+# before indexing. Generate + upload each entry BEFORE running the benchmark.
+#
+# S3 key layout produced by the generator:
+#   datasets/rag/spoken_squad/{split}/{format}/{num_samples}/knowledge_base
+#   datasets/rag/spoken_squad/{split}/{format}/{num_samples}/benchmark_data.json
+# The keys below MUST match --spoken-squad-split / --output-format / --num-samples.
+#
+# Generate + upload all three 100-sample variants (see
+# scripts/generate_spoken_squad_audio_datasets.sh for a one-shot helper):
+#   python scripts/generate_rag_datasets.py --dataset spoken_squad \
+#       --num-samples 100 --output-format wav  --upload-to-s3 --env-file .env
+#   python scripts/generate_rag_datasets.py --dataset spoken_squad \
+#       --num-samples 100 --output-format mp3  --upload-to-s3 --env-file .env   # needs pydub + ffmpeg
+#   python scripts/generate_rag_datasets.py --dataset spoken_squad \
+#       --num-samples 100 --output-format flac --upload-to-s3 --env-file .env   # needs soundfile
+datasets:
+  - id: spoken-squad-test-10-wav
+    name: "Spoken-SQuAD Test (10 samples) WAV"
+    input_data_key: "datasets/rag/spoken_squad/test/wav/10/knowledge_base"
+    test_data_key: "datasets/rag/spoken_squad/test/wav/10/benchmark_data.json"
+    optimization_metric: "faithfulness"
+
+  - id: spoken-squad-test-100-wav
+    name: "Spoken-SQuAD Test (100 samples) WAV"
+    input_data_key: "datasets/rag/spoken_squad/test/wav/100/knowledge_base"
+    test_data_key: "datasets/rag/spoken_squad/test/wav/100/benchmark_data.json"
+    optimization_metric: "faithfulness"
+
+  - id: spoken-squad-test-100-mp3
+    name: "Spoken-SQuAD Test (100 samples) MP3"
+    input_data_key: "datasets/rag/spoken_squad/test/mp3/100/knowledge_base"
+    test_data_key: "datasets/rag/spoken_squad/test/mp3/100/benchmark_data.json"
+    optimization_metric: "faithfulness"
+
+  - id: spoken-squad-test-100-flac
+    name: "Spoken-SQuAD Test (100 samples) FLAC"
+    input_data_key: "datasets/rag/spoken_squad/test/flac/100/knowledge_base"
+    test_data_key: "datasets/rag/spoken_squad/test/flac/100/benchmark_data.json"
+    optimization_metric: "faithfulness"
