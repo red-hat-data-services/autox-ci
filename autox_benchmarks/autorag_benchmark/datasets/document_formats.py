@@ -1,7 +1,8 @@
 """Document format handlers for dataset generation.
 
-Supports saving documents in: txt, md, html, pptx, pdf, and images (png, jpg).
-PDF and native image formats require binary data via save_binary_document().
+Supports saving documents in: txt, md, html, pptx, pdf, images (png, jpg),
+and audio (wav, mp3, flac). PDF, native image, and audio formats require
+binary data via save_binary_document().
 """
 
 from __future__ import annotations
@@ -9,7 +10,12 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Literal
 
-DocumentFormat = Literal["txt", "md", "html", "pdf", "pptx", "png", "jpg"]
+DocumentFormat = Literal[
+    "txt", "md", "html", "pdf", "pptx", "png", "jpg", "wav", "mp3", "flac"
+]
+
+# Formats whose payload is binary and must be written via save_binary_document().
+BINARY_FORMATS = ("pdf", "pptx", "png", "jpg", "wav", "mp3", "flac")
 
 
 def save_document(
@@ -41,7 +47,7 @@ def save_document(
         return _save_html(content, output_path, metadata)
     elif format == "pptx":
         return _save_pptx(content, output_path, metadata)
-    elif format in ("pdf", "png", "jpg"):
+    elif format in BINARY_FORMATS:
         raise ValueError(
             f"Format '{format}' requires binary data. "
             f"Use save_binary_document() for {format} files, or use format='txt'/'md'/'html'/'pptx' for text content."
@@ -160,12 +166,12 @@ def save_binary_document(
     output_path: Path,
     format: DocumentFormat,
 ) -> Path:
-    """Save binary document data (PDF, PPTX, images).
+    """Save binary document data (PDF, PPTX, images, audio).
 
     Args:
         binary_data: Binary file content
         output_path: Output path (extension will be appended based on format)
-        format: Output format - "pdf", "pptx", "png", or "jpg"
+        format: Output format - "pdf", "pptx", "png", "jpg", "wav", "mp3", or "flac"
 
     Returns:
         Path to the created file
@@ -173,7 +179,7 @@ def save_binary_document(
     Raises:
         ValueError: If format is not a binary format
     """
-    if format not in ("pdf", "pptx", "png", "jpg"):
+    if format not in BINARY_FORMATS:
         raise ValueError(
             f"Format '{format}' is not a binary format. "
             f"Use save_document() for text formats like 'txt' or 'md'."
@@ -204,6 +210,7 @@ def get_file_extension(format: DocumentFormat) -> str:
 
 __all__ = [
     "DocumentFormat",
+    "BINARY_FORMATS",
     "save_document",
     "save_binary_document",
     "get_file_extension",
