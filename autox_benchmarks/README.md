@@ -89,8 +89,11 @@ BENCHMARK_TRAIN_DATA_SECRET_NAME=automl-s3-credentials
 # BENCHMARK_TEST_DATA_BUCKET_NAME=your-bucket
 # BENCHMARK_INPUT_DATA_SECRET_NAME=rag-input-s3-credentials
 # BENCHMARK_TEST_DATA_SECRET_NAME=rag-test-s3-credentials
-# BENCHMARK_OGX_SECRET_NAME=llama-stack-credentials
-# BENCHMARK_VECTOR_IO_PROVIDER_ID=milvus-lite
+# BENCHMARK_MAAS_SECRET_NAME=maas-credentials
+# BENCHMARK_VECTOR_DB_SECRET_NAME=vector-db-credentials
+# Model lists are required by the MaaS pipeline (JSON array or comma-separated).
+# BENCHMARK_EMBEDDING_MODELS=["bge-m3"]
+# BENCHMARK_GENERATION_MODELS=["qwen3-8b"]
 
 BENCHMARK_S3_PREFIX=benchmarks
 BENCHMARK_UPLOAD_RESULTS=true

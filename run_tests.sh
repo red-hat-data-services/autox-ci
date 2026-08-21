@@ -20,7 +20,8 @@ Options:
   -t, --tags TAGS          Comma-separated tags for scenario filtering (matched
                            against the 'tags' field in test config JSON files).
                            Exported as AUTOML_FUNCTIONAL_TESTS_TAGS for automl,
-                           TESTS_TAGS for autorag (both when --suite all).
+                           AUTORAG_FUNCTIONAL_TESTS_TAGS for autorag (both when
+                           --suite all).
   --env-file FILE          Source a .env file before running. May be repeated to
                            source multiple files in order. Shell-exported vars
                            take precedence (dotenv override=False semantics).
@@ -261,14 +262,14 @@ case "$SUITE" in
     autorag)
         EXTRAS="${EXTRAS:-test_autorag}"
         if [[ -n "$TESTS_TAGS" ]]; then
-            export TESTS_TAGS="$TESTS_TAGS"
+            export AUTORAG_FUNCTIONAL_TESTS_TAGS="$TESTS_TAGS"
         fi
         ;;
     all)
         EXTRAS="${EXTRAS:-test_automl,test_autorag}"
         if [[ -n "$TESTS_TAGS" ]]; then
             export AUTOML_FUNCTIONAL_TESTS_TAGS="$TESTS_TAGS"
-            export TESTS_TAGS="$TESTS_TAGS"
+            export AUTORAG_FUNCTIONAL_TESTS_TAGS="$TESTS_TAGS"
         fi
         ;;
     *)
@@ -307,8 +308,8 @@ DISPLAY_PREFIX=""
 if [[ -n "$TESTS_TAGS" ]]; then
     case "$SUITE" in
         automl)  DISPLAY_PREFIX="AUTOML_FUNCTIONAL_TESTS_TAGS=\"$TESTS_TAGS\" " ;;
-        autorag) DISPLAY_PREFIX="TESTS_TAGS=\"$TESTS_TAGS\" " ;;
-        all)     DISPLAY_PREFIX="AUTOML_FUNCTIONAL_TESTS_TAGS=\"$TESTS_TAGS\" TESTS_TAGS=\"$TESTS_TAGS\" " ;;
+        autorag) DISPLAY_PREFIX="AUTORAG_FUNCTIONAL_TESTS_TAGS=\"$TESTS_TAGS\" " ;;
+        all)     DISPLAY_PREFIX="AUTOML_FUNCTIONAL_TESTS_TAGS=\"$TESTS_TAGS\" AUTORAG_FUNCTIONAL_TESTS_TAGS=\"$TESTS_TAGS\" " ;;
     esac
 fi
 

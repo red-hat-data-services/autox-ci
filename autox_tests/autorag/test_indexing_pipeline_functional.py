@@ -2,7 +2,7 @@
 
 Test scenarios are defined in configs/indexing_test_configs.json. Data is pre-loaded
 in S3; tests reference existing S3 keys without uploading local files. Filter by tags
-with TESTS_TAGS (e.g. smoke, remote::milvus, negative).
+with AUTORAG_FUNCTIONAL_TESTS_TAGS (e.g. smoke, remote::milvus, negative).
 
 Passing criteria for positive scenarios:
 - Pipeline run finishes with SUCCEEDED status within timeout
@@ -41,6 +41,9 @@ INDEXING_POSITIVE_CONFIGS = get_indexing_configs_for_run(pass_type="positive")
 INDEXING_NEGATIVE_CONFIGS = get_indexing_configs_for_run(pass_type="negative")
 
 _EXPECTED_FAIL_TIMEOUT_CAP = 600
+
+# Vector backends the pipeline can auto-detect from the vector-DB secret (MILVUS_*/PGVECTOR_*).
+_SUPPORTED_VECTOR_PROVIDERS = frozenset({"milvus", "pgvector", "chroma"})
 
 
 def _fetch_indexing_report(
@@ -92,15 +95,15 @@ def _assert_indexing_report(report: dict, test_config: "IndexingTestConfig") -> 
 
     logger.info(
         "[%s] indexing_report: total_documents=%s completed=%s failed=%s total_chunks=%s "
-        "vector_store_id=%r provider_id=%r embedding_model=%r "
+        "collection_name=%r provider_type=%r embedding_model=%r "
         "chunk_size=%s chunk_overlap=%s",
         tid,
         report.get("total_documents"),
         report.get("completed"),
         report.get("failed"),
         report.get("total_chunks"),
-        vsb.get("vector_store_id"),
-        vsb.get("provider_id"),
+        vsb.get("collection_name"),
+        vsb.get("provider_type"),
         emb.get("model_id"),
         chk.get("chunk_size"),
         chk.get("chunk_overlap"),
@@ -121,13 +124,21 @@ def _assert_indexing_report(report: dict, test_config: "IndexingTestConfig") -> 
         f"[{tid}] total_chunks is 0 — chunker produced no output for any document"
     )
 
-    assert vsb.get("vector_store_id"), (
-        f"[{tid}] vector_store_id is empty — OGX collection was not created"
+    assert vsb.get("collection_name"), (
+        f"[{tid}] collection_name is empty — vector store collection was not created"
     )
-    assert vsb.get("provider_id") == test_config.vector_io_provider_id, (
-        f"[{tid}] provider_id mismatch: got {vsb.get('provider_id')!r}, "
-        f"expected {test_config.vector_io_provider_id!r}"
+    provider_type = vsb.get("provider_type")
+    assert provider_type in _SUPPORTED_VECTOR_PROVIDERS, (
+        f"[{tid}] provider_type {provider_type!r} not in supported "
+        f"{sorted(_SUPPORTED_VECTOR_PROVIDERS)} — vector backend was not auto-detected "
+        "from the vector-DB secret"
     )
+    expected_provider = (os.getenv("AUTORAG_EXPECTED_VECTOR_PROVIDER") or "").strip().lower()
+    if expected_provider:
+        assert provider_type == expected_provider, (
+            f"[{tid}] provider_type mismatch: got {provider_type!r}, "
+            f"expected {expected_provider!r} (AUTORAG_EXPECTED_VECTOR_PROVIDER)"
+        )
 
     expected_model_id = test_config.embedding_model_id
     if expected_model_id == "env":
@@ -161,7 +172,7 @@ def _assert_indexing_report(report: dict, test_config: "IndexingTestConfig") -> 
     reason=(
         "Indexing pipeline env incomplete "
         "(RHOAI_URL or RHOAI_KFP_URL, RHOAI_TOKEN, INPUT_DATA_BUCKET_NAME, "
-        "OGX_SECRET_NAME; see .env.rag.example)"
+        "MAAS_SECRET_NAME, VECTOR_DB_SECRET_NAME; see .env.rag.example)"
     ),
 )
 class TestAutoRAGIndexingFunctional:
@@ -265,7 +276,7 @@ class TestAutoRAGIndexingFunctional:
         - At least one chunk was produced (total_chunks > 0)
         - Settings in the report match the pipeline arguments (provider, embedding model,
           chunking params when explicitly set)
-        - A vector store collection ID was assigned by OGX
+        - A vector store collection name was assigned by the pipeline
         """
         if not kfp_client_indexing_functional:
             pytest.fail("Indexing pipeline functional test prerequisites not available")

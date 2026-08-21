@@ -34,6 +34,19 @@ def _truthy_env(*names: str, default: bool | None = None) -> bool | None:
     return raw.lower() in ("1", "true", "yes", "on")
 
 
+def _parse_model_list(raw: str) -> list[str]:
+    """Parse a model-list env value as a JSON array, falling back to comma-separated."""
+    import json
+
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return [v.strip() for v in raw.split(",") if v.strip()]
+    if isinstance(parsed, list):
+        return [str(v) for v in parsed]
+    return [str(parsed)]
+
+
 def resolve_env_file_path(explicit: Path | None = None) -> Path | None:
     if explicit is not None:
         p = explicit.expanduser().resolve()
@@ -132,16 +145,12 @@ def credentials_dict_from_env() -> dict[str, Any]:
     test_secret = _get_env("BENCHMARK_TEST_DATA_SECRET_NAME", "TEST_DATA_SECRET_NAME")
     if test_secret:
         pipeline["test_data_secret_name"] = test_secret
-    ogx_secret = _get_env("BENCHMARK_OGX_SECRET_NAME", "OGX_SECRET_NAME", "LLAMA_STACK_SECRET_NAME")
-    if ogx_secret:
-        pipeline["ogx_secret_name"] = ogx_secret
-    vector_io = _get_env(
-        "BENCHMARK_VECTOR_IO_PROVIDER_ID",
-        "VECTOR_IO_PROVIDER_ID",
-        "LLAMA_STACK_VECTOR_IO_PROVIDER_ID",
-    )
-    if vector_io:
-        pipeline["vector_io_provider_id"] = vector_io
+    maas_secret = _get_env("BENCHMARK_MAAS_SECRET_NAME", "MAAS_SECRET_NAME")
+    if maas_secret:
+        pipeline["maas_secret_name"] = maas_secret
+    vector_db_secret = _get_env("BENCHMARK_VECTOR_DB_SECRET_NAME", "VECTOR_DB_SECRET_NAME")
+    if vector_db_secret:
+        pipeline["vector_db_secret_name"] = vector_db_secret
     package_path = _get_env(
         "BENCHMARK_TABULAR_PACKAGE_PATH",
         "TABULAR_PACKAGE_PATH",
@@ -186,6 +195,12 @@ def credentials_dict_from_env() -> dict[str, Any]:
     max_patterns = _get_env("BENCHMARK_OPTIMIZATION_MAX_RAG_PATTERNS")
     if max_patterns:
         run["optimization_max_rag_patterns"] = int(max_patterns)
+    embedding_models = _get_env("BENCHMARK_EMBEDDING_MODELS")
+    if embedding_models:
+        run["embedding_models"] = _parse_model_list(embedding_models)
+    generation_models = _get_env("BENCHMARK_GENERATION_MODELS")
+    if generation_models:
+        run["generation_models"] = _parse_model_list(generation_models)
     poll = _get_env("BENCHMARK_POLL_INTERVAL_SECONDS", "RHOAI_KFP_POLL_INTERVAL_SECONDS")
     if poll:
         run["poll_interval_seconds"] = float(poll)
