@@ -46,7 +46,11 @@ test_autorag = [
   "papermill",
   "pip",
   "ipykernel",
-  "ai4rag~=0.10.4",
+  # Targets the MaaS architecture. Until ai4rag 0.12.0 is published to the index,
+  # `uv lock` / `uv sync --extra test_autorag` cannot resolve; uv.lock stays at the
+  # previous version and is regenerated once 0.12.0 is available. Only used for local
+  # papermill notebook execution (currently skipped), not for pipeline runs.
+  "ai4rag~=0.12.0",
 ]
 
 [tool.uv]

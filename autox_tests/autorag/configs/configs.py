@@ -3,7 +3,7 @@
 Configurations are loaded from optimisation_test_configs.json in this directory by default.
 Set AUTORAG_TEST_CONFIGS_PATH to load from a custom JSON file instead.
 Each entry specifies pipeline parameter overrides, expected result (pass/fail),
-and optional tags for filtering. Use TESTS_TAGS (comma-separated) to
+and optional tags for filtering. Use AUTORAG_FUNCTIONAL_TESTS_TAGS (comma-separated) to
 run only configs that have all of the given tags.
 """
 
@@ -23,6 +23,40 @@ _INDEXING_CONFIGS_JSON_PATH = Path(
 )
 
 
+def _resolve_model_list(value: str | list[str] | None, env_name: str) -> list[str] | None:
+    """Resolve a model-list field to a ``list[str]`` for KFP submission.
+
+    The MaaS pipeline requires ``embedding_models`` / ``generation_models`` as
+    lists of model IDs (they can no longer be inferred server-side). Accepted inputs:
+
+    - ``list``: used as-is (e.g. explicit IDs, or deliberately-invalid IDs for
+      negative scenarios).
+    - ``None``: returns ``None`` (caller decides whether that is an error).
+    - the sentinel ``"env"``: read ``env_name`` and parse it as a JSON array,
+      falling back to a comma-separated list.
+
+    Raises:
+        EnvironmentError: When ``value`` is ``"env"`` but ``env_name`` is unset.
+        ValueError: When the resolved value is not a list.
+    """
+    if value == "env":
+        raw = os.getenv(env_name)
+        if raw is None:
+            raise EnvironmentError(f"{env_name} env variable must be set.")
+        value = raw
+    if value is None:
+        return None
+    if isinstance(value, str):
+        stripped = value.strip()
+        try:
+            value = json.loads(stripped)
+        except json.JSONDecodeError:
+            value = [v.strip() for v in stripped.split(",") if v.strip()]
+    if not isinstance(value, list):
+        raise ValueError(f"{env_name} must resolve to a list; got {type(value).__name__}")
+    return value
+
+
 @dataclass
 class AutoRAGTestConfig:
     """Single test configuration for one pipeline run.
@@ -31,15 +65,21 @@ class AutoRAGTestConfig:
         id: Short identifier for the config (used in pytest parametrize ids).
         description: Human-readable summary of the test scenario.
         tags: Optional list of tags for filtering (e.g. ["smoke", "positive"]).
-            Use TESTS_TAGS to run only configs that have all of the given tags.
+            Use AUTORAG_FUNCTIONAL_TESTS_TAGS to run only configs that have all of the given tags.
         expected_result: "pass" or "fail" — whether the pipeline run should succeed.
-        pipeline_params_overrides: Keys matching pipeline parameter names. Values
-            are resolved against the base config using these rules:
-            - null/None: use base config value from env
-            - "": pass empty string explicitly
-            - "ENV": read from dedicated env var (for model lists)
-            - "milvus-lite"/"milvus-remote": read provider ID from corresponding env var
-            - any other value: use as-is
+        embedding_models: Embedding model IDs for the search space. Required by the
+            MaaS pipeline. A JSON list, or the sentinel "env" to read a JSON array /
+            comma-separated list from AUTORAG_EMBEDDING_MODELS.
+        generation_models: Generation model IDs for the search space. Required by the
+            MaaS pipeline. A JSON list, or "env" to read from AUTORAG_GENERATION_MODELS.
+        optimization_max_rag_patterns: Cap on the number of RAG patterns explored.
+        input_data_key: Path to the input documents folder within the bucket.
+        test_data_key: Path to the benchmark JSON within the test-data bucket.
+        optimization_metric: Metric to optimize (e.g. "faithfulness").
+
+    The vector-store backend is no longer a pipeline parameter: the pipeline
+    auto-detects it from the secret named by ``vector_db_secret_name`` (MILVUS_* vs
+    PGVECTOR_* keys), which the harness wires from the VECTOR_DB_SECRET_NAME env var.
     """
 
     __test__ = False  # prevent pytest collection
@@ -48,25 +88,12 @@ class AutoRAGTestConfig:
     description: str
     tags: list[str]
     expected_result: str
-    vector_io_provider_type: str | None = None
-    vector_io_provider_id: str | None = None
     embedding_models: str | list[str] | None = None
     generation_models: str | list[str] | None = None
     optimization_max_rag_patterns: int | None = None
     input_data_key: str | None = None
     test_data_key: str | None = None
     optimization_metric: str | None = None
-
-    def __post_init__(self):
-        if self.embedding_models == "env":
-            self.embedding_models = os.getenv("AUTORAG_EMBEDDING_MODELS")
-            if self.embedding_models is None:
-                raise EnvironmentError("AUTORAG_EMBEDDING_MODELS env variable must be set.")
-
-        if self.generation_models == "env":
-            self.generation_models = os.getenv("AUTORAG_GENERATION_MODELS")
-            if self.generation_models is None:
-                raise EnvironmentError("AUTORAG_EMBEDDING_MODELS env variable must be set.")
 
     def get_pipeline_arguments(self, base_config: dict) -> dict[str, Any]:
         """Build pipeline arguments dict by merging base config with overrides.
@@ -76,26 +103,33 @@ class AutoRAGTestConfig:
 
         Returns:
             Pipeline arguments dict ready for KFP submission.
+
+        Raises:
+            EnvironmentError: When a model list uses the "env" sentinel but the
+                corresponding env var (AUTORAG_EMBEDDING_MODELS /
+                AUTORAG_GENERATION_MODELS) is not set.
         """
         arguments = {
             "test_data_secret_name": base_config["test_data_secret_name"],
             "test_data_bucket_name": base_config["test_data_bucket_name"],
             "input_data_secret_name": base_config["input_data_secret_name"],
             "input_data_bucket_name": base_config["input_data_bucket_name"],
-            "ogx_secret_name": base_config["ogx_secret_name"],
+            "maas_secret_name": base_config["maas_secret_name"],
+            "vector_db_secret_name": base_config["vector_db_secret_name"],
             "test_data_key": self.test_data_key or "",
             "input_data_key": self.input_data_key or "",
             "optimization_metric": self.optimization_metric or "",
         }
 
-        if self.vector_io_provider_id:
-            arguments["vector_io_provider_id"] = self.vector_io_provider_id
         if self.optimization_max_rag_patterns is not None:
             arguments["optimization_max_rag_patterns"] = self.optimization_max_rag_patterns
-        if self.embedding_models:
-            arguments["embedding_models"] = self.embedding_models
-        if self.generation_models:
-            arguments["generation_models"] = self.generation_models
+
+        embedding_models = _resolve_model_list(self.embedding_models, "AUTORAG_EMBEDDING_MODELS")
+        if embedding_models:
+            arguments["embedding_models"] = embedding_models
+        generation_models = _resolve_model_list(self.generation_models, "AUTORAG_GENERATION_MODELS")
+        if generation_models:
+            arguments["generation_models"] = generation_models
 
         return arguments
 
@@ -136,8 +170,8 @@ def _load_test_configs_from_json(path: Path, cls: type[_C], label: str, pass_typ
 
 
 def _filter_by_tags(configs: list, tags: list[str]) -> list:
-    """Filter configs to those matching all given tags plus any tags from TESTS_TAGS env var."""
-    env_tags_raw = os.getenv("TESTS_TAGS")
+    """Filter configs to those matching all given tags plus any tags from AUTORAG_FUNCTIONAL_TESTS_TAGS env var."""
+    env_tags_raw = os.getenv("AUTORAG_FUNCTIONAL_TESTS_TAGS")
     env_tags = [t.strip().lower() for t in env_tags_raw.split(",") if t.strip()] if env_tags_raw else []
     all_tags = {t.lower() for t in (tags + env_tags)}
     if not all_tags:
@@ -165,18 +199,20 @@ class IndexingTestConfig:
     Attributes:
         id: Short identifier for the config (used in pytest parametrize ids).
         description: Human-readable summary of the test scenario.
-        tags: Optional list of tags for filtering (e.g. ["smoke", "remote::milvus"]).
+        tags: Optional list of tags for filtering (e.g. ["smoke", "indexing"]).
         expected_result: "pass" or "fail" — whether the pipeline run should succeed.
-        vector_io_provider_id: OGX vector IO provider ID (e.g. "milvus-remote").
-        embedding_model_id: Embedding model ID for the vector store.
-            Use "env" to read from the ``AUTORAG_INDEXING_EMBEDDING_MODEL_ID`` env var.
+        embedding_model_id: Embedding model ID served by MaaS. Use "env" to read from
+            the ``AUTORAG_INDEXING_EMBEDDING_MODEL_ID`` env var.
         input_data_key: Path to folder with input documents within the bucket.
-        vector_store_id: OGX vector store / collection id to reuse. Omit to create new.
+        collection_name: Vector store collection to reuse. Omit to create a new one.
         chunking_method: Chunking method (default: "recursive").
         chunk_size: Maximum chunk size in tokens (default: 1024).
         chunk_overlap: Token overlap between consecutive chunks (default: 0).
         batch_size: Number of documents per batch (default: 20).
         expected_failing_task: For negative scenarios, KFP task display names expected to fail.
+
+    The vector-store backend is auto-detected by the pipeline from the secret named by
+    ``vector_db_secret_name`` (MILVUS_* vs PGVECTOR_* keys), wired from VECTOR_DB_SECRET_NAME.
     """
 
     __test__ = False
@@ -185,10 +221,9 @@ class IndexingTestConfig:
     description: str
     tags: list[str]
     expected_result: str
-    vector_io_provider_id: str
     embedding_model_id: str
     input_data_key: str | None = None
-    vector_store_id: str | None = None
+    collection_name: str | None = None
     chunking_method: str | None = None
     chunk_size: int | None = None
     chunk_overlap: int | None = None
@@ -218,15 +253,15 @@ class IndexingTestConfig:
                 )
 
         arguments: dict[str, Any] = {
-            "ogx_secret_name": base_config["ogx_secret_name"],
+            "maas_secret_name": base_config["maas_secret_name"],
+            "vector_db_secret_name": base_config["vector_db_secret_name"],
             "embedding_model_id": embedding_model_id,
-            "vector_io_provider_id": self.vector_io_provider_id,
             "input_data_secret_name": base_config["input_data_secret_name"],
             "input_data_bucket_name": base_config["input_data_bucket_name"],
             "input_data_key": self.input_data_key or "",
         }
-        if self.vector_store_id is not None:
-            arguments["vector_store_id"] = self.vector_store_id
+        if self.collection_name is not None:
+            arguments["collection_name"] = self.collection_name
         if self.chunking_method is not None:
             arguments["chunking_method"] = self.chunking_method
         if self.chunk_size is not None:

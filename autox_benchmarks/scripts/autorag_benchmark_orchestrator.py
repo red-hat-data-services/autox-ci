@@ -12,7 +12,7 @@ Configuration:
     ``pipeline:``, or ``.env`` ``BENCHMARK_PACKAGE_PATH``.
     Also: optimization settings (metric, max patterns), run tuning, manifest.
   - .env (required): KFP host/namespace/token, buckets (input/test), pipeline secrets,
-    OGX credentials. Copy ``.env.example`` to ``.env`` (or ``--env-file PATH``).
+    MaaS + vector database credentials. Copy ``.env.example`` to ``.env`` (or ``--env-file PATH``).
 
 Usage:
   pip install -e .

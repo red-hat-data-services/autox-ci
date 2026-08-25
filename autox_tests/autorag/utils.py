@@ -155,7 +155,7 @@ def _validate_artifacts_in_s3(s3_client, bucket, prefix):
                     result["inference_notebook_keys"].append(key)
                 if "evaluation_results.json" in key:
                     result["evaluation_results_keys"].append(key)
-                if "leaderboard" in lower_key or key.endswith(".html") or key.endswith("/html_artifact"):
+                if "leaderboard" in lower_key or key.endswith(".html") or key.endswith("/leaderboard_html"):
                     result["leaderboard_keys"].append(key)
                 if "v1_responses_body.json" in key:
                     result["responses_body_keys"].append(key)
@@ -164,7 +164,7 @@ def _validate_artifacts_in_s3(s3_client, bucket, prefix):
     return result
 
 
-_NOTEBOOK_ENV_PREFIXES = ("OGX_CLIENT_", "AWS_")
+_NOTEBOOK_ENV_PREFIXES = ("MAAS_", "MILVUS_", "PGVECTOR_", "AWS_")
 _SYSTEM_ENV_KEYS = frozenset({"PATH", "HOME", "TMPDIR", "TEMP", "TMP", "LANG", "LC_ALL", "USER", "LOGNAME", "SHELL"})
 
 

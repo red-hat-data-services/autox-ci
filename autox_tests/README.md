@@ -123,8 +123,8 @@ cp autox_tests/.env.ml.example autox_tests/.env.ml
 
 | Variable | Purpose |
 | -------- | ------- |
-| `OGX_SECRET_NAME` | Secret with OGX client settings (e.g. API key, base URL). |
-| `VECTOR_IO_PROVIDER_ID` | Registered vector I/O provider id in OGX. |
+| `MAAS_SECRET_NAME` | Secret with MaaS inference settings (keys: `MAAS_BASE_URL`, `MAAS_API_KEY`). |
+| `VECTOR_DB_SECRET_NAME` | Secret with vector database connection; backend auto-detected from `MILVUS_*` vs `PGVECTOR_*` keys. |
 
 Optional fallbacks for `data_mode=existing_s3` when JSON omits buckets: `TEST_DATA_BUCKET_NAME`, `TEST_DATA_KEY`, `INPUT_DATA_BUCKET_NAME`, `INPUT_DATA_KEY`, or `TEST_DATA_SOURCE_BUCKET` / `TEST_DATA_SOURCE_PREFIX`.
 
@@ -332,7 +332,7 @@ uv sync --extra test_autorag
 pip install -e ".[test_autorag]"
 ```
 
-You also need a running RHOAI cluster with Data Science Pipelines and a Llama Stack instance with a Milvus vector I/O provider.
+You also need a running RHOAI cluster with Data Science Pipelines, a MaaS (Model-as-a-Service) inference endpoint, and a vector database (Milvus or PGVector).
 
 ### Environment setup
 
@@ -353,7 +353,8 @@ cp autox_tests/.env.rag.example autox_tests/.env.rag
 | `TEST_DATA_BUCKET_NAME` | S3 bucket for test data |
 | `INPUT_DATA_BUCKET_NAME` | S3 bucket for input documents |
 | `INPUT_DATA_SECRET_NAME` | Kubernetes secret for input data bucket |
-| `LLAMA_STACK_SECRET_NAME` | Kubernetes secret with Llama Stack client settings |
+| `MAAS_SECRET_NAME` | Kubernetes secret with MaaS inference settings (`MAAS_BASE_URL`, `MAAS_API_KEY`) |
+| `VECTOR_DB_SECRET_NAME` | Kubernetes secret with vector DB connection (`MILVUS_*` or `PGVECTOR_*` keys) |
 
 #### S3 artifact validation (optional)
 
@@ -369,22 +370,24 @@ cp autox_tests/.env.rag.example autox_tests/.env.rag
 
 | Variable | Purpose |
 |---|---|
-| `LLAMA_STACK_CLIENT_BASE_URL` | Llama Stack API base URL for notebook execution |
-| `LLAMA_STACK_CLIENT_API_KEY` | Llama Stack API key |
+| `MAAS_BASE_URL` | MaaS (OpenAI-compatible) API base URL for notebook execution |
+| `MAAS_API_KEY` | MaaS API key |
+| `MILVUS_*` / `PGVECTOR_*` | Vector DB connection injected into notebook execution (match your backend) |
 | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_S3_ENDPOINT`, `AWS_DEFAULT_REGION`, `AWS_S3_BUCKET` | S3 credentials injected into notebook execution environment |
 
-#### Constrained model lists (optional)
+#### Model lists (required by the MaaS pipeline)
 
 | Variable | Purpose |
 |---|---|
-| `FUNC_TEST_EMBEDDING_MODELS` | Override embeddings models used in tests |
-| `FUNC_TEST_GENERATION_MODELS` | Override generation models used in tests |
+| `AUTORAG_EMBEDDING_MODELS` | Embedding model IDs (JSON array / comma-separated) for optimization configs using `"env"` |
+| `AUTORAG_GENERATION_MODELS` | Generation model IDs (JSON array / comma-separated) for optimization configs using `"env"` |
+| `AUTORAG_INDEXING_EMBEDDING_MODEL_ID` | Single embedding model ID for indexing positive tests using `"env"` |
 
 #### Test filtering and timeouts
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `TESTS_TAGS` | — | Comma-separated tags — only matching scenarios run. Unset = run all. |
+| `AUTORAG_FUNCTIONAL_TESTS_TAGS` | — | Comma-separated tags — only matching scenarios run. Unset = run all. |
 | `AUTORAG_TEST_CONFIGS_PATH` | — | Path to custom AutoRAG test configs JSON. Overrides built-in `test_configs.json`. |
 | `RHOAI_PIPELINE_RUN_TIMEOUT` | `3600` | Max seconds to wait for a pipeline run |
 | `K8S_API_URL` | — | Kubernetes API URL for pod log fetching (derived from KFP URL when unset) |
@@ -399,7 +402,7 @@ pytest autox_tests/autorag/ -v
 pytest autox_tests/autorag/ -m positive -v
 
 # Smoke scenarios only
-TESTS_TAGS=smoke pytest autox_tests/autorag/ -v
+AUTORAG_FUNCTIONAL_TESTS_TAGS=smoke pytest autox_tests/autorag/ -v
 
 # Single scenario
 pytest autox_tests/autorag/ -k "TC-P-1" -v
@@ -407,7 +410,7 @@ pytest autox_tests/autorag/ -k "TC-P-1" -v
 
 ### Test scenarios
 
-Scenarios are defined in `configs/test_configs.json`. Each entry specifies `id`, `description`, `tags`, `expected_result` (`"pass"` or `"fail"`), `llama_stack_vector_io_provider_id`, and `pipeline_params_overrides`.
+Scenarios are defined in `configs/optimisation_test_configs.json` (optimization) and `configs/indexing_test_configs.json` (indexing). Each entry specifies `id`, `description`, `tags`, `expected_result` (`"pass"` or `"fail"`), the required model lists (`embedding_models` / `generation_models`, or `"env"`), and per-scenario parameter overrides. The vector-store backend is auto-detected from `VECTOR_DB_SECRET_NAME`; it is no longer a scenario field.
 
 ### Pass criteria
 
@@ -425,5 +428,5 @@ Scenarios are defined in `configs/test_configs.json`. Each entry specifies `id`,
 
 - **Tests skip** — check that all required variables are set in `.env.rag`.
 - **Pod log fetch fails** — set `K8S_API_URL` explicitly if the automatic derivation from the KFP URL does not match your cluster pattern.
-- **Notebook execution fails** — ensure `LLAMA_STACK_CLIENT_BASE_URL`, `LLAMA_STACK_CLIENT_API_KEY`, and AWS vars are set; check the papermill output in the test log.
+- **Notebook execution fails** — ensure `MAAS_BASE_URL`, `MAAS_API_KEY`, the vector DB vars (`MILVUS_*` / `PGVECTOR_*`), and AWS vars are set; check the papermill output in the test log.
 - **`nbformat` / `papermill` import errors** — re-run `uv sync --extra test_autorag`.

@@ -75,8 +75,8 @@ TEST_DATA_BUCKET_ENV = "TEST_DATA_BUCKET_NAME"
 TEST_DATA_KEY_ENV = "TEST_DATA_KEY"
 INPUT_DATA_BUCKET_ENV = "INPUT_DATA_BUCKET_NAME"
 INPUT_DATA_KEY_ENV = "INPUT_DATA_KEY"
-OGX_SECRET_ENV = "OGX_SECRET_NAME"
-VECTOR_IO_PROVIDER_ENV = "VECTOR_IO_PROVIDER_ID"
+MAAS_SECRET_ENV = "MAAS_SECRET_NAME"
+VECTOR_DB_SECRET_ENV = "VECTOR_DB_SECRET_NAME"
 
 # Tag filter (shared with per-pipeline integration tests)
 TEST_CONFIG_TAGS_ENV = "RHOAI_TEST_CONFIG_TAGS"
@@ -419,7 +419,7 @@ def get_default_upload_bucket_name() -> str | None:
 
 
 def get_autorag_connection_config() -> dict[str, Any] | None:
-    """Return KFP + OGX + k8s S3 secret name + optional S3 creds.
+    """Return KFP + MaaS + vector-DB + k8s S3 secret names + optional S3 creds.
 
     ``test_data_secret_name`` and ``input_data_secret_name`` both use ``RHOAI_TEST_S3_SECRET_NAME``
     (same as AutoML). Per-run bucket/object paths come from JSON (``upload`` or ``existing_s3``).
@@ -431,10 +431,10 @@ def get_autorag_connection_config() -> dict[str, Any] | None:
     project = os.environ.get(RHOAI_PROJECT_ENV) or os.environ.get(RHOAI_PROJECT_ENV_ALT)
     # Same k8s secret as AutoML (``RHOAI_TEST_S3_SECRET_NAME``): used for both pipeline S3 secret params.
     s3_secret = (os.environ.get(S3_SECRET_NAME_ENV) or "s3-connection").strip()
-    ogx_secret = os.environ.get(OGX_SECRET_ENV)
-    vector_io = os.environ.get(VECTOR_IO_PROVIDER_ENV)
+    maas_secret = os.environ.get(MAAS_SECRET_ENV)
+    vector_db_secret = os.environ.get(VECTOR_DB_SECRET_ENV)
 
-    if not all([token, s3_secret, ogx_secret, vector_io]):
+    if not all([token, s3_secret, maas_secret, vector_db_secret]):
         return None
     if not kfp_url and not should_create_dspa_from_env():
         return None
@@ -460,8 +460,8 @@ def get_autorag_connection_config() -> dict[str, Any] | None:
         "input_data_secret_name": s3_secret,
         "input_data_bucket_name": i_bucket,
         "input_data_key": i_key,
-        "ogx_secret_name": ogx_secret.strip(),
-        "vector_io_provider_id": vector_io.strip(),
+        "maas_secret_name": maas_secret.strip(),
+        "vector_db_secret_name": vector_db_secret.strip(),
         "s3_endpoint": endpoint.strip() if endpoint else None,
         "s3_access_key": access.strip() if access else None,
         "s3_secret_key": secret.strip() if secret else None,
@@ -555,8 +555,8 @@ def describe_autorag_connection_config_failure() -> str | None:
     token = (
         os.environ.get(RHOAI_TOKEN_ENV) or os.environ.get(RHOAI_TOKEN_ENV_ALT) or ""
     ).strip()
-    ogx_secret = (os.environ.get(OGX_SECRET_ENV) or "").strip()
-    vector_io = (os.environ.get(VECTOR_IO_PROVIDER_ENV) or "").strip()
+    maas_secret = (os.environ.get(MAAS_SECRET_ENV) or "").strip()
+    vector_db_secret = (os.environ.get(VECTOR_DB_SECRET_ENV) or "").strip()
     dspa = get_dspa_config_from_env()
 
     lines: list[str] = []
@@ -564,13 +564,15 @@ def describe_autorag_connection_config_failure() -> str | None:
         lines.append(
             f"  - {RHOAI_TOKEN_ENV} or {RHOAI_TOKEN_ENV_ALT} (KFP / cluster token)"
         )
-    if not ogx_secret:
+    if not maas_secret:
         lines.append(
-            f"  - {OGX_SECRET_ENV} (Kubernetes secret with OGX client settings)"
+            f"  - {MAAS_SECRET_ENV} (Kubernetes secret with MaaS inference settings: "
+            "MAAS_BASE_URL, MAAS_API_KEY)"
         )
-    if not vector_io:
+    if not vector_db_secret:
         lines.append(
-            f"  - {VECTOR_IO_PROVIDER_ENV} (registered vector I/O provider id)"
+            f"  - {VECTOR_DB_SECRET_ENV} (Kubernetes secret with vector database "
+            "connection: MILVUS_* or PGVECTOR_* keys)"
         )
     if not kfp_url and not (dspa and dspa.get("create")):
         lines.append(
@@ -663,6 +665,6 @@ def autorag_pipeline_arguments(cfg: dict[str, Any]) -> dict[str, Any]:
         "input_data_secret_name": cfg["input_data_secret_name"],
         "input_data_bucket_name": cfg["input_data_bucket_name"],
         "input_data_key": cfg["input_data_key"],
-        "ogx_secret_name": cfg["ogx_secret_name"],
-        "vector_io_provider_id": cfg["vector_io_provider_id"],
+        "maas_secret_name": cfg["maas_secret_name"],
+        "vector_db_secret_name": cfg["vector_db_secret_name"],
     }
