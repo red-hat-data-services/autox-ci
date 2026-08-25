@@ -63,7 +63,7 @@ def main():
     parser.add_argument(
         "--dataset",
         required=True,
-        choices=["beir", "open_ragbench", "slidevqa", "html_rag", "nomiracl", "mlqa", "mkqa", "enterprise_ragbench"],
+        choices=["beir", "open_ragbench", "slidevqa", "html_rag", "nomiracl", "mlqa", "mkqa", "enterprise_ragbench", "spoken_squad"],
         help="Dataset to generate",
     )
 
@@ -81,9 +81,10 @@ def main():
     )
     parser.add_argument(
         "--output-format",
-        choices=["txt", "md", "html", "pdf", "pptx", "png", "jpg"],
+        choices=["txt", "md", "html", "pdf", "pptx", "png", "jpg", "wav", "mp3", "flac"],
         default="txt",
-        help="Output format for knowledge base documents (default: txt)",
+        help="Output format for knowledge base documents (default: txt). "
+             "Audio formats (wav, mp3, flac) apply to --dataset spoken_squad.",
     )
 
     # BEIR-specific options
@@ -103,6 +104,13 @@ def main():
         "--slidevqa-split",
         default="val",
         help="SlideVQA dataset split (train, val, test) - only for --dataset slidevqa (default: val)",
+    )
+
+    # Spoken-SQuAD specific options
+    parser.add_argument(
+        "--spoken-squad-split",
+        default="test",
+        help="Spoken-SQuAD split (only 'test' is available) - only for --dataset spoken_squad (default: test)",
     )
 
     # HtmlRag (Natural Questions) specific options
@@ -226,6 +234,8 @@ def main():
             dataset_name = f"beir_{args.beir_dataset}_{args.beir_split}"
         elif args.dataset == "slidevqa":
             dataset_name = f"slidevqa_{args.slidevqa_split}"
+        elif args.dataset == "spoken_squad":
+            dataset_name = f"spoken_squad_{args.spoken_squad_split}"
         elif args.dataset == "html_rag":
             dataset_name = f"html_rag_{args.nq_split}"
         elif args.dataset == "nomiracl":
@@ -238,7 +248,9 @@ def main():
             dataset_name = f"enterprise_ragbench_{args.erb_source_type}"
             if args.erb_category:
                 dataset_name += f"_{args.erb_category}"
-        args.output_dir = Path("./generated_datasets") / dataset_name / args.output_format
+        # Include num_samples in the local path so different sample counts don't
+        # collide (mirrors the granular S3 prefix, which ends in /{num_samples}).
+        args.output_dir = Path("./generated_datasets") / dataset_name / args.output_format / str(args.num_samples)
 
     kb_dir = args.output_dir / "knowledge_base"
     bench_path = args.output_dir / "benchmark_data.json"
@@ -253,6 +265,8 @@ def main():
         options["split"] = args.beir_split
     elif args.dataset == "slidevqa":
         options["split"] = args.slidevqa_split
+    elif args.dataset == "spoken_squad":
+        options["split"] = args.spoken_squad_split
     elif args.dataset == "html_rag":
         options["split"] = args.nq_split
     elif args.dataset == "nomiracl":
@@ -284,6 +298,8 @@ def main():
         print(f"BEIR split: {args.beir_split}")
     elif args.dataset == "slidevqa":
         print(f"SlideVQA split: {args.slidevqa_split}")
+    elif args.dataset == "spoken_squad":
+        print(f"Spoken-SQuAD split: {args.spoken_squad_split}")
     elif args.dataset == "html_rag":
         print(f"NQ split: {args.nq_split}")
     elif args.dataset == "nomiracl":
@@ -368,6 +384,9 @@ def main():
             elif args.dataset == "slidevqa":
                 # Structure: datasets/rag/slidevqa/{split}/{format}/{num_samples}
                 args.s3_prefix = f"datasets/rag/slidevqa/{args.slidevqa_split}/{args.output_format}/{args.num_samples}"
+            elif args.dataset == "spoken_squad":
+                # Structure: datasets/rag/spoken_squad/{split}/{format}/{num_samples}
+                args.s3_prefix = f"datasets/rag/spoken_squad/{args.spoken_squad_split}/{args.output_format}/{args.num_samples}"
             elif args.dataset == "html_rag":
                 # Structure: datasets/rag/html_rag/{split}/html/{num_samples}
                 args.s3_prefix = f"datasets/rag/html_rag/{args.nq_split}/html/{args.num_samples}"
@@ -430,6 +449,9 @@ def main():
     elif args.dataset == "slidevqa":
         dataset_id = f"slidevqa-{args.slidevqa_split}-{args.num_samples}-{args.output_format}"
         dataset_name = f"SlideVQA {args.slidevqa_split.title()} ({args.num_samples} samples) {args.output_format.upper()}"
+    elif args.dataset == "spoken_squad":
+        dataset_id = f"spoken-squad-{args.spoken_squad_split}-{args.num_samples}-{args.output_format}"
+        dataset_name = f"Spoken-SQuAD {args.spoken_squad_split.title()} ({args.num_samples} samples) {args.output_format.upper()}"
     elif args.dataset == "html_rag":
         dataset_id = f"html-rag-nq-{args.nq_split}-{args.num_samples}"
         dataset_name = f"HtmlRag NQ {args.nq_split.title()} ({args.num_samples} samples)"
