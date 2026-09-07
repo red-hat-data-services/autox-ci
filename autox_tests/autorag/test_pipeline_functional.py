@@ -32,6 +32,7 @@ from .utils import (
     _collect_failure_details,
     _run_pipeline_and_wait,
     _validate_artifacts_in_s3,
+    validate_mixed_format_documents,
 )
 
 logger = logging.getLogger(__name__)
@@ -182,6 +183,17 @@ class TestAutoRAGFunctional:
         assert len(artifacts["evaluation_results_keys"]) >= 1, (
             f"[{test_scenario_config.id}] Expected evaluation_results.json under {prefix}; "
             f"found {artifacts['evaluation_results_keys']}"
+        )
+
+        # Validate that all input documents were loaded (for mixed-format tests)
+        from pathlib import Path
+        local_data_dir = Path(__file__).parent / "data"
+        validate_mixed_format_documents(
+            s3_client_functional,
+            artifact_bucket,
+            prefix,
+            test_scenario_config,
+            local_data_dir,
         )
 
         logger.info("Skipping notebook execution for run %s", run_id)

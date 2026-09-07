@@ -421,3 +421,151 @@ def _download_and_execute_notebooks(s3_client, bucket, notebook_keys):
 
     if errors:
         raise AssertionError("Notebook execution failures:\n" + "\n".join(errors))
+
+
+def get_input_document_names(input_data_key: str, local_data_dir: Path) -> set[str]:
+    """Get the set of input document filenames from a local data directory.
+
+    Args:
+        input_data_key: The S3 key path (e.g., 'datasets/rag/mixed_formats/documents').
+        local_data_dir: Local directory containing test data (e.g., 'autox_tests/autorag/data').
+
+    Returns:
+        Set of document filenames that should be loaded (e.g., {'doc.md', 'doc.txt'}).
+        Returns empty set if the local directory doesn't exist.
+    """
+    key_parts = Path(input_data_key).parts
+    target_dir = local_data_dir
+    for part in key_parts:
+        target_dir = target_dir / part
+
+    if not target_dir.exists() or not target_dir.is_dir():
+        logger.warning("Input data directory not found: %s", target_dir)
+        return set()
+
+    # Get all files in the directory
+    docs = set()
+    for entry in target_dir.iterdir():
+        if entry.is_file():
+            docs.add(entry.name)
+
+    return docs
+
+
+def extract_loaded_documents(evaluation_results: dict) -> set[str]:
+    """Extract the set of document IDs from evaluation_results.json.
+
+    Args:
+        evaluation_results: Parsed evaluation_results.json dict from the pipeline.
+
+    Returns:
+        Set of document IDs that were successfully loaded and used in evaluation.
+        For example: {'doc1.md', 'doc2.txt'}.
+    """
+    docs = set()
+
+    # Try to extract from benchmark data (correct_answer_document_ids)
+    if isinstance(evaluation_results, list):
+        for item in evaluation_results:
+            if isinstance(item, dict) and "correct_answer_document_ids" in item:
+                doc_ids = item.get("correct_answer_document_ids", [])
+                if isinstance(doc_ids, list):
+                    docs.update(doc_ids)
+
+    # Also check for a 'documents' field at the top level
+    if isinstance(evaluation_results, dict):
+        if "documents" in evaluation_results and isinstance(evaluation_results["documents"], list):
+            for doc_info in evaluation_results["documents"]:
+                if isinstance(doc_info, dict) and "id" in doc_info:
+                    docs.add(doc_info["id"])
+
+    return docs
+
+
+def validate_mixed_format_documents(
+    s3_client,
+    bucket: str,
+    prefix: str,
+    test_scenario_config,
+    local_data_dir: Path,
+) -> None:
+    """Validate that all input documents for mixed-format tests were loaded.
+
+    For TC-P-4 (mixed document formats), this ensures that no documents were silently
+    skipped during text extraction. Compares the set of input documents with the set
+    of documents referenced in evaluation_results.json.
+
+    Args:
+        s3_client: Boto3 S3 client.
+        bucket: S3 bucket name.
+        prefix: S3 prefix for pipeline artifacts.
+        test_scenario_config: Test scenario configuration with input_data_key.
+        local_data_dir: Local directory containing test data.
+
+    Raises:
+        AssertionError: If any input documents are missing from the evaluation results.
+    """
+    # Only validate mixed-format tests
+    if "mixed-formats" not in getattr(test_scenario_config, "tags", []):
+        return
+
+    input_docs = get_input_document_names(test_scenario_config.input_data_key, local_data_dir)
+    if not input_docs:
+        logger.warning(
+            "[%s] Could not determine input documents from %s — skipping document validation",
+            test_scenario_config.id,
+            test_scenario_config.input_data_key,
+        )
+        return
+
+    # Download evaluation_results.json and extract loaded documents
+    try:
+        from autox_tests.lib.s3_data import list_s3_objects, read_s3_json
+
+        objects = list_s3_objects(s3_client, bucket, prefix)
+        eval_results_key = next(
+            (obj["Key"] for obj in objects if "evaluation_results.json" in obj["Key"]),
+            None,
+        )
+
+        if not eval_results_key:
+            logger.warning(
+                "[%s] evaluation_results.json not found in s3://%s/%s — skipping document validation",
+                test_scenario_config.id,
+                bucket,
+                prefix,
+            )
+            return
+
+        evaluation_results = read_s3_json(s3_client, bucket, eval_results_key)
+        if not evaluation_results:
+            logger.warning(
+                "[%s] Failed to read evaluation_results.json from s3://%s/%s",
+                test_scenario_config.id,
+                bucket,
+                eval_results_key,
+            )
+            return
+
+        loaded_docs = extract_loaded_documents(evaluation_results)
+
+        missing_docs = input_docs - loaded_docs
+        if missing_docs:
+            raise AssertionError(
+                f"[{test_scenario_config.id}] {len(missing_docs)} input document(s) were not loaded/extracted: "
+                f"{sorted(missing_docs)}. This suggests text extraction failed for these document types."
+            )
+
+        logger.info(
+            "[%s] Document validation passed: all %d input documents were loaded",
+            test_scenario_config.id,
+            len(input_docs),
+        )
+    except AssertionError:
+        raise
+    except Exception as e:
+        logger.error(
+            "[%s] Error validating documents: %s",
+            test_scenario_config.id,
+            e,
+        )
