@@ -436,7 +436,15 @@ def get_input_document_names(input_data_key: str, local_data_dir: Path) -> set[s
     """
     key_parts = Path(input_data_key).parts
     target_dir = local_data_dir
-    for part in key_parts:
+
+    # Skip 'datasets' and 'rag' prefixes to find the actual directory
+    # S3 key: datasets/rag/mixed_formats/documents
+    # Local path: autox_tests/autorag/data/mixed_formats/documents
+    start_idx = 0
+    if len(key_parts) > 0 and key_parts[0] == 'datasets':
+        start_idx = 2  # Skip 'datasets' and 'rag'
+
+    for part in key_parts[start_idx:]:
         target_dir = target_dir / part
 
     if not target_dir.exists() or not target_dir.is_dir():
