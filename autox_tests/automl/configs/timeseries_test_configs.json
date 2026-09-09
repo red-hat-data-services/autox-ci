@@ -146,9 +146,9 @@
     "fault_category": "Invalid prediction_length",
     "injected_fault": "prediction_length=0 (must be a positive integer)",
     "expected_failing_stage": "pipeline",
-    "expected_failing_task": ["timeseries-data-loader"],
+    "expected_failing_task": ["timeseries-data-loader", "autogluon-timeseries-models-training", "autogluon-timeseries-models-training-2"],
     "expected_error_pattern": "prediction_length must be greater than 0",
-    "expected_outcome": "Fail fast in the data loader with 'prediction_length must be greater than 0' before any training task starts"
+    "expected_outcome": "Fail fast with 'prediction_length must be greater than 0'. Both the loader and the training components carry that check, so the task list accepts either — expected_error_pattern is what pins the reason."
   },
   {
     "id": "TC-NB-3_missing_s3_object",

@@ -330,7 +330,7 @@ S3 keys whose *absence* is the injected fault. Everything else referenced by any
 
 **Negative scenarios:**
 - Pipeline run reaches `FAILED` within 600 s
-- At least one of `expected_failing_task` names appears among the run's failed leaf tasks (DAG nodes — the root pipeline and condition groups — are excluded; they fail whenever any child does)
+- At least one of `expected_failing_task` names appears among the run's failed tasks (the list also contains DAG nodes — the root pipeline and `condition-*` groups — which fail whenever any child does; ignore them when reading a failure message)
 - `expected_error_pattern`, when set, matches the task errors or failed-pod logs
 
 ### Troubleshooting

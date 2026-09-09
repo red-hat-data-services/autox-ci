@@ -202,10 +202,12 @@ def upload_datasets_if_requested(automl_functional_config, s3_client_automl_func
     local ``data/`` directory to S3 before any tests run. When unset, datasets are
     assumed to already be present in S3.
 
-    Either way the bucket is verified against the scenarios' expectations before the first
-    run is submitted: every referenced object present, and every object behind a
-    missing-object fault absent. Checking this here keeps a fixture problem from
-    masquerading as a pipeline failure twenty minutes into a run.
+    Either way the bucket is verified before the first run is submitted: every object the
+    selected scenarios reference present, and every object behind a missing-object fault
+    absent. Checking this here keeps a fixture problem from masquerading as a pipeline
+    failure twenty minutes into a run. Both the upload and the check follow
+    ``AUTOML_FUNCTIONAL_TESTS_TAGS``, so a filtered run neither uploads nor requires
+    datasets it will not touch.
     """
     uploaded_keys: list[str] = []
     bucket: str | None = None

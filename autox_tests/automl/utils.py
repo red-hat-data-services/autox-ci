@@ -1610,7 +1610,9 @@ def assert_expected_error_pattern(
     if not pattern:
         return
 
-    if re.search(pattern, failure_details, re.IGNORECASE | re.DOTALL):
+    # No DOTALL: patterns describe a single error line, and letting '.' cross newlines
+    # would let two unrelated log lines satisfy one pattern.
+    if re.search(pattern, failure_details, re.IGNORECASE):
         return
 
     logs_missing = "POD LOGS FOR FAILED PODS:" not in failure_details

@@ -245,30 +245,37 @@ def get_all_train_data_file_keys() -> list[str]:
 def get_dataset_key_expectations() -> tuple[list[str], list[str]]:
     """Return ``(keys_that_must_exist, keys_that_must_be_absent)`` in the train-data bucket.
 
-    Absent keys come from ``missing_object_keys`` on the missing-object negative scenarios;
-    everything else referenced by any scenario must be present, so a fixture that never made
-    it to S3 fails at session setup instead of surfacing as an opaque pipeline error.
+    Scoped to the scenarios selected by ``AUTOML_FUNCTIONAL_TESTS_TAGS``, so a filtered run
+    is never blocked by a dataset it does not touch. Absent keys come from
+    ``missing_object_keys`` on the missing-object negative scenarios; every other key those
+    scenarios reference must be present, so a fixture that never made it to S3 fails at
+    session setup instead of surfacing as an opaque pipeline error.
 
     Raises:
         ValueError: If a key is declared missing by one scenario and used as real data by
             another — the two expectations cannot both hold.
     """
-    all_keys = set(get_all_train_data_file_keys())
+    configs = [*get_tabular_configs_for_run(), *get_timeseries_configs_for_run()]
+
+    all_keys: set[str] = set()
     absent: set[str] = set()
-    for c in (*_load_tabular_configs(), *_load_timeseries_configs()):
+    for c in configs:
+        all_keys.add(c.train_data_file_key)
+        if c.test_data_file_key:
+            all_keys.add(c.test_data_file_key)
         absent.update(c.missing_object_keys)
 
     unknown = absent - all_keys
     if unknown:
         raise ValueError(
-            f"missing_object_keys reference keys no scenario uses: {sorted(unknown)}. "
+            f"missing_object_keys reference keys no selected scenario uses: {sorted(unknown)}. "
             "Fix the typo, or drop the entry."
         )
 
     conflicting = {
         key
         for key in absent
-        for c in (*_load_tabular_configs(), *_load_timeseries_configs())
+        for c in configs
         if key in (c.train_data_file_key, c.test_data_file_key)
         and key not in c.missing_object_keys
     }
