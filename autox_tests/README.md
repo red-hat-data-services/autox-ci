@@ -205,6 +205,9 @@ pytest autox_tests/automl/ -m negative -v
 
 # Single scenario
 pytest autox_tests/automl/ -k "TC-A-1_regression" -v
+
+# User-provided test dataset scenarios (requires IR with test_data_bucket_name + test_data_file_key)
+AUTOML_FUNCTIONAL_TESTS_TAGS=user_test_data pytest autox_tests/automl/ -v
 ```
 
 ### Test scenarios
@@ -219,12 +222,15 @@ pytest autox_tests/automl/ -k "TC-A-1_regression" -v
 | TC-A-4_energy_regression | regression | UCI Energy Efficiency | `Heating.Load` | 5 | — |
 | TC-A-5_credit_default_binary | binary | UCI Credit Default | `default.payment.next.month` | 3 | — |
 | TC-A-6_wine_multiclass | multiclass | UCI Wine Quality (red+white) | `quality` | 1 | — |
+| TC-A-7_user_provided_test_data | binary | German credit (biased) train + test | `Risk` | 1 | user_test_data |
 | TC-NA-1_invalid_task_type | — | — | — | — | negative, validation |
 | TC-NA-2_invalid_top_n_zero | — | — | — | — | negative, validation |
 | TC-NA-3_label_column_absent | — | — | — | — | negative, data |
 | TC-NA-4_missing_s3_object | — | — | — | — | negative, storage |
 | TC-NA-5_task_data_mismatch | — | — | — | — | negative, data |
 | TC-NA-6_bad_credentials | — | — | — | — | negative, credentials |
+| TC-NA-7_user_test_missing_object | — | — | — | — | negative, storage, user_test_data |
+| TC-NA-8_user_test_schema_mismatch | — | — | — | — | negative, data, user_test_data |
 
 #### Time series (`timeseries_test_configs.json`)
 
@@ -232,15 +238,29 @@ pytest autox_tests/automl/ -k "TC-A-1_regression" -v
 |---|---|---|---|
 | TC-B-1_timeseries_fruits_with_covariate | daily | fruits daily price (with covariate) | smoke, renamed_schema, covariate |
 | TC-B-2_timeseries_m4_hourly | hourly | M4 hourly subset | hourly, standard_schema |
+| TC-B-3_user_provided_test_data | daily | Poland COVID-19 cases train + test | user_test_data |
 | TC-NB-1_invalid_target | — | — | negative, data |
 | TC-NB-2_invalid_prediction_length | — | — | negative, validation |
 | TC-NB-3_missing_s3_object | — | — | negative, storage |
 | TC-NB-4_bad_credentials | — | — | negative, credentials |
 | TC-NB-5_invalid_top_n_zero | — | — | negative, validation |
+| TC-NB-6_user_test_missing_object | — | — | negative, storage, user_test_data |
+| TC-NB-7_user_test_series_too_short | — | — | negative, data, user_test_data |
 
 ### Test data sources
 
 Training datasets used by the positive scenarios are stored in the S3 bucket defined by `RHOAI_TRAIN_DATA_BUCKET`. The files for the original scenarios ship in `automl/data/` for local reference; the three datasets added for RHAIENG-4179 pairwise coverage are described below.
+
+#### User-provided test datasets
+
+| Scenario | S3 key | Origin | Preparation |
+|---|---|---|---|
+| TC-A-7 | `functional-test/tabular/classification_binary/german_credit_data_biased_train.csv` / `german_credit_data_biased_test.csv` | German credit risk with a Sex-biased train/test split (3500 / 1500 rows, label `Risk`) | Pre-split user test path. After duplicate drop the test artifact has 1497 rows; a default 80/20 holdout of train would be ~700 rows. |
+| TC-NA-8 | `functional-test/tabular/classification_binary/german_credit_data_biased_test_missing_features.csv` | Same credit-risk label column without training features | Fail-fast schema mismatch in the data loader. |
+| TC-B-3 | `functional-test/timeseries/poland_daily_cases_03_03_2021.csv` / `poland_daily_cases_03_04-28_2021.csv` | Poland daily COVID-19 cases: train through 2021-03-03 (407 rows), test 2021-03-04–03-28 (25 rows) | Single-series (`id_column` empty; loader injects `__synthetic_item_id`). 25 test rows is longer than `prediction_length=7` and much smaller than a default ~80-row holdout. Artifact fingerprint is `2021-03-28` after timestamp cleansing. The scoring payload sends `__synthetic_item_id="item_0"` explicitly — the current autogluonserver KServe build rejects instances without the id column even when it was loader-injected; drop that field once a build that infers it ships. |
+| TC-NB-7 | Same Poland COVID train/test split | Test series is 25 rows | Fail-fast with `prediction_length=25` (each series must be longer than `prediction_length`). |
+
+These `user_test_data` scenarios require compiled AutoML pipeline IR that declares `test_data_bucket_name` and `test_data_file_key` ([pipelines-components#227](https://github.com/opendatahub-io/pipelines-components/pull/227)+). S3 credentials for the external test object come from `train_data_secret_name` (mounted as both `AWS_*` and `TEST_DATA_AWS_*`); there is no separate `test_data_secret_name` pipeline input. Existing scenarios omit the test-data arguments so they still run against older IR.
 
 #### Tabular datasets
 
@@ -280,6 +300,23 @@ When `RHOAI_DEPLOY_AFTER_TRAINING=true` and `inference_sample` is present, the t
 
 Negative scenario entries include an `expected_outcome` field: a human-readable description of the expected failure mode (e.g. `"Fail fast with clear validation message"`). This field is informational only — it is not evaluated by the test runner. It exists to document design intent and aid debugging when a scenario passes unexpectedly.
 
+#### `expected_error_pattern` (negative scenarios)
+
+A regex matched (case-insensitively) against the run's failure details — task errors plus the logs of every failed pod. `expected_failing_task` alone only proves *something* broke in the right component; a missing S3 fixture, bad credentials or an OOM would all satisfy it. Pinning the message means the scenario passes only for the fault it injects:
+
+```json
+"expected_failing_task": ["timeseries-data-loader"],
+"expected_error_pattern": "prediction_length must be greater than 0"
+```
+
+It also makes `expected_failing_task` cheap to keep loose: once the reason is pinned, listing both the loader and the training tasks tolerates validation moving between components across IR versions without ever accepting a wrong-reason failure.
+
+The field is optional. The two `bad_credentials` scenarios leave it unset on purpose — the pod never starts when the secret is missing, so there are no logs to match; they carry an `expected_error_pattern_comment` recording why. When a pattern is set but no pod logs could be collected, the assertion message says so, since Kubernetes connectivity (not the pipeline) is then the likely cause.
+
+#### `missing_object_keys` (negative scenarios)
+
+S3 keys whose *absence* is the injected fault. Everything else referenced by any scenario is treated as a required fixture: before the first run is submitted, the session fixture uploads it (when `AUTOML_UPLOAD_TEST_DATASETS=true`) and then verifies with `head_object` that every required key exists and every `missing_object_keys` entry does not. A fixture that never reached the bucket fails at setup with a clear message instead of surfacing twenty minutes later as a `NoSuchKey` that reads like a product bug. Uploads no longer skip an unmatched key silently — only keys listed here may be absent locally.
+
 ### Pass criteria
 
 **Positive scenarios:**
@@ -288,11 +325,13 @@ Negative scenario entries include an `expected_outcome` field: a human-readable 
 - Primary metric present (`r2` for regression, `accuracy` for classification, `MASE` for time series)
 - Leaderboard HTML artifact exists in S3
 - Sampled test dataset CSV exists in S3
+- User-provided test scenarios (`user_test_data` tag): `sampled_test_dataset` matches the external CSV row count rather than a default 80/20 holdout
 - *(when `RHOAI_DEPLOY_AFTER_TRAINING=true`)* InferenceService becomes Ready and returns non-empty predictions
 
 **Negative scenarios:**
 - Pipeline run reaches `FAILED` within 600 s
-- At least one of `expected_failing_task` names appears among the run's failed tasks
+- At least one of `expected_failing_task` names appears among the run's failed leaf tasks (DAG nodes — the root pipeline and condition groups — are excluded; they fail whenever any child does)
+- `expected_error_pattern`, when set, matches the task errors or failed-pod logs
 
 ### Troubleshooting
 

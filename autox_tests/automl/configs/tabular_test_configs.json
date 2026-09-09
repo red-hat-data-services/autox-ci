@@ -149,6 +149,40 @@
     ]
   },
   {
+    "id": "TC-A-7_user_provided_test_data",
+    "label_column": "Risk",
+    "task_type": "binary",
+    "top_n": 1,
+    "train_data_file_key": "functional-test/tabular/classification_binary/german_credit_data_biased_train.csv",
+    "test_data_file_key": "functional-test/tabular/classification_binary/german_credit_data_biased_test.csv",
+    "expected_test_dataset_rows": 1497,
+    "tags": ["tabular", "classification", "binary", "user_test_data"],
+    "inference_sample": [
+      {
+        "CheckingStatus":            ["no_checking"],
+        "LoanDuration":              [30],
+        "CreditHistory":             ["prior_payments_delayed"],
+        "LoanPurpose":               ["appliances"],
+        "LoanAmount":                [5928],
+        "ExistingSavings":           ["100_to_500"],
+        "EmploymentDuration":        ["greater_7"],
+        "InstallmentPercent":        [4],
+        "Sex":                       ["male"],
+        "OthersOnLoan":              ["none"],
+        "CurrentResidenceDuration":  [4],
+        "OwnsProperty":              ["car_other"],
+        "Age":                       [44],
+        "InstallmentPlans":          ["none"],
+        "Housing":                   ["free"],
+        "ExistingCreditsCount":      [2],
+        "Job":                       ["skilled"],
+        "Dependents":                [1],
+        "Telephone":                 ["yes"],
+        "ForeignWorker":             ["yes"]
+      }
+    ]
+  },
+  {
     "id": "TC-NA-1_invalid_task_type",
     "label_column": "price",
     "task_type": "not_a_valid_task",
@@ -159,6 +193,7 @@
     "injected_fault": "task_type='not_a_valid_task' (not in {binary, multiclass, regression})",
     "expected_failing_stage": "pipeline",
     "expected_failing_task": ["automl-data-loader", "autogluon-models-training"],
+    "expected_error_pattern": "task_type must be one of",
     "expected_outcome": "Fail fast with clear validation message"
   },
   {
@@ -172,6 +207,7 @@
     "injected_fault": "top_n=0 (must be a positive integer)",
     "expected_failing_stage": "pipeline",
     "expected_failing_task": ["autogluon-models-training", "autogluon-models-training-2"],
+    "expected_error_pattern": "top_n must be an integer in the range",
     "expected_outcome": "Rejected before usable run or step failure"
   },
   {
@@ -185,6 +221,7 @@
     "injected_fault": "label_column='NonExistentColumn' absent from uploaded CSV",
     "expected_failing_stage": "pipeline",
     "expected_failing_task": ["automl-data-loader"],
+    "expected_error_pattern": "column .*NonExistentColumn.* not found in the dataset",
     "expected_outcome": "KeyError / ValueError-style failure"
   },
   {
@@ -198,6 +235,8 @@
     "injected_fault": "train_data_file_key points to a non-existent S3 object",
     "expected_failing_stage": "pipeline",
     "expected_failing_task": ["automl-data-loader"],
+    "expected_error_pattern": "NoSuchKey|specified key does not exist",
+    "missing_object_keys": ["functional-test/neg/tc-na-4/does-not-exist-00000000.csv"],
     "expected_outcome": "S3/not-found or access error; no partial train artifacts"
   },
   {
@@ -211,6 +250,7 @@
     "injected_fault": "task_type='multiclass' on a regression dataset (continuous price target)",
     "expected_failing_stage": "pipeline",
     "expected_failing_task": ["automl-data-loader"],
+    "expected_error_pattern": "least populated class in y has only",
     "expected_outcome": "Stratified split fails: continuous price column has unique values each with 1 member when task_type='multiclass'"
   },
   {
@@ -225,6 +265,38 @@
     "injected_fault": "train_data_secret_name references a non-existent Kubernetes secret",
     "expected_failing_stage": "pipeline",
     "expected_failing_task": ["automl-data-loader"],
+    "expected_error_pattern_comment": "No expected_error_pattern: the pod never starts when the secret is missing, so there are no logs to match — the failing task plus a FAILED run is all this scenario can assert.",
     "expected_outcome": "Auth failure; no silent fallback"
+  },
+  {
+    "id": "TC-NA-7_user_test_missing_object",
+    "label_column": "Risk",
+    "task_type": "binary",
+    "top_n": 1,
+    "train_data_file_key": "functional-test/tabular/classification_binary/german_credit_data_biased_train.csv",
+    "test_data_file_key": "functional-test/neg/tc-na-7/does-not-exist-user-test.csv",
+    "tags": ["negative", "storage", "user_test_data"],
+    "fault_category": "User test object storage",
+    "injected_fault": "test_data_file_key points to a non-existent S3 object",
+    "expected_failing_stage": "pipeline",
+    "expected_failing_task": ["automl-data-loader"],
+    "expected_error_pattern": "NoSuchKey|specified key does not exist",
+    "missing_object_keys": ["functional-test/neg/tc-na-7/does-not-exist-user-test.csv"],
+    "expected_outcome": "Fail fast in the data loader with a user-test S3/not-found error; skip holdout split"
+  },
+  {
+    "id": "TC-NA-8_user_test_schema_mismatch",
+    "label_column": "Risk",
+    "task_type": "binary",
+    "top_n": 1,
+    "train_data_file_key": "functional-test/tabular/classification_binary/german_credit_data_biased_train.csv",
+    "test_data_file_key": "functional-test/tabular/classification_binary/german_credit_data_biased_test_missing_features.csv",
+    "tags": ["negative", "data", "user_test_data"],
+    "fault_category": "User test schema",
+    "injected_fault": "user test CSV is missing training feature columns",
+    "expected_failing_stage": "pipeline",
+    "expected_failing_task": ["automl-data-loader"],
+    "expected_error_pattern": "Test dataset is missing feature column\\(s\\) present in the training data",
+    "expected_outcome": "Fail fast in the data loader before training (schema mismatch)"
   }
 ]

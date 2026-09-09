@@ -197,12 +197,23 @@ def s3_cleanup_tracker():
 def upload_datasets_if_requested(automl_functional_config, s3_client_automl_functional):
     """Upload test datasets to S3 at session start when ``AUTOML_UPLOAD_TEST_DATASETS`` is set.
 
-    When set to ``1``, ``true``, or ``yes``, datasets referenced in tabular_test_configs.json
-    and timeseries_test_configs.json are uploaded from the local ``data/`` directory to S3
-    before any tests run. When unset, datasets are assumed to already be present in S3.
+    When set to ``1``, ``true``, or ``yes``, train and user-test CSVs referenced in
+    tabular_test_configs.json and timeseries_test_configs.json are uploaded from the
+    local ``data/`` directory to S3 before any tests run. When unset, datasets are
+    assumed to already be present in S3.
+
+    Either way the bucket is verified against the scenarios' expectations before the first
+    run is submitted: every referenced object present, and every object behind a
+    missing-object fault absent. Checking this here keeps a fixture problem from
+    masquerading as a pipeline failure twenty minutes into a run.
     """
     uploaded_keys: list[str] = []
     bucket: str | None = None
+
+    from .configs.configs import get_dataset_key_expectations
+    from .utils import upload_test_datasets, verify_dataset_objects
+
+    required_keys, absent_keys = get_dataset_key_expectations()
 
     raw = os.environ.get(AUTOML_UPLOAD_TEST_DATASETS_ENV, "").strip().lower()
     if raw in ("1", "true", "yes"):
@@ -212,17 +223,23 @@ def upload_datasets_if_requested(automl_functional_config, s3_client_automl_func
                 "set AWS_* and RHOAI_TRAIN_DATA_BUCKET env vars"
             )
         else:
-            from .configs.configs import get_all_train_data_file_keys
-            from .utils import upload_test_datasets
-
             local_data_dir = Path(__file__).parent / "data"
             bucket = automl_functional_config["train_data_bucket_name"]
             uploaded_keys = upload_test_datasets(
                 s3_client_automl_functional,
                 bucket,
-                get_all_train_data_file_keys(),
+                required_keys + absent_keys,
                 local_data_dir,
+                optional_keys=absent_keys,
             )
+
+    if automl_functional_config is not None and s3_client_automl_functional is not None:
+        verify_dataset_objects(
+            s3_client_automl_functional,
+            automl_functional_config["train_data_bucket_name"],
+            required_keys,
+            absent_keys,
+        )
 
     yield
 

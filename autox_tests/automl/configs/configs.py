@@ -42,7 +42,20 @@ class AutoMLTabularFunctionalConfig:
     injected_fault: str | None = None
     expected_failing_stage: str | None = None
     expected_failing_task: list[str] | None = None
+    # Regex matched against task errors + failed-pod logs. Pins the *reason* for the
+    # failure so a scenario cannot pass on an unrelated fault in the expected task.
+    expected_error_pattern: str | None = None
+    # S3 keys this scenario needs to be absent (missing-object faults). Every other key
+    # referenced by any scenario is verified present before the suite runs.
+    missing_object_keys: list[str] = field(default_factory=list)
     train_data_secret_name_override: str | None = None
+    # User-provided test dataset (pipelines-components AutoML test_data_* inputs).
+    # Omitted from pipeline arguments when test_data_file_key is unset so older IR still runs.
+    # Credentials come from train_data_secret_name (mapped to AWS_* and TEST_DATA_AWS_*).
+    test_data_file_key: str | None = None
+    test_data_bucket_name_override: str | None = None
+    expected_test_dataset_rows: int | None = None
+    expected_test_dataset_contains: str | None = None
 
     def get_pipeline_arguments(self, base_config: dict) -> dict[str, Any]:
         """Merge scenario-specific fields with shared S3 secret/bucket from base config."""
@@ -50,7 +63,7 @@ class AutoMLTabularFunctionalConfig:
             self.train_data_secret_name_override
             or base_config["train_data_secret_name"]
         )
-        return {
+        args: dict[str, Any] = {
             "train_data_secret_name": effective_secret,
             "train_data_bucket_name": base_config["train_data_bucket_name"],
             "train_data_file_key": self.train_data_file_key,
@@ -58,6 +71,13 @@ class AutoMLTabularFunctionalConfig:
             "task_type": self.task_type,
             "top_n": self.top_n,
         }
+        _attach_user_test_data_args(
+            args,
+            test_data_file_key=self.test_data_file_key,
+            test_data_bucket_name_override=self.test_data_bucket_name_override,
+            base_config=base_config,
+        )
+        return args
 
 
 @dataclass
@@ -84,8 +104,18 @@ class AutoMLTimeseriesFunctionalConfig:
     injected_fault: str | None = None
     expected_failing_stage: str | None = None
     expected_failing_task: list[str] | None = None
+    # Regex matched against task errors + failed-pod logs. Pins the *reason* for the
+    # failure so a scenario cannot pass on an unrelated fault in the expected task.
+    expected_error_pattern: str | None = None
+    # S3 keys this scenario needs to be absent (missing-object faults). Every other key
+    # referenced by any scenario is verified present before the suite runs.
+    missing_object_keys: list[str] = field(default_factory=list)
     eval_metric: str | None = None
     train_data_secret_name_override: str | None = None
+    test_data_file_key: str | None = None
+    test_data_bucket_name_override: str | None = None
+    expected_test_dataset_rows: int | None = None
+    expected_test_dataset_contains: str | None = None
 
     def get_pipeline_arguments(self, base_config: dict) -> dict[str, Any]:
         """Merge scenario-specific fields with shared S3 secret/bucket from base config."""
@@ -93,7 +123,7 @@ class AutoMLTimeseriesFunctionalConfig:
             self.train_data_secret_name_override
             or base_config["train_data_secret_name"]
         )
-        args = {
+        args: dict[str, Any] = {
             "train_data_secret_name": effective_secret,
             "train_data_bucket_name": base_config["train_data_bucket_name"],
             "train_data_file_key": self.train_data_file_key,
@@ -106,7 +136,36 @@ class AutoMLTimeseriesFunctionalConfig:
         }
         if self.eval_metric is not None:
             args["eval_metric"] = self.eval_metric
+        _attach_user_test_data_args(
+            args,
+            test_data_file_key=self.test_data_file_key,
+            test_data_bucket_name_override=self.test_data_bucket_name_override,
+            base_config=base_config,
+        )
         return args
+
+
+def _attach_user_test_data_args(
+    args: dict[str, Any],
+    *,
+    test_data_file_key: str | None,
+    test_data_bucket_name_override: str | None,
+    base_config: dict[str, Any],
+) -> None:
+    """Add test_data_* pipeline inputs only when a user test object key is configured.
+
+    Latest AutoML IR (pipelines-components#227) accepts ``test_data_bucket_name`` and
+    ``test_data_file_key`` only. S3 credentials for that object come from
+    ``train_data_secret_name`` (mounted as both ``AWS_*`` and ``TEST_DATA_AWS_*``).
+    """
+    key = (test_data_file_key or "").strip()
+    if not key:
+        return
+    train_bucket = base_config["train_data_bucket_name"]
+    args["test_data_file_key"] = key
+    args["test_data_bucket_name"] = (
+        (test_data_bucket_name_override or "").strip() or train_bucket
+    )
 
 
 _TABULAR_FIELDS: set[str] | None = None
@@ -170,10 +229,56 @@ def _split_by_pass_type(configs: list, pass_type: str | None) -> list:
 
 
 def get_all_train_data_file_keys() -> list[str]:
-    """Return all unique train_data_file_key values across tabular and timeseries configs."""
-    keys = [c.train_data_file_key for c in _load_tabular_configs()]
-    keys += [c.train_data_file_key for c in _load_timeseries_configs()]
+    """Return unique train and user-test S3 keys across tabular and timeseries configs."""
+    keys: list[str] = []
+    for c in _load_tabular_configs():
+        keys.append(c.train_data_file_key)
+        if c.test_data_file_key:
+            keys.append(c.test_data_file_key)
+    for c in _load_timeseries_configs():
+        keys.append(c.train_data_file_key)
+        if c.test_data_file_key:
+            keys.append(c.test_data_file_key)
     return keys
+
+
+def get_dataset_key_expectations() -> tuple[list[str], list[str]]:
+    """Return ``(keys_that_must_exist, keys_that_must_be_absent)`` in the train-data bucket.
+
+    Absent keys come from ``missing_object_keys`` on the missing-object negative scenarios;
+    everything else referenced by any scenario must be present, so a fixture that never made
+    it to S3 fails at session setup instead of surfacing as an opaque pipeline error.
+
+    Raises:
+        ValueError: If a key is declared missing by one scenario and used as real data by
+            another — the two expectations cannot both hold.
+    """
+    all_keys = set(get_all_train_data_file_keys())
+    absent: set[str] = set()
+    for c in (*_load_tabular_configs(), *_load_timeseries_configs()):
+        absent.update(c.missing_object_keys)
+
+    unknown = absent - all_keys
+    if unknown:
+        raise ValueError(
+            f"missing_object_keys reference keys no scenario uses: {sorted(unknown)}. "
+            "Fix the typo, or drop the entry."
+        )
+
+    conflicting = {
+        key
+        for key in absent
+        for c in (*_load_tabular_configs(), *_load_timeseries_configs())
+        if key in (c.train_data_file_key, c.test_data_file_key)
+        and key not in c.missing_object_keys
+    }
+    if conflicting:
+        raise ValueError(
+            f"Keys declared missing by one scenario but used as real data by another: "
+            f"{sorted(conflicting)}. A missing-object fault needs its own dedicated key."
+        )
+
+    return sorted(all_keys - absent), sorted(absent)
 
 
 def get_tabular_configs_for_run(
