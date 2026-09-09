@@ -71,7 +71,7 @@ Pass tags via `--tags` / `-t` on the CLI or set `AUTORAG_FUNCTIONAL_TESTS_TAGS` 
 1. Pipeline run finishes with state `SUCCEEDED`
 2. At least 1 pattern artifact exists in S3
 3. Indexing notebook, inference notebook, and `evaluation_results.json` exist in S3
-4. A randomly selected indexing and inference notebook executes successfully via papermill
+4. The best indexing and inference notebooks execute successfully in Kubernetes Jobs when `RHOAI_NOTEBOOK_RUNNER_IMAGE` is configured
 
 **Expected-fail scenarios:**
 1. Pipeline run finishes with state `FAILED` (not `SUCCEEDED`, not timeout)

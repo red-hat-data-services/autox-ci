@@ -31,35 +31,7 @@ benchmarks = [
   "Pillow>=10.0.0",
   "requests>=2.31.0",
 ]
-test_automl = [
-  "papermill",
-  "ipykernel",
-  "autogluon.common==1.5.0+rhaiv.5",
-  "autogluon.core==1.5.0+rhaiv.5",
-  "autogluon.features==1.5.0+rhaiv.5",
-  "autogluon.tabular[lightgbm,xgboost,tabm,fastai]==1.5.0+rhaiv.5",
-  "autogluon.timeseries==1.5.0+rhaiv.5",
-]
-test_autorag = [
-  "nbformat",
-  "notebook",
-  "papermill",
-  "pip",
-  "ipykernel",
-  # Targets the MaaS architecture. Until ai4rag 0.12.0 is published to the index,
-  # `uv lock` / `uv sync --extra test_autorag` cannot resolve; uv.lock stays at the
-  # previous version and is regenerated once 0.12.0 is available. Only used for local
-  # papermill notebook execution (currently skipped), not for pipeline runs.
-  "ai4rag~=0.12.0",
-]
 
-[tool.uv]
-conflicts = [
-  [
-    { extra = "test_automl" },
-    { extra = "test_autorag" },
-  ],
-]
 
 [[tool.uv.index]]
 name = "rhai"

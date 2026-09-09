@@ -6,6 +6,8 @@
     "top_n": 1,
     "train_data_file_key": "functional-test/tabular/regression/housing_pricing.csv",
     "tags": ["tabular", "regression", "smoke"],
+    "run_notebook": true,
+    "deploy": true,
     "inference_sample": [
       {
         "area":             [7420],
@@ -30,6 +32,8 @@
     "top_n": 3,
     "train_data_file_key": "functional-test/tabular/classification_binary/titanic.csv",
     "tags": ["tabular", "classification", "binary", "smoke"],
+    "run_notebook": true,
+    "deploy": true,
     "inference_sample": [
       {
         "PassengerId": [1],
@@ -53,6 +57,8 @@
     "top_n": 2,
     "train_data_file_key": "functional-test/tabular/classification_multiclass/car_rental_training_data_light.csv",
     "tags": ["tabular", "classification", "multiclass"],
+    "run_notebook": true,
+    "deploy": true,
     "inference_sample": [
       {
         "ID":               [83],
@@ -75,6 +81,8 @@
     "top_n": 5,
     "train_data_file_key": "functional-test/tabular/regression/energy_efficiency_regression.csv",
     "tags": ["tabular", "regression"],
+    "run_notebook": false,
+    "deploy": true,
     "inference_sample": [
       {
         "Relative.Compactness": [0.98],
@@ -96,6 +104,8 @@
     "top_n": 3,
     "train_data_file_key": "functional-test/tabular/classification_binary/credit_default_binary_light.csv",
     "tags": ["tabular", "classification", "binary"],
+    "run_notebook": false,
+    "deploy": true,
     "inference_sample": [
       {
         "ID":        [1],
@@ -132,6 +142,8 @@
     "top_n": 1,
     "train_data_file_key": "functional-test/tabular/classification_multiclass/wine_quality_multiclass_limited_classes_light.csv",
     "tags": ["tabular", "classification", "multiclass"],
+    "run_notebook": false,
+    "deploy": true,
     "inference_sample": [
       {
         "fixed acidity":        [7.4],

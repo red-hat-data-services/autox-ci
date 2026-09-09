@@ -12,7 +12,7 @@ Passing criteria for expected-pass tests (from RHAIENG-4142):
 - Pipeline run finishes with status success
 - At least 1 pattern is generated
 - All desired artifacts exist (indexing notebook, inference notebook, evaluation_results.json, pattern.json)
-- Notebooks are downloaded from S3 and executed locally via papermill (ai4rag pre-installed in test_autorag extra)
+- The selected indexing and inference notebooks execute in Kubernetes Jobs.
 """
 
 import logging
@@ -30,6 +30,8 @@ from autox_tests.autorag.configs.configs import (
 from autox_tests.lib.kfp_run_state import _get_run_state, _run_failed, _run_succeeded
 from .utils import (
     _collect_failure_details,
+    _download_and_execute_notebooks,
+    _pick_best_pattern_notebooks,
     _run_pipeline_and_wait,
     _validate_artifacts_in_s3,
 )
@@ -184,4 +186,15 @@ class TestAutoRAGFunctional:
             f"found {artifacts['evaluation_results_keys']}"
         )
 
-        logger.info("Skipping notebook execution for run %s", run_id)
+        if test_scenario_config.run_notebook:
+            indexing_notebook_key, inference_notebook_key = _pick_best_pattern_notebooks(
+                s3_client_functional, artifact_bucket, artifacts
+            )
+            _download_and_execute_notebooks(
+                s3_client_functional,
+                artifact_bucket,
+                [indexing_notebook_key, inference_notebook_key],
+                config=add_kubeconfig_to_config(
+                    functional_env_config, rhoai_cluster_kubeconfig
+                ),
+            )

@@ -18,7 +18,7 @@ from autox_tests.lib.k8s_utils import load_k8s_config
 from autox_tests.lib.settings import AUTOML_UPLOAD_TEST_DATASETS_ENV
 from autox_tests.lib.kfp_run_state import _get_failed_task_names, _normalize_state  # noqa: F401
 from autox_tests.lib.s3_data import list_s3_objects, read_s3_json
-from autox_tests.lib.notebooks import NOTEBOOK_KERNEL_NAME, ensure_notebook_kernel_registered
+from autox_tests.lib.notebooks import run_notebook_as_k8s_job
 
 logger = logging.getLogger(__name__)
 
@@ -1117,23 +1117,6 @@ def delete_inference_service(co, namespace: str, isvc_name: str) -> None:
             logger.warning("Failed to delete InferenceService %r: %s", isvc_name, e)
 
 
-_AUTOML_NOTEBOOK_ENV_PREFIXES = ("AWS_",)
-_SYSTEM_ENV_KEYS = frozenset(
-    {
-        "PATH",
-        "HOME",
-        "TMPDIR",
-        "TEMP",
-        "TMP",
-        "LANG",
-        "LC_ALL",
-        "USER",
-        "LOGNAME",
-        "SHELL",
-    }
-)
-
-
 def run_deployment_test(
     *,
     scenario_id: str,
@@ -1630,55 +1613,19 @@ def assert_expected_error_pattern(
 
 
 def download_and_execute_automl_notebook(
-    s3_client, bucket: str, notebook_key: str
+    s3_client, bucket: str, notebook_key: str, *, config: dict
 ) -> None:
-    """Download an AutoML predictor notebook from S3 and execute it locally via papermill.
+    """Execute an AutoML predictor notebook in a Kubernetes Job.
 
     Raises:
         AssertionError: If the notebook fails to execute.
     """
-    try:
-        import papermill as pm
-    except ImportError as e:
-        raise AssertionError(
-            "papermill is not installed; cannot execute notebook"
-        ) from e
-
-    with tempfile.TemporaryDirectory(prefix="automl-notebook-") as tmpdir:
-        filename = Path(notebook_key).name
-        input_path = Path(tmpdir) / f"input_{filename}"
-        output_path = Path(tmpdir) / f"output_{filename}"
-
-        s3_client.download_file(bucket, notebook_key, str(input_path))
-
-        original_cwd = os.getcwd()
-        original_environ = os.environ.copy()
-        try:
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            os.chdir(output_path.parent)
-
-            filtered_env = {
-                k: v
-                for k, v in original_environ.items()
-                if k in _SYSTEM_ENV_KEYS
-                or any(k.startswith(p) for p in _AUTOML_NOTEBOOK_ENV_PREFIXES)
-            }
-            os.environ.clear()
-            os.environ.update(filtered_env)
-
-            ensure_notebook_kernel_registered()
-            pm.execute_notebook(
-                str(input_path), str(output_path), kernel_name=NOTEBOOK_KERNEL_NAME
-            )
-        except pm.PapermillExecutionError as e:
-            raise AssertionError(
-                f"AutoML notebook {filename} (key={notebook_key}) failed: {e}"
-            ) from e
-        except Exception as e:
-            raise AssertionError(
-                f"AutoML notebook {filename} (key={notebook_key}) execution error: {e}"
-            ) from e
-        finally:
-            os.environ.clear()
-            os.environ.update(original_environ)
-            os.chdir(original_cwd)
+    del s3_client  # The Job downloads the notebook with its injected S3 secret.
+    run_notebook_as_k8s_job(
+        bucket=bucket,
+        notebook_key=notebook_key,
+        config=config,
+        secret_names=[
+            str(config.get("s3_secret_name") or config.get("train_data_secret_name") or "")
+        ],
+    )
