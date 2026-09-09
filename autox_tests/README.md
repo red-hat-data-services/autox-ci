@@ -97,9 +97,9 @@ autox_tests/
 Python 3.11+ and `uv` (recommended) or `pip`. Install test dependencies (includes AutoGluon from the RHAI index):
 
 ```bash
-uv sync --extra test_automl
+uv sync
 # or
-pip install -e ".[test_automl]"
+pip install -e .
 ```
 
 You also need a running OpenShift AI cluster with Data Science Pipelines and an S3-compatible object store reachable from the cluster.
@@ -168,8 +168,10 @@ Set `run_notebook` to `true` to execute the selected model notebook in a Kuberne
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `RHOAI_NOTEBOOK_RUNNER_IMAGE` | — | Image used for notebook Jobs. Without it, enabled notebook checks are skipped. |
+| `RHOAI_NOTEBOOK_RUNNER_IMAGE` | — | Image used for notebook Jobs. Required when `run_notebook: true`. |
 | `RHOAI_NOTEBOOK_JOB_TIMEOUT` | `900` | Maximum seconds to wait for a notebook Job. |
+| `RHOAI_NOTEBOOK_CPU` | `2` | CPU request and limit for the notebook Job container. |
+| `RHOAI_NOTEBOOK_MEMORY` | `4Gi` | Memory request and limit for the notebook Job container. |
 | `RHOAI_NOTEBOOK_KERNEL_NAME` | `python3` | Registered kernel used when a notebook has no kernelspec. |
 | `S3_SSL_VERIFY` | `true` | Verify S3 TLS in the test process and notebook Job. Set to `false` only for a trusted development endpoint with a self-signed certificate. |
 
@@ -355,7 +357,7 @@ S3 keys whose *absence* is the injected fault. Everything else referenced by any
 - **ISVC creation HTTP 500 (`no endpoints available for service "kserve-webhook-server-service"`)** — the KServe webhook pod is down. Run `oc rollout restart deployment/kserve-controller-manager -n redhat-ods-applications` and wait for it to become ready before re-running the test.
 - **ISVC creation HTTP 500 (`no endpoints available for service "rhods-operator-service"`)** — the RHODS operator webhook pod is down. Run `oc rollout restart deployment/rhods-operator -n redhat-ods-operator` and wait for it to become ready before re-running the test.
 - **Every remaining test fails with `KFP API returned 401 Unauthorized`** — `RHOAI_TOKEN` expired part-way through the run. A full AutoML suite takes well over an hour; refresh the token (`oc whoami -t`) in `.env.ml` before starting, or run a tag-filtered subset. (Without the guard in `make_kfp_client`, the KFP SDK reacts to the 401 by trying a GCP token refresh, gets `None`, and every later call dies inside urllib3 with `TypeError: expected string or bytes-like object, got 'NoneType'`.)
-- **`boto3` / `kubernetes` import errors** — re-run `uv sync --extra test_automl`.
+- **`boto3` / `kubernetes` import errors** — re-run `uv sync`.
 
 ---
 
@@ -382,9 +384,9 @@ autox_tests/
 ### Prerequisites
 
 ```bash
-uv sync --extra test_autorag
+uv sync
 # or
-pip install -e ".[test_autorag]"
+pip install -e .
 ```
 
 You also need a running RHOAI cluster with Data Science Pipelines, a MaaS (Model-as-a-Service) inference endpoint, and a vector database (Milvus or PGVector).
@@ -430,6 +432,8 @@ Managed AutoRAG pipelines are used by default. `AUTORAG_PIPELINE_PATH` is requir
 |---|---|---|
 | `RHOAI_NOTEBOOK_RUNNER_IMAGE` | — | Image containing Python, `boto3`, `papermill`, and notebook dependencies. Required when an optimization scenario enables `run_notebook`. |
 | `RHOAI_NOTEBOOK_JOB_TIMEOUT` | `900` | Maximum seconds to wait for each notebook Job. |
+| `RHOAI_NOTEBOOK_CPU` | `2` | CPU request and limit for the notebook Job container. |
+| `RHOAI_NOTEBOOK_MEMORY` | `4Gi` | Memory request and limit for the notebook Job container. |
 | `RHOAI_NOTEBOOK_KERNEL_NAME` | `python3` | Jupyter kernel registered in the runner image. |
 | `S3_SSL_VERIFY` | `true` | Verify S3 TLS in the notebook Job; use `false` only for a trusted development endpoint with a self-signed certificate. |
 | `MAAS_SECRET_NAME`, `VECTOR_DB_SECRET_NAME` | — | Existing secrets injected into AutoRAG notebook Jobs. |

@@ -227,7 +227,7 @@ def datascience_pipelines_application(
     except ImportError:
         pytest.fail(
             "kubernetes Python client is required for DSPA auto-setup. "
-            "Install with: uv sync --extra test_automl"
+            "Install with: uv sync"
         )
 
     def _progress(msg: str) -> None:

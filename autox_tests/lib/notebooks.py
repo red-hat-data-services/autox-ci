@@ -11,7 +11,11 @@ from autox_tests.lib.k8s_utils import make_k8s_core_api_from_config
 
 RHOAI_NOTEBOOK_RUNNER_IMAGE_ENV = "RHOAI_NOTEBOOK_RUNNER_IMAGE"
 RHOAI_NOTEBOOK_JOB_TIMEOUT_ENV = "RHOAI_NOTEBOOK_JOB_TIMEOUT"
+RHOAI_NOTEBOOK_CPU_ENV = "RHOAI_NOTEBOOK_CPU"
+RHOAI_NOTEBOOK_MEMORY_ENV = "RHOAI_NOTEBOOK_MEMORY"
 _DEFAULT_NOTEBOOK_JOB_TIMEOUT_SECONDS = 900
+_DEFAULT_NOTEBOOK_CPU = "2"
+_DEFAULT_NOTEBOOK_MEMORY = "4Gi"
 _NOTEBOOK_JOB_POLL_SECONDS = 5
 
 logger = logging.getLogger(__name__)
@@ -32,6 +36,7 @@ s3 = boto3.client(
     verify=os.environ.get("S3_SSL_VERIFY", "true").strip().lower()
     not in ("0", "false", "no"),
 )
+print(f"Running notebooks with image: {os.environ['NOTEBOOK_RUNNER_IMAGE']}", flush=True)
 
 for index, notebook_key in enumerate(json.loads(os.environ["NOTEBOOK_S3_KEYS"])):
     workdir = Path("/tmp/notebooks") / str(index)
@@ -90,6 +95,24 @@ def _job_pod_logs(core_api: Any, namespace: str, job_name: str) -> str:
     logs: list[str] = []
     for pod in pods:
         name = getattr(getattr(pod, "metadata", None), "name", "unknown")
+        pod_status = getattr(pod, "status", None)
+        status_details = [f"phase={getattr(pod_status, 'phase', 'unknown')}"]
+        for container_status in getattr(pod_status, "container_statuses", None) or []:
+            state = getattr(container_status, "state", None)
+            terminated = getattr(state, "terminated", None)
+            waiting = getattr(state, "waiting", None)
+            if terminated is not None:
+                status_details.append(
+                    f"container={container_status.name} terminated="
+                    f"reason={terminated.reason or 'unknown'} "
+                    f"exit_code={terminated.exit_code} signal={terminated.signal}"
+                )
+            elif waiting is not None:
+                status_details.append(
+                    f"container={container_status.name} waiting="
+                    f"reason={waiting.reason or 'unknown'}"
+                )
+        logs.append(f"--- pod/{name} status: {'; '.join(status_details)} ---")
         try:
             output = core_api.read_namespaced_pod_log(
                 name=name,
@@ -99,7 +122,7 @@ def _job_pod_logs(core_api: Any, namespace: str, job_name: str) -> str:
             )
         except Exception as exc:
             output = f"Unable to read pod log: {exc}"
-        logs.append(f"--- pod/{name} ---\n{output}")
+        logs.append(output)
     return "\n".join(logs) or "No pod logs were available."
 
 
@@ -139,11 +162,10 @@ def run_notebooks_as_k8s_job(
         raise ValueError("Notebook Job execution requires at least one notebook key")
     image = notebook_runner_image()
     if image is None:
-        logger.info(
-            "Skipping notebook execution; set %s to run notebooks in a Kubernetes Job",
-            RHOAI_NOTEBOOK_RUNNER_IMAGE_ENV,
+        raise AssertionError(
+            "Notebook execution was requested, but %s is not set"
+            % RHOAI_NOTEBOOK_RUNNER_IMAGE_ENV
         )
-        return
 
     timeout = _notebook_job_timeout_seconds()
     namespace = str(config.get("rhoai_project") or "").strip()
@@ -159,6 +181,8 @@ def run_notebooks_as_k8s_job(
     from kubernetes import client as k8s_client
 
     job_name = f"notebook-test-{secrets.token_hex(5)}"
+    cpu = (os.environ.get(RHOAI_NOTEBOOK_CPU_ENV) or _DEFAULT_NOTEBOOK_CPU).strip()
+    memory = (os.environ.get(RHOAI_NOTEBOOK_MEMORY_ENV) or _DEFAULT_NOTEBOOK_MEMORY).strip()
     unique_secrets = list(dict.fromkeys(name for name in secret_names if name))
     env_from = [
         k8s_client.V1EnvFromSource(
@@ -170,10 +194,15 @@ def run_notebooks_as_k8s_job(
         name="notebook-runner",
         image=image,
         image_pull_policy="IfNotPresent",
+        resources=k8s_client.V1ResourceRequirements(
+            requests={"cpu": cpu, "memory": memory},
+            limits={"cpu": cpu, "memory": memory},
+        ),
         command=["python", "-c", _NOTEBOOK_JOB_PROGRAM],
         env=[
             k8s_client.V1EnvVar(name="NOTEBOOK_S3_BUCKET", value=bucket),
             k8s_client.V1EnvVar(name="NOTEBOOK_S3_KEYS", value=json.dumps(notebook_keys)),
+            k8s_client.V1EnvVar(name="NOTEBOOK_RUNNER_IMAGE", value=image),
             k8s_client.V1EnvVar(
                 name="S3_SSL_VERIFY",
                 value=os.environ.get("S3_SSL_VERIFY", "true"),
@@ -207,6 +236,13 @@ def run_notebooks_as_k8s_job(
     )
     batch_api = k8s_client.BatchV1Api(api_client=core_api.api_client)
     try:
+        logger.info(
+            "Starting notebook Job %s with image %s (cpu=%s, memory=%s)",
+            job_name,
+            image,
+            cpu,
+            memory,
+        )
         batch_api.create_namespaced_job(namespace=namespace, body=job, _request_timeout=30)
     except Exception as exc:
         raise AssertionError(f"Failed to create notebook Job {job_name}: {exc}") from exc
