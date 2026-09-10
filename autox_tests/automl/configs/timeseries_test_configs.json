@@ -93,6 +93,30 @@
     ]
   },
   {
+    "id": "TC-B-3_user_provided_test_data",
+    "target": "daily_cases",
+    "id_column": "",
+    "timestamp_column": "date",
+    "known_covariates_names": [],
+    "prediction_length": 7,
+    "top_n": 1,
+    "train_data_file_key": "functional-test/timeseries/poland_daily_cases_03_03_2021.csv",
+    "test_data_file_key": "functional-test/timeseries/poland_daily_cases_03_04-28_2021.csv",
+    "expected_test_dataset_rows": 25,
+    "expected_test_dataset_contains": "2021-03-28",
+    "tags": ["timeseries", "daily", "user_test_data"],
+    "inference_sample_comment": "Rows carry the loader-injected __synthetic_item_id='item_0' explicitly: the current autogluonserver KServe build still requires the id column in the payload even for two-column datasets. Drop it once a build that infers the synthetic id ships.",
+    "inference_sample": [
+      { "__synthetic_item_id": "item_0", "date": "2/25/2021", "daily_cases": 12143.0 },
+      { "__synthetic_item_id": "item_0", "date": "2/26/2021", "daily_cases": 11536.0 },
+      { "__synthetic_item_id": "item_0", "date": "2/27/2021", "daily_cases": 12097.0 },
+      { "__synthetic_item_id": "item_0", "date": "2/28/2021", "daily_cases": 10101.0 },
+      { "__synthetic_item_id": "item_0", "date": "3/1/2021",  "daily_cases": 4786.0 },
+      { "__synthetic_item_id": "item_0", "date": "3/2/2021",  "daily_cases": 7936.0 },
+      { "__synthetic_item_id": "item_0", "date": "3/3/2021",  "daily_cases": 15698.0 }
+    ]
+  },
+  {
     "id": "TC-NB-1_invalid_target",
     "target": "NonExistentColumn",
     "id_column": "item_id",
@@ -106,6 +130,7 @@
     "injected_fault": "target='NonExistentColumn' absent from uploaded CSV",
     "expected_failing_stage": "pipeline",
     "expected_failing_task": ["timeseries-data-loader"],
+    "expected_error_pattern": "Missing required columns in dataset: .*NonExistentColumn",
     "expected_outcome": "KeyError / ValueError-style failure at data loading"
   },
   {
@@ -121,8 +146,9 @@
     "fault_category": "Invalid prediction_length",
     "injected_fault": "prediction_length=0 (must be a positive integer)",
     "expected_failing_stage": "pipeline",
-    "expected_failing_task": ["autogluon-timeseries-models-training", "autogluon-timeseries-models-training-2"],
-    "expected_outcome": "Fail fast with clear validation message"
+    "expected_failing_task": ["timeseries-data-loader", "autogluon-timeseries-models-training", "autogluon-timeseries-models-training-2"],
+    "expected_error_pattern": "prediction_length must be greater than 0",
+    "expected_outcome": "Fail fast with 'prediction_length must be greater than 0'. Both the loader and the training components carry that check, so the task list accepts either — expected_error_pattern is what pins the reason."
   },
   {
     "id": "TC-NB-3_missing_s3_object",
@@ -138,6 +164,8 @@
     "injected_fault": "train_data_file_key points to a non-existent S3 object",
     "expected_failing_stage": "pipeline",
     "expected_failing_task": ["timeseries-data-loader"],
+    "expected_error_pattern": "NoSuchKey|specified key does not exist",
+    "missing_object_keys": ["functional-test/neg/tc-nb-3/does-not-exist-00000000.csv"],
     "expected_outcome": "S3/not-found or access error; no partial train artifacts"
   },
   {
@@ -155,6 +183,7 @@
     "injected_fault": "train_data_secret_name references a non-existent Kubernetes secret",
     "expected_failing_stage": "pipeline",
     "expected_failing_task": ["timeseries-data-loader"],
+    "expected_error_pattern_comment": "No expected_error_pattern: the pod never starts when the secret is missing, so there are no logs to match — the failing task plus a FAILED run is all this scenario can assert.",
     "expected_outcome": "Auth failure; no silent fallback"
   },
   {
@@ -171,6 +200,44 @@
     "injected_fault": "top_n=0 (must be a positive integer)",
     "expected_failing_stage": "pipeline",
     "expected_failing_task": ["autogluon-timeseries-models-training", "autogluon-timeseries-models-training-2"],
+    "expected_error_pattern": "top_n must be an integer in the range",
     "expected_outcome": "Rejected before usable run or step failure"
+  },
+  {
+    "id": "TC-NB-6_user_test_missing_object",
+    "target": "daily_cases",
+    "id_column": "",
+    "timestamp_column": "date",
+    "known_covariates_names": [],
+    "prediction_length": 7,
+    "top_n": 1,
+    "train_data_file_key": "functional-test/timeseries/poland_daily_cases_03_03_2021.csv",
+    "test_data_file_key": "functional-test/neg/tc-nb-6/does-not-exist-user-test.csv",
+    "tags": ["negative", "storage", "user_test_data"],
+    "fault_category": "User test object storage",
+    "injected_fault": "test_data_file_key points to a non-existent S3 object",
+    "expected_failing_stage": "pipeline",
+    "expected_failing_task": ["timeseries-data-loader"],
+    "expected_error_pattern": "NoSuchKey|specified key does not exist",
+    "missing_object_keys": ["functional-test/neg/tc-nb-6/does-not-exist-user-test.csv"],
+    "expected_outcome": "Fail fast in the data loader with a user-test S3/not-found error"
+  },
+  {
+    "id": "TC-NB-7_user_test_series_too_short",
+    "target": "daily_cases",
+    "id_column": "",
+    "timestamp_column": "date",
+    "known_covariates_names": [],
+    "prediction_length": 25,
+    "top_n": 1,
+    "train_data_file_key": "functional-test/timeseries/poland_daily_cases_03_03_2021.csv",
+    "test_data_file_key": "functional-test/timeseries/poland_daily_cases_03_04-28_2021.csv",
+    "tags": ["negative", "data", "user_test_data"],
+    "fault_category": "User test series length",
+    "injected_fault": "user test series has 25 rows, which is not greater than prediction_length=25",
+    "expected_failing_stage": "pipeline",
+    "expected_failing_task": ["timeseries-data-loader"],
+    "expected_error_pattern": "Test dataset series too short for prediction_length",
+    "expected_outcome": "Fail fast in the data loader: each test series must be longer than prediction_length"
   }
 ]
