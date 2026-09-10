@@ -18,7 +18,7 @@ from autox_tests.lib.k8s_utils import load_k8s_config
 from autox_tests.lib.settings import AUTOML_UPLOAD_TEST_DATASETS_ENV
 from autox_tests.lib.kfp_run_state import _get_failed_task_names, _normalize_state  # noqa: F401
 from autox_tests.lib.s3_data import list_s3_objects, read_s3_json
-from autox_tests.lib.notebooks import run_notebook_as_k8s_job
+from autox_tests.lib.notebooks import run_notebooks_as_k8s_job
 
 logger = logging.getLogger(__name__)
 
@@ -1621,9 +1621,9 @@ def download_and_execute_automl_notebook(
         AssertionError: If the notebook fails to execute.
     """
     del s3_client  # The Job downloads the notebook with its injected S3 secret.
-    run_notebook_as_k8s_job(
+    run_notebooks_as_k8s_job(
         bucket=bucket,
-        notebook_key=notebook_key,
+        notebook_keys=[notebook_key],
         config=config,
         secret_names=[
             str(config.get("s3_secret_name") or config.get("train_data_secret_name") or "")

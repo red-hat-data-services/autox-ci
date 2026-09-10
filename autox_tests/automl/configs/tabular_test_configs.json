@@ -169,6 +169,8 @@
     "test_data_file_key": "functional-test/tabular/classification_binary/german_credit_data_biased_test.csv",
     "expected_test_dataset_rows": 400,
     "tags": ["tabular", "classification", "binary", "user_test_data"],
+    "run_notebook": true,
+    "deploy": true,
     "inference_sample": [
       {
         "CheckingStatus":            ["no_checking"],

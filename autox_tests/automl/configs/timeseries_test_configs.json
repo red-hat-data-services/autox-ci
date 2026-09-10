@@ -109,6 +109,8 @@
     "expected_test_dataset_rows": 25,
     "expected_test_dataset_contains": "2021-03-28",
     "tags": ["timeseries", "daily", "user_test_data"],
+    "run_notebook": true,
+    "deploy": true,
     "inference_sample_comment": "Rows carry the loader-injected __synthetic_item_id='item_0' explicitly: the current autogluonserver KServe build still requires the id column in the payload even for two-column datasets. Drop it once a build that infers the synthetic id ships.",
     "inference_sample": [
       { "__synthetic_item_id": "item_0", "date": "2/25/2021", "daily_cases": 12143.0 },

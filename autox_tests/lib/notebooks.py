@@ -16,7 +16,7 @@ RHOAI_NOTEBOOK_MEMORY_ENV = "RHOAI_NOTEBOOK_MEMORY"
 _DEFAULT_NOTEBOOK_JOB_TIMEOUT_SECONDS = 900
 _DEFAULT_NOTEBOOK_CPU = "2"
 _DEFAULT_NOTEBOOK_MEMORY = "4Gi"
-_NOTEBOOK_JOB_POLL_SECONDS = 5
+_NOTEBOOK_JOB_POLL_SECONDS = 15
 
 logger = logging.getLogger(__name__)
 
@@ -124,24 +124,6 @@ def _job_pod_logs(core_api: Any, namespace: str, job_name: str) -> str:
             output = f"Unable to read pod log: {exc}"
         logs.append(output)
     return "\n".join(logs) or "No pod logs were available."
-
-
-def run_notebook_as_k8s_job(
-    *,
-    bucket: str,
-    notebook_key: str,
-    config: dict[str, Any],
-    secret_names: list[str],
-    inject_mock_input: bool = False,
-) -> None:
-    """Execute one S3-hosted notebook in an ephemeral Job in the test namespace."""
-    run_notebooks_as_k8s_job(
-        bucket=bucket,
-        notebook_keys=[notebook_key],
-        config=config,
-        secret_names=secret_names,
-        inject_mock_input=inject_mock_input,
-    )
 
 
 def run_notebooks_as_k8s_job(
