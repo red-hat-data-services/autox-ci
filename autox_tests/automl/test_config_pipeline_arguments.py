@@ -43,7 +43,7 @@ def test_tabular_user_test_scenario_wires_test_data_args() -> None:
     assert args["train_data_secret_name"] == "s3-connection"
     assert args["label_column"] == "Risk"
     assert args["task_type"] == "binary"
-    assert cfg.expected_test_dataset_rows == 1497
+    assert cfg.expected_test_dataset_rows == 400
 
 
 def test_timeseries_user_test_scenario_wires_test_data_args() -> None:

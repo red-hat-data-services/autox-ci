@@ -155,7 +155,7 @@
     "top_n": 1,
     "train_data_file_key": "functional-test/tabular/classification_binary/german_credit_data_biased_train.csv",
     "test_data_file_key": "functional-test/tabular/classification_binary/german_credit_data_biased_test.csv",
-    "expected_test_dataset_rows": 1497,
+    "expected_test_dataset_rows": 400,
     "tags": ["tabular", "classification", "binary", "user_test_data"],
     "inference_sample": [
       {
