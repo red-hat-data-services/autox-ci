@@ -283,4 +283,9 @@ def make_kfp_client_for_session(
     }
     if not get_rhoai_integration_https_verify():
         client_kw["verify_ssl"] = False
-    return kfp.Client(**client_kw)
+    client = kfp.Client(**client_kw)
+
+    from autox_tests.lib.clients import _disable_gcp_token_refresh
+
+    _disable_gcp_token_refresh(client)
+    return client

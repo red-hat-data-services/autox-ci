@@ -341,6 +341,7 @@ S3 keys whose *absence* is the injected fault. Everything else referenced by any
 - **Scoring HTTP 500** — check pod logs; the test captures and prints them automatically on failure.
 - **ISVC creation HTTP 500 (`no endpoints available for service "kserve-webhook-server-service"`)** — the KServe webhook pod is down. Run `oc rollout restart deployment/kserve-controller-manager -n redhat-ods-applications` and wait for it to become ready before re-running the test.
 - **ISVC creation HTTP 500 (`no endpoints available for service "rhods-operator-service"`)** — the RHODS operator webhook pod is down. Run `oc rollout restart deployment/rhods-operator -n redhat-ods-operator` and wait for it to become ready before re-running the test.
+- **Every remaining test fails with `KFP API returned 401 Unauthorized`** — `RHOAI_TOKEN` expired part-way through the run. A full AutoML suite takes well over an hour; refresh the token (`oc whoami -t`) in `.env.ml` before starting, or run a tag-filtered subset. (Without the guard in `make_kfp_client`, the KFP SDK reacts to the 401 by trying a GCP token refresh, gets `None`, and every later call dies inside urllib3 with `TypeError: expected string or bytes-like object, got 'NoneType'`.)
 - **`boto3` / `kubernetes` import errors** — re-run `uv sync --extra test_automl`.
 
 ---
