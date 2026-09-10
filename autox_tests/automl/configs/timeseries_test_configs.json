@@ -10,6 +10,8 @@
     "eval_metric": "WQL",
     "train_data_file_key": "functional-test/timeseries/fruits_daily_price.csv",
     "tags": ["timeseries", "smoke", "renamed_schema", "covariate"],
+    "run_notebook": true,
+    "deploy": true,
     "inference_sample": [
       { "Fruit": "apple",      "Date": "2019-01-01", "Price_min": 0.8540229885057472, "Price_max": 2.1270114942528737 },
       { "Fruit": "apple",      "Date": "2019-01-02", "Price_min": 0.8551724137931035, "Price_max": 2.127586206896552  },
@@ -59,6 +61,8 @@
     "top_n": 2,
     "train_data_file_key": "functional-test/timeseries/m4_hourly_subset_train_ultra_light.csv",
     "tags": ["timeseries", "hourly", "standard_schema"],
+    "run_notebook": false,
+    "deploy": true,
     "inference_sample": [
       { "item_id": "H1", "timestamp": "1750-01-01 00:00:00", "target": 605.0 },
       { "item_id": "H1", "timestamp": "1750-01-01 01:00:00", "target": 586.0 },
@@ -105,6 +109,8 @@
     "expected_test_dataset_rows": 25,
     "expected_test_dataset_contains": "2021-03-28",
     "tags": ["timeseries", "daily", "user_test_data"],
+    "run_notebook": true,
+    "deploy": true,
     "inference_sample_comment": "Rows carry the loader-injected __synthetic_item_id='item_0' explicitly: the current autogluonserver KServe build still requires the id column in the payload even for two-column datasets. Drop it once a build that infers the synthetic id ships.",
     "inference_sample": [
       { "__synthetic_item_id": "item_0", "date": "2/25/2021", "daily_cases": 12143.0 },

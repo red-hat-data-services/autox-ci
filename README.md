@@ -48,7 +48,6 @@ cp autox_tests/.env.rag.example autox_tests/.env.rag
 |---|---|
 | `-t, --tags TAGS` | Comma-separated tags for scenario filtering (matched against test config JSON) |
 | `--env-file FILE` | Source a `.env` file before running (shell exports take precedence) |
-| `--extras NAME` | uv extras to install (default: `test_autorag`; comma-separated for multiple) |
 | `--rag-configs PATH` | Custom AutoRAG test configs JSON (sets `AUTORAG_TEST_CONFIGS_PATH`) |
 | `--tabular-configs PATH` | Custom AutoML tabular test configs JSON (sets `AUTOML_TABULAR_TEST_CONFIGS_PATH`) |
 | `--timeseries-configs PATH` | Custom AutoML timeseries test configs JSON (sets `AUTOML_TIMESERIES_TEST_CONFIGS_PATH`) |
@@ -63,7 +62,7 @@ Everything after `--` is forwarded to pytest.
 ./run_tests.sh --env-file autox_tests/.env.rag -t smoke "autorag and positive"
 
 # AutoML tabular tests
-./run_tests.sh --env-file autox_tests/.env.ml --extras test_automl "tabular"
+./run_tests.sh --env-file autox_tests/.env.ml "tabular"
 
 # Dry-run to inspect the command
 ./run_tests.sh --dry-run "autorag and negative"

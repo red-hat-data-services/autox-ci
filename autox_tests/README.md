@@ -20,6 +20,16 @@ Two independent suites live here, each with its own env file, config JSON, and p
 
 To use an existing pipeline server instead: set `RHOAI_KFP_URL` and `RHOAI_CREATE_DSPA=false`.
 
+### Resolve the notebook runner image
+
+The helper below reads the workbench image shipped by the installed RHOAI CSV and prints it for use as `RHOAI_NOTEBOOK_RUNNER_IMAGE`:
+
+```bash
+export RHOAI_NOTEBOOK_RUNNER_IMAGE="$(autox_tests/scripts/get_workbench_jupyter_image.sh)"
+```
+
+It requires `oc`, `jq`, and an authenticated `oc` session with cluster-admin privileges (or an equivalently scoped role that can read CSVs in `redhat-ods-operator`).
+
 ### Commands
 
 ```bash
@@ -40,7 +50,11 @@ podman run --rm -it -v "$(pwd):/workspace:z" -w /workspace \
   bash -c 'pip install uv && ./run_tests.sh --suite automl --env-file autox_tests/.env.ml -t smoke'
 ```
 
-Managed pipelines are the default (no `pipeline.yaml`). Legacy YAML upload: `RHOAI_USE_MANAGED_PIPELINES=false` or `./run_tests.sh --legacy-pipeline-yaml`.
+### Pipeline source selection
+
+Managed pipelines are the default. To upload a compiled YAML package instead, set `RHOAI_USE_MANAGED_PIPELINES=false` and provide the suite's pipeline-path variable, or use `./run_tests.sh --legacy-pipeline-yaml`. The wrapper sources the selected `.env` files before pytest starts and then resolves the pipeline mode.
+
+For AutoML, package mode requires `AUTOML_TABULAR_PIPELINE_PATH` and/or `AUTOML_TIMESERIES_PIPELINE_PATH`. For AutoRAG optimization, it requires `AUTORAG_PIPELINE_PATH`. AutoRAG indexing selects package mode independently when `AUTORAG_INDEXING_PIPELINE_PATH` is set.
 
 ---
 
@@ -50,7 +64,7 @@ When `autox-ci` is used as a submodule, downstream repos can supply their own te
 
 | Env variable | CLI flag | Overrides |
 |---|---|---|
-| `AUTORAG_TEST_CONFIGS_PATH` | `--rag-configs` | `autorag/configs/test_configs.json` |
+| `AUTORAG_TEST_CONFIGS_PATH` | `--rag-configs` | `autorag/configs/optimisation_test_configs.json` |
 | `AUTOML_TABULAR_TEST_CONFIGS_PATH` | `--tabular-configs` | `automl/configs/tabular_test_configs.json` |
 | `AUTOML_TIMESERIES_TEST_CONFIGS_PATH` | `--timeseries-configs` | `automl/configs/timeseries_test_configs.json` |
 
@@ -60,7 +74,7 @@ Custom JSON files must follow the same schema as the built-in configs they repla
 
 ## AutoML functional tests
 
-End-to-end tests for the AutoGluon tabular and time series training pipelines. Validates pipeline runs, S3 artifacts, and optionally deploys trained models via KServe for inference scoring.
+End-to-end tests for the AutoGluon tabular and time series training pipelines. They validate pipeline runs and S3 artifacts; individual positive scenarios can optionally run a generated notebook or deploy a trained model through KServe.
 
 ### Directory layout
 
@@ -83,9 +97,9 @@ autox_tests/
 Python 3.11+ and `uv` (recommended) or `pip`. Install test dependencies (includes AutoGluon from the RHAI index):
 
 ```bash
-uv sync --extra test_automl
+uv sync
 # or
-pip install -e ".[test_automl]"
+pip install -e .
 ```
 
 You also need a running OpenShift AI cluster with Data Science Pipelines and an S3-compatible object store reachable from the cluster.
@@ -119,36 +133,10 @@ cp autox_tests/.env.ml.example autox_tests/.env.ml
 | `AWS_DEFAULT_REGION` | S3 region (default: `us-east-1`) |
 | `RHOAI_TEST_ARTIFACTS_BUCKET` | Bucket where pipeline outputs are written |
 
-#### Pipeline YAMLs
+#### Pipeline package mode
 
 | Variable | Purpose |
 | -------- | ------- |
-| `MAAS_SECRET_NAME` | Secret with MaaS inference settings (keys: `MAAS_BASE_URL`, `MAAS_API_KEY`). |
-| `VECTOR_DB_SECRET_NAME` | Secret with vector database connection; backend auto-detected from `MILVUS_*` vs `PGVECTOR_*` keys. |
-
-Optional fallbacks for `data_mode=existing_s3` when JSON omits buckets: `TEST_DATA_BUCKET_NAME`, `TEST_DATA_KEY`, `INPUT_DATA_BUCKET_NAME`, `INPUT_DATA_KEY`, or `TEST_DATA_SOURCE_BUCKET` / `TEST_DATA_SOURCE_PREFIX`.
-
-JSON scenarios: `tests/config/autorag_test_configs.json`.
-
-If selected configs use `upload` or `existing_s3`, **S3 env vars** and bucket defaults must satisfy the checks in `tests.lib.settings` (see `describe_autorag_integration_failure`).
-
-## Controlling which tests run (env + pytest)
-
-Scenario lists are read **when test modules import** (see `CONFIGS_FOR_RUN` in each `test_*_rhoai.py`). Set env vars **before** starting pytest (or in `tests/.env` so they load before collection).
-
-### Filter JSON scenarios by tags
-
-**`RHOAI_TEST_CONFIG_TAGS`** — Comma-separated list. Only scenarios whose `tags` in the JSON **intersect** this set (case-insensitive) are included.
-
-Example (only scenarios tagged `smoke`):
-
-```bash
-export RHOAI_TEST_CONFIG_TAGS=smoke
-pytest tests/scenarios/ -v
-```
-
-If no variable is set, all scenarios from the JSON files are eligible (subject to other filters).
-|---|---|
 | `AUTOML_TABULAR_PIPELINE_PATH` | Local path or `https://` URL to the compiled tabular pipeline YAML |
 | `AUTOML_TIMESERIES_PIPELINE_PATH` | Local path or `https://` URL to the compiled time series pipeline YAML |
 
@@ -163,14 +151,39 @@ If no variable is set, all scenarios from the JSON files are eligible (subject t
 | `KFP_DISABLE_EXECUTION_CACHING_BY_DEFAULT` | `true` | Disable KFP step caching |
 | `AUTOML_FUNCTIONAL_TEST_KEEP_ARTIFACTS` | `false` | Skip S3 artifact cleanup after the session |
 
+#### Per-scenario optional checks
+
+Positive entries in both AutoML JSON files support these fields; both default to `false`:
+
+```json
+"run_notebook": false,
+"deploy": false
+```
+
+Set `run_notebook` to `true` to execute the selected model notebook in a Kubernetes Job. Set `deploy` to `true` to perform the KServe inference check described below. Negative scenarios do not use either field.
+
+#### Notebook execution (Kubernetes Job)
+
+`run_notebook: true` needs a runner image. The Job overrides the image's normal command, downloads the generated notebook from S3, and executes it with Papermill. The image must contain Python, `boto3`, `papermill`, the notebook's runtime dependencies, and the configured Jupyter kernel.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `RHOAI_NOTEBOOK_RUNNER_IMAGE` | — | Image used for notebook Jobs. Required when `run_notebook: true`. |
+| `RHOAI_NOTEBOOK_JOB_TIMEOUT` | `900` | Maximum seconds to wait for a notebook Job. |
+| `RHOAI_NOTEBOOK_CPU` | `2` | CPU request and limit for the notebook Job container. |
+| `RHOAI_NOTEBOOK_MEMORY` | `4Gi` | Memory request and limit for the notebook Job container. |
+| `RHOAI_NOTEBOOK_KERNEL_NAME` | `python3` | Registered kernel used when a notebook has no kernelspec. |
+| `S3_SSL_VERIFY` | `true` | Verify S3 TLS in the test process and notebook Job. Set to `false` only for a trusted development endpoint with a self-signed certificate. |
+
+The test service account needs namespace-scoped permissions to create, read, list, and delete `batch/jobs`; read/list Pods; read `pods/log`; and read the referenced Secrets. Cluster-admin access is not required; the standard namespace `edit` role is normally sufficient.
+
 #### Model serving (optional)
 
-Set `RHOAI_DEPLOY_AFTER_TRAINING=true` to deploy the top trained model via KServe and run inference after each positive-path pipeline run. Also requires `RHOAI_URL`.
+Set a positive scenario's `deploy` field to `true` to deploy its top trained model via KServe and run inference. Deployment also requires `RHOAI_URL`.
 
 | Variable | Default | Purpose |
 |---|---|---|
 | `RHOAI_URL` | — | OpenShift API URL (required for KServe deployment) |
-| `RHOAI_DEPLOY_AFTER_TRAINING` | `false` | Enable post-training KServe deployment |
 | `RHOAI_SERVING_IMAGE` | — | Container image for the AutoGluon ServingRuntime |
 | `RHOAI_SERVING_RUNTIME_NAME` | — | Existing ServingRuntime to reuse (skips creation) |
 | `RHOAI_CREATE_SERVING_RUNTIME` | `false` | Create the ServingRuntime if missing (requires `RHOAI_SERVING_IMAGE`) |
@@ -294,7 +307,7 @@ Positive scenarios include an `inference_sample` sent as the `instances` payload
 ]
 ```
 
-When `RHOAI_DEPLOY_AFTER_TRAINING=true` and `inference_sample` is present, the test scores the deployed model and asserts non-empty predictions are returned.
+When a scenario sets `deploy: true` and provides an `inference_sample`, the test scores the deployed model and asserts non-empty predictions are returned.
 
 #### `expected_outcome` (negative scenarios)
 
@@ -326,7 +339,8 @@ S3 keys whose *absence* is the injected fault. Everything else referenced by any
 - Leaderboard HTML artifact exists in S3
 - Sampled test dataset CSV exists in S3
 - User-provided test scenarios (`user_test_data` tag): `sampled_test_dataset` matches the external CSV row count rather than a default 80/20 holdout
-- *(when `RHOAI_DEPLOY_AFTER_TRAINING=true`)* InferenceService becomes Ready and returns non-empty predictions
+- When `run_notebook: true`, a selected predictor notebook completes in a Kubernetes Job
+- *(when `deploy: true`)* InferenceService becomes Ready and returns non-empty predictions
 
 **Negative scenarios:**
 - Pipeline run reaches `FAILED` within 600 s
@@ -339,16 +353,17 @@ S3 keys whose *absence* is the injected fault. Everything else referenced by any
 - **HardwareProfile 404** — `RHOAI_HARDWARE_PROFILE_NAME` does not exist on the cluster. Run `oc get hardwareprofile -n redhat-ods-applications` to find the correct name, or set `RHOAI_HARDWARE_PROFILE_RESOURCE_VERSION` to skip the live fetch.
 - **InferenceService OOMKilled** — increase `RHOAI_PREDICTOR_MEMORY` (default `4Gi`; AutoGluon models can be large).
 - **Scoring HTTP 500** — check pod logs; the test captures and prints them automatically on failure.
+- **Notebook Job fails** — confirm `RHOAI_NOTEBOOK_RUNNER_IMAGE` contains `boto3`, `papermill`, and the generated notebook's runtime dependencies; the failed Job pod log is included in the test failure.
 - **ISVC creation HTTP 500 (`no endpoints available for service "kserve-webhook-server-service"`)** — the KServe webhook pod is down. Run `oc rollout restart deployment/kserve-controller-manager -n redhat-ods-applications` and wait for it to become ready before re-running the test.
 - **ISVC creation HTTP 500 (`no endpoints available for service "rhods-operator-service"`)** — the RHODS operator webhook pod is down. Run `oc rollout restart deployment/rhods-operator -n redhat-ods-operator` and wait for it to become ready before re-running the test.
 - **Every remaining test fails with `KFP API returned 401 Unauthorized`** — `RHOAI_TOKEN` expired part-way through the run. A full AutoML suite takes well over an hour; refresh the token (`oc whoami -t`) in `.env.ml` before starting, or run a tag-filtered subset. (Without the guard in `make_kfp_client`, the KFP SDK reacts to the 401 by trying a GCP token refresh, gets `None`, and every later call dies inside urllib3 with `TypeError: expected string or bytes-like object, got 'NoneType'`.)
-- **`boto3` / `kubernetes` import errors** — re-run `uv sync --extra test_automl`.
+- **`boto3` / `kubernetes` import errors** — re-run `uv sync`.
 
 ---
 
 ## AutoRAG functional tests
 
-End-to-end tests for the Documents RAG Optimization pipeline. Submits pipeline runs to KFP, validates S3 artifacts, and optionally executes generated notebooks via papermill.
+End-to-end tests for the Documents RAG optimization and indexing pipelines. They submit pipeline runs to KFP, validate S3 artifacts, and can execute generated optimization notebooks in Kubernetes Jobs.
 
 ### Directory layout
 
@@ -357,19 +372,21 @@ autox_tests/
 ├── .env.rag.example                       # env template — copy to .env.rag and fill in
 └── autorag/
     ├── conftest.py                        # pytest fixtures (KFP client, S3 client, pipeline YAML)
-    ├── test_pipeline_functional.py        # parametrized positive + negative tests
+    ├── test_pipeline_functional.py        # optimization positive + negative tests
+    ├── test_indexing_pipeline_functional.py # indexing positive + negative tests
     ├── utils.py                           # run submission, diagnostics, artifact validation
     └── configs/
-        ├── configs.py                     # AutoRAGTestConfig dataclass + config loader
-        └── test_configs.json             # scenario definitions
+        ├── configs.py                     # dataclasses + config loaders
+        ├── optimisation_test_configs.json # optimization scenario definitions
+        └── indexing_test_configs.json     # indexing scenario definitions
 ```
 
 ### Prerequisites
 
 ```bash
-uv sync --extra test_autorag
+uv sync
 # or
-pip install -e ".[test_autorag]"
+pip install -e .
 ```
 
 You also need a running RHOAI cluster with Data Science Pipelines, a MaaS (Model-as-a-Service) inference endpoint, and a vector database (Milvus or PGVector).
@@ -388,7 +405,6 @@ cp autox_tests/.env.rag.example autox_tests/.env.rag
 | `RHOAI_KFP_URL` | Data Science Pipelines HTTP API URL |
 | `RHOAI_TOKEN` | Bearer token for KFP |
 | `RHOAI_PROJECT_NAME` | OpenShift namespace for pipeline runs |
-| `AUTORAG_PIPELINE_PATH` | Local path or `https://` URL to the compiled AutoRAG pipeline YAML |
 | `TEST_DATA_SECRET_NAME` | Kubernetes secret with S3 credentials for test data |
 | `TEST_DATA_BUCKET_NAME` | S3 bucket for test data |
 | `INPUT_DATA_BUCKET_NAME` | S3 bucket for input documents |
@@ -406,14 +422,22 @@ cp autox_tests/.env.rag.example autox_tests/.env.rag
 | `ARTIFACTS_AWS_DEFAULT_REGION` | S3 region (default: `us-east-1`) |
 | `RHOAI_TEST_ARTIFACTS_BUCKET` | Bucket where pipeline outputs are written |
 
-#### Notebook execution (optional)
+#### Pipeline package mode
 
-| Variable | Purpose |
-|---|---|
-| `MAAS_BASE_URL` | MaaS (OpenAI-compatible) API base URL for notebook execution |
-| `MAAS_API_KEY` | MaaS API key |
-| `MILVUS_*` / `PGVECTOR_*` | Vector DB connection injected into notebook execution (match your backend) |
-| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_S3_ENDPOINT`, `AWS_DEFAULT_REGION`, `AWS_S3_BUCKET` | S3 credentials injected into notebook execution environment |
+Managed AutoRAG pipelines are used by default. `AUTORAG_PIPELINE_PATH` is required only when package mode is selected with `RHOAI_USE_MANAGED_PIPELINES=false` or `./run_tests.sh --legacy-pipeline-yaml`. Indexing does not use that switch: set `AUTORAG_INDEXING_PIPELINE_PATH` to use a compiled indexing YAML, otherwise its managed pipeline is used.
+
+#### Notebook execution (optimization only)
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `RHOAI_NOTEBOOK_RUNNER_IMAGE` | — | Image containing Python, `boto3`, `papermill`, and notebook dependencies. Required when an optimization scenario enables `run_notebook`. |
+| `RHOAI_NOTEBOOK_JOB_TIMEOUT` | `900` | Maximum seconds to wait for each notebook Job. |
+| `RHOAI_NOTEBOOK_CPU` | `2` | CPU request and limit for the notebook Job container. |
+| `RHOAI_NOTEBOOK_MEMORY` | `4Gi` | Memory request and limit for the notebook Job container. |
+| `RHOAI_NOTEBOOK_KERNEL_NAME` | `python3` | Jupyter kernel registered in the runner image. |
+| `S3_SSL_VERIFY` | `true` | Verify S3 TLS in the notebook Job; use `false` only for a trusted development endpoint with a self-signed certificate. |
+| `MAAS_SECRET_NAME`, `VECTOR_DB_SECRET_NAME` | — | Existing secrets injected into AutoRAG notebook Jobs. |
+| `RHOAI_TEST_S3_SECRET_NAME` | — | Existing S3 secret injected into notebook Jobs. |
 
 #### Model lists (required by the MaaS pipeline)
 
@@ -428,7 +452,7 @@ cp autox_tests/.env.rag.example autox_tests/.env.rag
 | Variable | Default | Purpose |
 |---|---|---|
 | `AUTORAG_FUNCTIONAL_TESTS_TAGS` | — | Comma-separated tags — only matching scenarios run. Unset = run all. |
-| `AUTORAG_TEST_CONFIGS_PATH` | — | Path to custom AutoRAG test configs JSON. Overrides built-in `test_configs.json`. |
+| `AUTORAG_TEST_CONFIGS_PATH` | — | Path to custom optimization configs JSON. Overrides built-in `optimisation_test_configs.json`. |
 | `RHOAI_PIPELINE_RUN_TIMEOUT` | `3600` | Max seconds to wait for a pipeline run |
 | `K8S_API_URL` | — | Kubernetes API URL for pod log fetching (derived from KFP URL when unset) |
 
@@ -441,6 +465,12 @@ pytest autox_tests/autorag/ -v
 # Positive scenarios only
 pytest autox_tests/autorag/ -m positive -v
 
+# Optimization tests only
+pytest autox_tests/autorag/test_pipeline_functional.py -v
+
+# Indexing tests only
+pytest autox_tests/autorag/test_indexing_pipeline_functional.py -v
+
 # Smoke scenarios only
 AUTORAG_FUNCTIONAL_TESTS_TAGS=smoke pytest autox_tests/autorag/ -v
 
@@ -452,13 +482,15 @@ pytest autox_tests/autorag/ -k "TC-P-1" -v
 
 Scenarios are defined in `configs/optimisation_test_configs.json` (optimization) and `configs/indexing_test_configs.json` (indexing). Each entry specifies `id`, `description`, `tags`, `expected_result` (`"pass"` or `"fail"`), the required model lists (`embedding_models` / `generation_models`, or `"env"`), and per-scenario parameter overrides. The vector-store backend is auto-detected from `VECTOR_DB_SECRET_NAME`; it is no longer a scenario field.
 
+Only positive optimization scenarios accept `"run_notebook": true`; it defaults to `false`. This runs the best pattern's indexing and inference notebooks sequentially in one Kubernetes Job pod. AutoRAG has no `deploy` field, and indexing scenarios do not run notebook Jobs.
+
 ### Pass criteria
 
 **Positive scenarios:**
 - Pipeline run reaches `SUCCEEDED`
 - At least one pattern artifact exists in S3
 - Indexing notebook, inference notebook, and `evaluation_results.json` exist in S3
-- A randomly selected indexing and inference notebook executes successfully via papermill
+- When the optimization scenario has `run_notebook: true`, the best pattern's indexing and inference notebooks complete sequentially in one Kubernetes Job pod
 
 **Negative scenarios:**
 - Pipeline run reaches `FAILED` within 600 s
@@ -468,5 +500,4 @@ Scenarios are defined in `configs/optimisation_test_configs.json` (optimization)
 
 - **Tests skip** — check that all required variables are set in `.env.rag`.
 - **Pod log fetch fails** — set `K8S_API_URL` explicitly if the automatic derivation from the KFP URL does not match your cluster pattern.
-- **Notebook execution fails** — ensure `MAAS_BASE_URL`, `MAAS_API_KEY`, the vector DB vars (`MILVUS_*` / `PGVECTOR_*`), and AWS vars are set; check the papermill output in the test log.
-- **`nbformat` / `papermill` import errors** — re-run `uv sync --extra test_autorag`.
+- **Notebook Job fails** — confirm the runner image includes `boto3`, `papermill`, and the notebook's dependencies; the failed Job pod log is included in the test failure.

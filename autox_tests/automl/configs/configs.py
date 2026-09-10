@@ -37,6 +37,8 @@ class AutoMLTabularFunctionalConfig:
     train_data_file_key: str
     tags: list[str] = field(default_factory=list)
     inference_sample: list[dict] | None = None
+    run_notebook: bool = False
+    deploy: bool = False
     # Negative-path fields (None for positive scenarios)
     fault_category: str | None = None
     injected_fault: str | None = None
@@ -96,8 +98,10 @@ class AutoMLTimeseriesFunctionalConfig:
     train_data_file_key: str
     tags: list[str] = field(default_factory=list)
     inference_sample: list[dict] | None = None
+    run_notebook: bool = False
+    deploy: bool = False
     # Future known covariate rows for the forecast horizon (id + timestamp + covariate cols only).
-    # Required when known_covariates_names is non-empty and DEPLOY_AFTER_TRAINING is set.
+    # Required when known_covariates_names is non-empty and this scenario enables deploy.
     known_covariates_sample: list[dict] | None = None
     # Negative-path fields (None for positive scenarios)
     fault_category: str | None = None

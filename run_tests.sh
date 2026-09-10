@@ -16,7 +16,7 @@ Arguments:
 
 Options:
   -s, --suite SUITE        Test suite to run: automl | autorag | all.
-                           Sets the default extras, tags env var, and test path.
+                           Sets the tags env var and test path.
   -t, --tags TAGS          Comma-separated tags for scenario filtering (matched
                            against the 'tags' field in test config JSON files).
                            Exported as AUTOML_FUNCTIONAL_TESTS_TAGS for automl,
@@ -25,8 +25,6 @@ Options:
   --env-file FILE          Source a .env file before running. May be repeated to
                            source multiple files in order. Shell-exported vars
                            take precedence (dotenv override=False semantics).
-  --extras NAME            uv extras to install (overrides suite default).
-                           Comma-separated for multiple, e.g. "test_automl,other".
   --legacy-pipeline-yaml   Upload pipeline.yaml per run (sets RHOAI_USE_MANAGED_PIPELINES=false).
                            Default: use pipelines from DSPA managedPipelines (no YAML paths).
   --tabular-pipeline PATH  With --legacy-pipeline-yaml: tabular package path
@@ -89,7 +87,6 @@ EOF
 
 SUITE=""
 ENV_FILES=()
-EXTRAS=""
 DRY_RUN=false
 MARKER_EXPR=""
 TESTS_TAGS=""
@@ -117,10 +114,6 @@ while [[ $# -gt 0 ]]; do
             ;;
         --env-file)
             ENV_FILES+=("$2")
-            shift 2
-            ;;
-        --extras)
-            EXTRAS="$2"
             shift 2
             ;;
         --legacy-pipeline-yaml)
@@ -254,36 +247,25 @@ done
 # Set suite-specific defaults
 case "$SUITE" in
     automl)
-        EXTRAS="${EXTRAS:-test_automl}"
         if [[ -n "$TESTS_TAGS" ]]; then
             export AUTOML_FUNCTIONAL_TESTS_TAGS="$TESTS_TAGS"
         fi
         ;;
     autorag)
-        EXTRAS="${EXTRAS:-test_autorag}"
         if [[ -n "$TESTS_TAGS" ]]; then
             export AUTORAG_FUNCTIONAL_TESTS_TAGS="$TESTS_TAGS"
         fi
         ;;
     all)
-        EXTRAS="${EXTRAS:-test_automl,test_autorag}"
         if [[ -n "$TESTS_TAGS" ]]; then
             export AUTOML_FUNCTIONAL_TESTS_TAGS="$TESTS_TAGS"
             export AUTORAG_FUNCTIONAL_TESTS_TAGS="$TESTS_TAGS"
         fi
         ;;
-    *)
-        EXTRAS="${EXTRAS:-test_autorag}"
-        ;;
+    *) ;;
 esac
 
 PYTEST_CMD=(uv run --project "$SCRIPT_DIR")
-
-IFS=',' read -ra EXTRAS_ARRAY <<< "$EXTRAS"
-for e in "${EXTRAS_ARRAY[@]}"; do
-    e="$(echo "$e" | xargs)"
-    [[ -n "$e" ]] && PYTEST_CMD+=(--extra "$e")
-done
 
 PYTEST_CMD+=(pytest --rootdir "$SCRIPT_DIR")
 

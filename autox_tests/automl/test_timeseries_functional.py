@@ -19,7 +19,6 @@ Passing criteria for negative scenarios:
 """
 
 import logging
-import os
 import random
 import time
 
@@ -58,11 +57,6 @@ TIMESERIES_POSITIVE_CONFIGS = get_timeseries_configs_for_run(pass_type="positive
 TIMESERIES_NEGATIVE_CONFIGS = get_timeseries_configs_for_run(pass_type="negative")
 
 _EXPECTED_FAIL_TIMEOUT_CAP = 600
-
-DEPLOY_AFTER_TRAINING: bool = os.environ.get(
-    "RHOAI_DEPLOY_AFTER_TRAINING", ""
-).strip().lower() in ("1", "true", "yes")
-
 
 @pytest.mark.timeseries
 @pytest.mark.positive
@@ -224,13 +218,18 @@ class TestAutoMLTimeseriesFunctional:
                 )
 
             notebook_entries = [e for e in model_entries if e["notebook_key"]]
-            if notebook_entries:
+            if test_config.run_notebook and notebook_entries:
                 chosen = random.choice(notebook_entries)
                 download_and_execute_automl_notebook(
-                    s3_client_automl_functional, bucket, chosen["notebook_key"]
+                    s3_client_automl_functional,
+                    bucket,
+                    chosen["notebook_key"],
+                    config=add_kubeconfig_to_config(
+                        automl_functional_config, rhoai_cluster_kubeconfig
+                    ),
                 )
 
-            if DEPLOY_AFTER_TRAINING and model_entries:
+            if test_config.deploy and model_entries:
                 v2_inputs = (
                     rows_to_v2_inputs(test_config.inference_sample)
                     if test_config.inference_sample
@@ -271,7 +270,7 @@ class TestAutoMLTimeseriesFunctional:
                 )
 
         if (
-            DEPLOY_AFTER_TRAINING
+            test_config.deploy
             and deployment_result
             and not deployment_result.get("skipped")
         ):

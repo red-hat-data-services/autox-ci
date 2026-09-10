@@ -474,5 +474,9 @@ def submit_pipeline_run_and_wait(
     else:
         raise ValueError(f"Unknown pipeline run mode: {target.mode!r}")
 
-    detail = client.wait_for_run_completion(run_id, timeout=timeout)
+    detail = client.wait_for_run_completion(
+        run_id,
+        timeout=timeout,
+        sleep_duration=10,
+    )
     return run_id, detail
