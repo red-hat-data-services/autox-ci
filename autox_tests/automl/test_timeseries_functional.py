@@ -9,14 +9,16 @@ Passing criteria for positive scenarios:
 - At least 1 model with metrics exists in S3 (MASE metric present)
 - Leaderboard HTML artifact exists in S3
 - Test dataset CSV artifact exists in S3
+- User-provided test scenarios (`user_test_data` tag): `sampled_test_dataset` row count matches the external CSV, not a default holdout
 
 Passing criteria for negative scenarios:
 - Pipeline run finishes with FAILED status within capped timeout
 - At least one of the expected_failing_task names appears in the run's failed tasks
+- expected_error_pattern (when set) matches the task errors or failed-pod logs, so the run
+  cannot pass on an unrelated fault that happens to hit the expected task
 """
 
 import logging
-import os
 import random
 import time
 
@@ -35,8 +37,10 @@ from .utils import (
     _collect_failure_details,
     _get_failed_task_names,
     _run_pipeline_and_wait,
+    assert_expected_error_pattern,
     collect_model_metrics_and_sizes,
     download_and_execute_automl_notebook,
+    assert_sampled_test_dataset,
     find_leaderboard_html,
     find_test_dataset_csv,
     find_top_model_predictor_prefix,
@@ -53,11 +57,6 @@ TIMESERIES_POSITIVE_CONFIGS = get_timeseries_configs_for_run(pass_type="positive
 TIMESERIES_NEGATIVE_CONFIGS = get_timeseries_configs_for_run(pass_type="negative")
 
 _EXPECTED_FAIL_TIMEOUT_CAP = 600
-
-DEPLOY_AFTER_TRAINING: bool = os.environ.get(
-    "RHOAI_DEPLOY_AFTER_TRAINING", ""
-).strip().lower() in ("1", "true", "yes")
-
 
 @pytest.mark.timeseries
 @pytest.mark.positive
@@ -205,15 +204,32 @@ class TestAutoMLTimeseriesFunctional:
             assert test_dataset_key is not None, (
                 f"[{test_config.id}] No sampled_test_dataset artifact found under {prefix}"
             )
-
-            notebook_entries = [e for e in model_entries if e["notebook_key"]]
-            if notebook_entries:
-                chosen = random.choice(notebook_entries)
-                download_and_execute_automl_notebook(
-                    s3_client_automl_functional, bucket, chosen["notebook_key"]
+            if (
+                test_config.expected_test_dataset_rows is not None
+                or test_config.expected_test_dataset_contains
+            ):
+                assert_sampled_test_dataset(
+                    s3_client_automl_functional,
+                    bucket,
+                    test_dataset_key,
+                    scenario_id=test_config.id,
+                    expected_rows=test_config.expected_test_dataset_rows,
+                    must_contain=test_config.expected_test_dataset_contains,
                 )
 
-            if DEPLOY_AFTER_TRAINING and model_entries:
+            notebook_entries = [e for e in model_entries if e["notebook_key"]]
+            if test_config.run_notebook and notebook_entries:
+                chosen = random.choice(notebook_entries)
+                download_and_execute_automl_notebook(
+                    s3_client_automl_functional,
+                    bucket,
+                    chosen["notebook_key"],
+                    config=add_kubeconfig_to_config(
+                        automl_functional_config, rhoai_cluster_kubeconfig
+                    ),
+                )
+
+            if test_config.deploy and model_entries:
                 v2_inputs = (
                     rows_to_v2_inputs(test_config.inference_sample)
                     if test_config.inference_sample
@@ -254,7 +270,7 @@ class TestAutoMLTimeseriesFunctional:
                 )
 
         if (
-            DEPLOY_AFTER_TRAINING
+            test_config.deploy
             and deployment_result
             and not deployment_result.get("skipped")
         ):
@@ -358,3 +374,7 @@ class TestAutoMLTimeseriesFunctionalNegative:
                 f"[{test_config.id}] Expected one of {test_config.expected_failing_task} to fail; "
                 f"actual failed tasks: {failed_task_names}"
             )
+
+        assert_expected_error_pattern(
+            test_config.id, test_config.expected_error_pattern, failure_details
+        )

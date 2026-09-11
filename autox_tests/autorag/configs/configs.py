@@ -76,6 +76,7 @@ class AutoRAGTestConfig:
         input_data_key: Path to the input documents folder within the bucket.
         test_data_key: Path to the benchmark JSON within the test-data bucket.
         optimization_metric: Metric to optimize (e.g. "faithfulness").
+        run_notebook: Whether to execute the generated notebooks in Kubernetes Jobs.
 
     The vector-store backend is no longer a pipeline parameter: the pipeline
     auto-detects it from the secret named by ``vector_db_secret_name`` (MILVUS_* vs
@@ -94,6 +95,7 @@ class AutoRAGTestConfig:
     input_data_key: str | None = None
     test_data_key: str | None = None
     optimization_metric: str | None = None
+    run_notebook: bool = False
 
     def get_pipeline_arguments(self, base_config: dict) -> dict[str, Any]:
         """Build pipeline arguments dict by merging base config with overrides.

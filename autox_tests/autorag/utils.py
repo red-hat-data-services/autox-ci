@@ -3,13 +3,11 @@
 import logging
 import os
 import secrets
-import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
 from autox_tests.lib.kfp_run_state import _get_failed_task_names, _normalize_state  # noqa: F401
-from autox_tests.lib.notebooks import NOTEBOOK_KERNEL_NAME as _NOTEBOOK_KERNEL_NAME
-from autox_tests.lib.notebooks import ensure_notebook_kernel_registered as _ensure_notebook_kernel_registered
+from autox_tests.lib.notebooks import run_notebooks_as_k8s_job
 from autox_tests.lib.s3_data import upload_file_to_s3
 
 logger = logging.getLogger(__name__)
@@ -162,50 +160,6 @@ def _validate_artifacts_in_s3(s3_client, bucket, prefix):
     except Exception as e:
         raise AssertionError(f"Failed to list S3 artifacts under s3://{bucket}/{prefix}: {e}") from e
     return result
-
-
-_NOTEBOOK_ENV_PREFIXES = ("MAAS_", "MILVUS_", "PGVECTOR_", "AWS_")
-_SYSTEM_ENV_KEYS = frozenset({"PATH", "HOME", "TMPDIR", "TEMP", "TMP", "LANG", "LC_ALL", "USER", "LOGNAME", "SHELL"})
-
-
-def _inject_and_run(notebook_path: Path, output_path: Path) -> None:
-    """Inject mocked input() function into the notebook and execute it."""
-    import nbformat
-    import papermill as pm
-
-    _ensure_notebook_kernel_registered()
-
-    with open(notebook_path, "r", encoding="utf-8") as f:
-        nb = nbformat.read(f, as_version=4)
-
-    mock_code = 'def input(prompt=""):\n    return "Sample query?"'
-    nb.cells.insert(0, nbformat.v4.new_code_cell(mock_code))
-
-    injected_path = notebook_path.with_name(f"injected_{notebook_path.name}")
-    with open(injected_path, "w", encoding="utf-8") as f:
-        nbformat.write(nb, f)
-
-    original_cwd = os.getcwd()
-    original_environ = os.environ.copy()
-    try:
-        safe_cwd = output_path.parent
-        safe_cwd.mkdir(parents=True, exist_ok=True)
-        os.chdir(safe_cwd)
-
-        filtered_env = {
-            k: v
-            for k, v in original_environ.items()
-            if k in _SYSTEM_ENV_KEYS or any(k.startswith(p) for p in _NOTEBOOK_ENV_PREFIXES)
-        }
-        os.environ.clear()
-        os.environ.update(filtered_env)
-
-        pm.execute_notebook(str(injected_path), str(output_path), kernel_name=_NOTEBOOK_KERNEL_NAME)
-    finally:
-        os.environ.clear()
-        os.environ.update(original_environ)
-        os.chdir(original_cwd)
-        injected_path.unlink(missing_ok=True)
 
 
 def _common_prefix_len(a: str, b: str) -> int:
@@ -390,8 +344,8 @@ def _pick_best_pattern_notebooks(s3_client, bucket, artifacts):
     return indexing_keys[0], inference_keys[0]
 
 
-def _download_and_execute_notebooks(s3_client, bucket, notebook_keys):
-    """Download notebooks from S3 and execute them via papermill.
+def _download_and_execute_notebooks(s3_client, bucket, notebook_keys, *, config):
+    """Execute generated notebooks sequentially in one Kubernetes Job pod.
 
     Args:
         s3_client: Boto3 S3 client.
@@ -401,26 +355,18 @@ def _download_and_execute_notebooks(s3_client, bucket, notebook_keys):
     Raises:
         AssertionError: If any notebook fails execution.
     """
-    import papermill as pm
-
-    errors = []
-    with tempfile.TemporaryDirectory(prefix="autorag-pipeline-notebook-") as tmpdir:
-        for key in notebook_keys:
-            filename = Path(key).name
-            input_path = Path(tmpdir) / f"input_{filename}"
-            output_path = Path(tmpdir) / f"output_{filename}"
-
-            s3_client.download_file(bucket, key, str(input_path))
-
-            try:
-                _inject_and_run(input_path, output_path)
-            except pm.PapermillExecutionError as e:
-                errors.append(f"Notebook {filename} (key={key}) failed: {e}")
-            except Exception as e:
-                errors.append(f"Notebook {filename} (key={key}) execution error: {e}")
-
-    if errors:
-        raise AssertionError("Notebook execution failures:\n" + "\n".join(errors))
+    del s3_client  # The Job downloads notebooks with its injected S3 secret.
+    run_notebooks_as_k8s_job(
+        bucket=bucket,
+        notebook_keys=notebook_keys,
+        config=config,
+        secret_names=[
+            str(config.get("s3_secret_name") or config.get("input_data_secret_name") or ""),
+            str(config.get("maas_secret_name") or ""),
+            str(config.get("vector_db_secret_name") or ""),
+        ],
+        inject_mock_input=True,
+    )
 
 
 def get_input_document_names(input_data_key: str, local_data_dir: Path) -> set[str]:

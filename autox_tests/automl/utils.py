@@ -15,9 +15,10 @@ from pathlib import Path
 
 from autox_tests.lib.clients import make_kfp_client, make_s3_client  # noqa: F401
 from autox_tests.lib.k8s_utils import load_k8s_config
+from autox_tests.lib.settings import AUTOML_UPLOAD_TEST_DATASETS_ENV
 from autox_tests.lib.kfp_run_state import _get_failed_task_names, _normalize_state  # noqa: F401
 from autox_tests.lib.s3_data import list_s3_objects, read_s3_json
-from autox_tests.lib.notebooks import NOTEBOOK_KERNEL_NAME, ensure_notebook_kernel_registered
+from autox_tests.lib.notebooks import run_notebooks_as_k8s_job
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +49,9 @@ _ALLOWED_SR_ANNOTATIONS = frozenset({
     "prometheus.io/path",
     "prometheus.io/port",
 })
+
+# Tail of the failure-details blob echoed into a negative-test assertion message.
+_FAILURE_DETAILS_TAIL_CHARS = 4000
 
 _K8S_CALL_TIMEOUT = 30  # seconds per Kubernetes API call
 _HW_PROFILE_FETCH_ATTEMPTS = 6
@@ -235,6 +239,48 @@ def find_test_dataset_csv(s3_client, bucket: str, run_prefix: str) -> str | None
         if "sampled_test_dataset" in obj["Key"]:
             return obj["Key"]
     return None
+
+
+def assert_sampled_test_dataset(
+    s3_client,
+    bucket: str,
+    test_dataset_key: str,
+    *,
+    scenario_id: str,
+    expected_rows: int | None = None,
+    must_contain: str | None = None,
+) -> None:
+    """Assert the data-loader test artifact matches a user-provided test CSV.
+
+    Row count distinguishes user test data from the default 80/20 holdout. Optional
+    ``must_contain`` is a distinctive substring that cannot appear in an auto-split
+    of the training file (for example a canary label value).
+    """
+    try:
+        resp = s3_client.get_object(Bucket=bucket, Key=test_dataset_key)
+        text = resp["Body"].read().decode("utf-8")
+    except Exception as exc:
+        raise AssertionError(
+            f"[{scenario_id}] Failed to read sampled_test_dataset "
+            f"s3://{bucket}/{test_dataset_key}: {exc}"
+        ) from exc
+
+    data_rows = [line for line in text.splitlines() if line.strip()]
+    n_data = max(0, len(data_rows) - 1)
+    if expected_rows is not None:
+        assert n_data == expected_rows, (
+            f"[{scenario_id}] sampled_test_dataset row count {n_data} != "
+            f"expected {expected_rows} (user-provided test CSV). "
+            f"A default 80/20 holdout would not match this size. "
+            f"artifact=s3://{bucket}/{test_dataset_key}"
+        )
+    needle = (must_contain or "").strip()
+    if needle:
+        assert needle in text, (
+            f"[{scenario_id}] sampled_test_dataset does not contain {needle!r}; "
+            f"the user-provided test CSV was not written to the artifact. "
+            f"artifact=s3://{bucket}/{test_dataset_key}"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -1071,23 +1117,6 @@ def delete_inference_service(co, namespace: str, isvc_name: str) -> None:
             logger.warning("Failed to delete InferenceService %r: %s", isvc_name, e)
 
 
-_AUTOML_NOTEBOOK_ENV_PREFIXES = ("AWS_",)
-_SYSTEM_ENV_KEYS = frozenset(
-    {
-        "PATH",
-        "HOME",
-        "TMPDIR",
-        "TEMP",
-        "TMP",
-        "LANG",
-        "LC_ALL",
-        "USER",
-        "LOGNAME",
-        "SHELL",
-    }
-)
-
-
 def run_deployment_test(
     *,
     scenario_id: str,
@@ -1420,12 +1449,15 @@ def upload_test_datasets(
     bucket: str,
     s3_keys: list[str],
     local_data_dir: Path,
+    optional_keys: list[str] | None = None,
 ) -> list[str]:
     """Upload local CSV files to S3 for each key in s3_keys that has a matching local file.
 
     Matching is done by filename only (basename), so local directory layout does not need
-    to mirror the S3 key prefix structure. Keys with no local match are skipped with a
-    debug log — this covers intentional negative-test keys like 'does-not-exist-*.csv'.
+    to mirror the S3 key prefix structure. Only keys listed in ``optional_keys`` — the
+    intentionally absent ones behind missing-object faults — may go unmatched; any other
+    key without a local file, or whose upload fails, raises. A fixture that silently never
+    reaches S3 turns into a bogus mid-pipeline ``NoSuchKey`` that reads like a product bug.
 
     Returns the list of S3 keys that were actually uploaded.
     """
@@ -1433,6 +1465,8 @@ def upload_test_datasets(
         raise FileNotFoundError(
             f"AUTOML_UPLOAD_TEST_DATASETS is set but local data directory does not exist: {local_data_dir}"
         )
+
+    optional = set(optional_keys or ())
 
     local_index: dict[str, Path] = {}
     for f in local_data_dir.rglob("*.csv"):
@@ -1446,15 +1480,18 @@ def upload_test_datasets(
         local_index[f.name] = f
 
     uploaded_keys: list[str] = []
+    unmatched: list[str] = []
+    failed: list[str] = []
     for s3_key in sorted(set(s3_keys)):
         filename = Path(s3_key).name
         local_path = local_index.get(filename)
         if local_path is None:
-            logger.debug(
-                "No local file for key %r (filename=%r) — skipping upload",
-                s3_key,
-                filename,
-            )
+            if s3_key in optional:
+                logger.debug(
+                    "No local file for intentionally absent key %r — skipping upload", s3_key
+                )
+            else:
+                unmatched.append(s3_key)
             continue
         try:
             logger.info("Uploading %s → s3://%s/%s", local_path, bucket, s3_key)
@@ -1464,6 +1501,19 @@ def upload_test_datasets(
             logger.error(
                 "Failed to upload %s → s3://%s/%s: %s", local_path, bucket, s3_key, exc
             )
+            failed.append(f"{s3_key} ({exc})")
+
+    if unmatched or failed:
+        problems = []
+        if unmatched:
+            problems.append(
+                f"no local CSV found under {local_data_dir} for: {unmatched} "
+                "(matching is by filename only; add the file, or declare the key in "
+                "missing_object_keys if its absence is the injected fault)"
+            )
+        if failed:
+            problems.append(f"upload failed for: {failed}")
+        raise FileNotFoundError("Dataset upload incomplete — " + "; ".join(problems))
 
     logger.info(
         "Dataset upload complete: %d file(s) uploaded to s3://%s",
@@ -1473,56 +1523,109 @@ def upload_test_datasets(
     return uploaded_keys
 
 
-def download_and_execute_automl_notebook(
-    s3_client, bucket: str, notebook_key: str
+def verify_dataset_objects(
+    s3_client,
+    bucket: str,
+    required_keys: list[str],
+    absent_keys: list[str],
 ) -> None:
-    """Download an AutoML predictor notebook from S3 and execute it locally via papermill.
+    """Assert the train-data bucket matches what the scenarios expect before any run starts.
+
+    Required keys must exist; keys behind missing-object faults must not. A leftover object
+    at an intentionally absent key would make that negative scenario fail for the wrong
+    reason (or not fail at all), so both directions are checked.
+
+    Raises:
+        AssertionError: If any required key is missing or any expected-absent key exists.
+    """
+
+    def _exists(key: str) -> bool:
+        try:
+            s3_client.head_object(Bucket=bucket, Key=key)
+            return True
+        except Exception as exc:  # botocore ClientError 404/403 and transport errors alike
+            response = getattr(exc, "response", None) or {}
+            code = str((response.get("Error") or {}).get("Code", ""))
+            if code not in ("404", "NotFound", "NoSuchKey"):
+                # 403 or a transport error means "cannot tell", not "absent" — surface it.
+                logger.warning("head_object(%r) failed unexpectedly: %s", key, exc)
+            return False
+
+    missing = [k for k in required_keys if not _exists(k)]
+    present = [k for k in absent_keys if _exists(k)]
+
+    problems = []
+    if missing:
+        problems.append(
+            f"required dataset object(s) not found in s3://{bucket}: {missing} — "
+            f"set {AUTOML_UPLOAD_TEST_DATASETS_ENV}=true to upload them from the local data/ dir"
+        )
+    if present:
+        problems.append(
+            f"object(s) expected to be absent exist in s3://{bucket}: {present} — "
+            "a missing-object negative scenario needs these deleted"
+        )
+    assert not problems, "Dataset precondition failed: " + "; ".join(problems)
+
+    logger.info(
+        "Dataset preconditions verified in s3://%s: %d present, %d absent",
+        bucket,
+        len(required_keys),
+        len(absent_keys),
+    )
+
+
+def assert_expected_error_pattern(
+    scenario_id: str,
+    pattern: str | None,
+    failure_details: str,
+) -> None:
+    """Assert the injected fault's own error text appears in the run's failure details.
+
+    ``failure_details`` is the :func:`_collect_failure_details` blob (task errors plus
+    failed-pod logs). Without this check a negative scenario passes on *any* failure in the
+    expected task — a missing fixture, bad credentials or an OOM all look like success.
+
+    Raises:
+        AssertionError: If the pattern does not match. When pod logs could not be collected
+            the message says so, since that (not the product) is then the likely cause.
+    """
+    if not pattern:
+        return
+
+    # No DOTALL: patterns describe a single error line, and letting '.' cross newlines
+    # would let two unrelated log lines satisfy one pattern.
+    if re.search(pattern, failure_details, re.IGNORECASE):
+        return
+
+    logs_missing = "POD LOGS FOR FAILED PODS:" not in failure_details
+    hint = (
+        " No pod logs were collected for this run, so the reason could not be read at all — "
+        "check Kubernetes connectivity before suspecting the pipeline."
+        if logs_missing
+        else ""
+    )
+    raise AssertionError(
+        f"[{scenario_id}] Run failed, but not for the injected reason: expected "
+        f"/{pattern}/ in the task errors or failed-pod logs.{hint}\n"
+        f"--- failure details (tail) ---\n{failure_details[-_FAILURE_DETAILS_TAIL_CHARS:]}"
+    )
+
+
+def download_and_execute_automl_notebook(
+    s3_client, bucket: str, notebook_key: str, *, config: dict
+) -> None:
+    """Execute an AutoML predictor notebook in a Kubernetes Job.
 
     Raises:
         AssertionError: If the notebook fails to execute.
     """
-    try:
-        import papermill as pm
-    except ImportError as e:
-        raise AssertionError(
-            "papermill is not installed; cannot execute notebook"
-        ) from e
-
-    with tempfile.TemporaryDirectory(prefix="automl-notebook-") as tmpdir:
-        filename = Path(notebook_key).name
-        input_path = Path(tmpdir) / f"input_{filename}"
-        output_path = Path(tmpdir) / f"output_{filename}"
-
-        s3_client.download_file(bucket, notebook_key, str(input_path))
-
-        original_cwd = os.getcwd()
-        original_environ = os.environ.copy()
-        try:
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            os.chdir(output_path.parent)
-
-            filtered_env = {
-                k: v
-                for k, v in original_environ.items()
-                if k in _SYSTEM_ENV_KEYS
-                or any(k.startswith(p) for p in _AUTOML_NOTEBOOK_ENV_PREFIXES)
-            }
-            os.environ.clear()
-            os.environ.update(filtered_env)
-
-            ensure_notebook_kernel_registered()
-            pm.execute_notebook(
-                str(input_path), str(output_path), kernel_name=NOTEBOOK_KERNEL_NAME
-            )
-        except pm.PapermillExecutionError as e:
-            raise AssertionError(
-                f"AutoML notebook {filename} (key={notebook_key}) failed: {e}"
-            ) from e
-        except Exception as e:
-            raise AssertionError(
-                f"AutoML notebook {filename} (key={notebook_key}) execution error: {e}"
-            ) from e
-        finally:
-            os.environ.clear()
-            os.environ.update(original_environ)
-            os.chdir(original_cwd)
+    del s3_client  # The Job downloads the notebook with its injected S3 secret.
+    run_notebooks_as_k8s_job(
+        bucket=bucket,
+        notebook_keys=[notebook_key],
+        config=config,
+        secret_names=[
+            str(config.get("s3_secret_name") or config.get("train_data_secret_name") or "")
+        ],
+    )

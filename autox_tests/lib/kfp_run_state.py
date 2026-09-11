@@ -40,6 +40,11 @@ def _run_failed(detail) -> bool:
 def _get_failed_task_names(client, run_id: str) -> list[str]:
     """Return display names of user-visible FAILED/ERROR tasks from a pipeline run.
 
+    The list includes DAG nodes (root pipeline, condition groups), which fail whenever a
+    child does. They are noise in the assertion message but cannot be filtered on
+    ``child_tasks``: a leaf container task reports its driver and container-impl pods there
+    too, so that check drops every task.
+
     Retries when the run is in a terminal failed state but task-level states have not
     yet propagated — a race that occurs with Tekton-backed managed pipelines immediately
     after the run reaches FAILED.
