@@ -556,12 +556,13 @@ def prepare(kb_dir, bench_path, *, num_samples=50, output_format="txt", **_):
             metadata={"source": "my_dataset", "doc_id": str(i)}
         )
     
-    # Write benchmark JSON
+    # Write benchmark JSON.  Bare file names are correct here: the upload step
+    # expands them to full S3 object keys, which is what ai4rag matches against.
     benchmark_data = [
         {
             "question": "What is X?",
             "correct_answers": ["Answer to X"],
-            "correct_answer_document_ids": ["doc_0.txt"],
+            "correct_answer_document_keys": ["doc_0.txt"],
         }
     ]
     

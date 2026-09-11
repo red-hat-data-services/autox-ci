@@ -216,7 +216,7 @@ def prepare(
         benchmark_data.append({
             "question": str(question).strip(),
             "correct_answers": answers,
-            "correct_answer_document_ids": basenames,
+            "correct_answer_document_keys": basenames,
         })
 
     if not benchmark_data:

@@ -205,7 +205,7 @@ def prepare(
         benchmark_data.append({
             "question": query_text,
             "correct_answers": answers_for_query,
-            "correct_answer_document_ids": doc_ids_for_query,
+            "correct_answer_document_keys": doc_ids_for_query,
         })
         processed += 1
 
