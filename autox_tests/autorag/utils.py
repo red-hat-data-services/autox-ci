@@ -369,157 +369,195 @@ def _download_and_execute_notebooks(s3_client, bucket, notebook_keys, *, config)
     )
 
 
-def get_input_document_names(input_data_key: str, local_data_dir: Path) -> set[str]:
-    """Get the set of input document filenames from a local data directory.
+def get_uploaded_document_names(s3_client, bucket: str, input_data_key: str) -> set[str]:
+    """Return the filenames of every document uploaded under the pipeline's input prefix.
 
-    Args:
-        input_data_key: The S3 key path (e.g., 'datasets/rag/mixed_formats/documents').
-        local_data_dir: Local directory containing test data (e.g., 'autox_tests/autorag/data').
-
-    Returns:
-        Set of document filenames that should be loaded (e.g., {'doc.md', 'doc.txt'}).
-        Returns empty set if the local directory doesn't exist.
-    """
-    key_parts = Path(input_data_key).parts
-    target_dir = local_data_dir
-
-    # Skip 'datasets' and 'rag' prefixes to find the actual directory
-    # S3 key: datasets/rag/mixed_formats/documents
-    # Local path: autox_tests/autorag/data/mixed_formats/documents
-    start_idx = 0
-    if len(key_parts) > 0 and key_parts[0] == 'datasets':
-        start_idx = 2  # Skip 'datasets' and 'rag'
-
-    for part in key_parts[start_idx:]:
-        target_dir = target_dir / part
-
-    if not target_dir.exists() or not target_dir.is_dir():
-        logger.warning("Input data directory not found: %s", target_dir)
-        return set()
-
-    # Get all files in the directory
-    docs = set()
-    for entry in target_dir.iterdir():
-        if entry.is_file():
-            docs.add(entry.name)
-
-    return docs
-
-
-def extract_loaded_documents(evaluation_results: dict) -> set[str]:
-    """Extract the set of document IDs from evaluation_results.json.
-
-    Args:
-        evaluation_results: Parsed evaluation_results.json dict from the pipeline.
-
-    Returns:
-        Set of document IDs that were successfully loaded and used in evaluation.
-        For example: {'doc1.md', 'doc2.txt'}.
-    """
-    docs = set()
-
-    # Try to extract from benchmark data (correct_answer_document_ids)
-    if isinstance(evaluation_results, list):
-        for item in evaluation_results:
-            if isinstance(item, dict) and "correct_answer_document_ids" in item:
-                doc_ids = item.get("correct_answer_document_ids", [])
-                if isinstance(doc_ids, list):
-                    docs.update(doc_ids)
-
-    # Also check for a 'documents' field at the top level
-    if isinstance(evaluation_results, dict):
-        if "documents" in evaluation_results and isinstance(evaluation_results["documents"], list):
-            for doc_info in evaluation_results["documents"]:
-                if isinstance(doc_info, dict) and "id" in doc_info:
-                    docs.add(doc_info["id"])
-
-    return docs
-
-
-def validate_mixed_format_documents(
-    s3_client,
-    bucket: str,
-    prefix: str,
-    test_scenario_config,
-    local_data_dir: Path,
-) -> None:
-    """Validate that all input documents for mixed-format tests were loaded.
-
-    For TC-P-4 (mixed document formats), this ensures that no documents were silently
-    skipped during text extraction. Compares the set of input documents with the set
-    of documents referenced in evaluation_results.json.
+    This is the authoritative "uploaded input set" the pipeline was asked to ingest — read
+    from S3 rather than from the repo's local data directory, since the two can drift and
+    only the bucket reflects what the pipeline actually saw.
 
     Args:
         s3_client: Boto3 S3 client.
-        bucket: S3 bucket name.
-        prefix: S3 prefix for pipeline artifacts.
-        test_scenario_config: Test scenario configuration with input_data_key.
-        local_data_dir: Local directory containing test data.
+        bucket: Bucket holding the input documents.
+        input_data_key: S3 prefix of the input documents
+            (e.g. 'datasets/rag/mixed_formats/documents').
+
+    Returns:
+        Set of document filenames, e.g. {'doc.md', 'doc.txt'}.
+    """
+    from autox_tests.lib.s3_data import list_s3_objects
+
+    prefix = input_data_key.rstrip("/") + "/"
+    objects = list_s3_objects(s3_client, bucket, prefix)
+
+    return {
+        obj["Key"].rsplit("/", 1)[-1]
+        for obj in objects
+        if not obj["Key"].endswith("/")
+    }
+
+
+def get_extracted_document_names(s3_client, bucket: str, run_prefix: str) -> set[str]:
+    """Return the filenames of documents the text-extraction task produced output for.
+
+    The task writes one JSON per successfully extracted document to
+    ``<run_prefix>/text-extraction/<id>/extracted_text/<document filename>.json``, so the
+    presence of that file is the ground truth for "this document was loaded".
+
+    Args:
+        s3_client: Boto3 S3 client.
+        bucket: Bucket holding the pipeline artifacts.
+        run_prefix: Artifact prefix for the run
+            (e.g. 'documents-rag-optimization-pipeline/<run_id>').
+
+    Returns:
+        Set of document filenames that have extracted text.
+    """
+    from autox_tests.lib.s3_data import list_s3_objects
+
+    names = set()
+    for obj in list_s3_objects(s3_client, bucket, run_prefix):
+        key = obj["Key"]
+        if "/text-extraction/" not in key or "/extracted_text/" not in key:
+            continue
+        leaf = key.rsplit("/", 1)[-1]
+        if not leaf.endswith(".json"):
+            continue
+        names.add(leaf[: -len(".json")])
+    return names
+
+
+def get_discovered_document_names(s3_client, bucket: str, run_prefix: str) -> set[str] | None:
+    """Return the filenames listed in the documents-discovery descriptor, or None if absent.
+
+    Used only to attribute a missing document to the stage that dropped it: a document
+    absent from the descriptor never reached text extraction at all. A missing or
+    malformed descriptor degrades the error message but never hides the failure.
+
+    Args:
+        s3_client: Boto3 S3 client.
+        bucket: Bucket holding the pipeline artifacts.
+        run_prefix: Artifact prefix for the run.
+
+    Returns:
+        Set of discovered document filenames, or None if the descriptor is unavailable.
+    """
+    from autox_tests.lib.s3_data import list_s3_objects, read_s3_json
+
+    descriptor_key = next(
+        (
+            obj["Key"]
+            for obj in list_s3_objects(s3_client, bucket, run_prefix)
+            if obj["Key"].endswith("/documents_descriptor.json")
+        ),
+        None,
+    )
+    if descriptor_key is None:
+        return None
+
+    descriptor = read_s3_json(s3_client, bucket, descriptor_key)
+    if not isinstance(descriptor, dict):
+        return None
+
+    documents = descriptor.get("documents")
+    if not isinstance(documents, list):
+        return None
+
+    return {
+        str(entry["key"]).rsplit("/", 1)[-1]
+        for entry in documents
+        if isinstance(entry, dict) and entry.get("key")
+    }
+
+
+def _format_missing_documents(missing: set[str], discovered: set[str] | None) -> str:
+    """Render missing documents grouped by the pipeline stage that dropped them."""
+    if discovered is None:
+        return "\n".join(
+            ["  Dropped before indexing (stage could not be determined):"]
+            + [f"    - {name}" for name in sorted(missing)]
+        )
+
+    lines = []
+    never_discovered = sorted(missing - discovered)
+    if never_discovered:
+        lines.append("  Dropped at documents-discovery (never reached text extraction):")
+        lines += [f"    - {name}" for name in never_discovered]
+
+    discovered_not_extracted = sorted(missing & discovered)
+    if discovered_not_extracted:
+        lines.append("  Reached text extraction but produced no extracted text:")
+        lines += [f"    - {name}" for name in discovered_not_extracted]
+
+    return "\n".join(lines)
+
+
+def validate_extracted_documents(
+    s3_client,
+    input_bucket: str,
+    input_data_key: str,
+    artifact_bucket: str,
+    run_prefix: str,
+    test_scenario_config,
+) -> None:
+    """Fail the test if any uploaded document is missing after text extraction.
+
+    Implements RHOAIENG-91789: a document whose format the running ai4rag cannot handle is
+    skipped silently and the pipeline still reports SUCCEEDED. Comparing the uploaded input
+    set against the text-extraction output turns that capability gap into a test failure
+    naming the offending files and extensions.
+
+    This check is deliberately fail-closed: every path that prevents the comparison from
+    being made raises rather than returning, because a validation that silently opts out
+    reproduces the very false-pass this function exists to catch.
+
+    Args:
+        s3_client: Boto3 S3 client (same endpoint serves both buckets).
+        input_bucket: Bucket holding the uploaded input documents.
+        input_data_key: S3 prefix of the input documents.
+        artifact_bucket: Bucket holding the pipeline artifacts.
+        run_prefix: Artifact prefix for the run.
+        test_scenario_config: Test scenario configuration (used for the test id).
 
     Raises:
-        AssertionError: If any input documents are missing from the evaluation results.
+        AssertionError: If any uploaded document has no extracted text, or if the
+            artifacts needed to make that determination are missing.
     """
-    # Only validate mixed-format tests
-    if "mixed-formats" not in getattr(test_scenario_config, "tags", []):
-        return
+    tid = test_scenario_config.id
 
-    input_docs = get_input_document_names(test_scenario_config.input_data_key, local_data_dir)
-    if not input_docs:
-        logger.warning(
-            "[%s] Could not determine input documents from %s — skipping document validation",
-            test_scenario_config.id,
-            test_scenario_config.input_data_key,
-        )
-        return
-
-    # Download evaluation_results.json and extract loaded documents
-    try:
-        from autox_tests.lib.s3_data import list_s3_objects, read_s3_json
-
-        objects = list_s3_objects(s3_client, bucket, prefix)
-        eval_results_key = next(
-            (obj["Key"] for obj in objects if "evaluation_results.json" in obj["Key"]),
-            None,
+    uploaded = get_uploaded_document_names(s3_client, input_bucket, input_data_key)
+    if not uploaded:
+        raise AssertionError(
+            f"[{tid}] No input documents found under s3://{input_bucket}/{input_data_key} — "
+            "cannot verify text extraction. Check input_data_key and that the dataset is uploaded."
         )
 
-        if not eval_results_key:
-            logger.warning(
-                "[%s] evaluation_results.json not found in s3://%s/%s — skipping document validation",
-                test_scenario_config.id,
-                bucket,
-                prefix,
-            )
-            return
+    extracted = get_extracted_document_names(s3_client, artifact_bucket, run_prefix)
+    if not extracted:
+        raise AssertionError(
+            f"[{tid}] No extracted_text artifacts found under "
+            f"s3://{artifact_bucket}/{run_prefix} — text extraction produced nothing for any of "
+            f"the {len(uploaded)} uploaded document(s)."
+        )
 
-        evaluation_results = read_s3_json(s3_client, bucket, eval_results_key)
-        if not evaluation_results:
-            logger.warning(
-                "[%s] Failed to read evaluation_results.json from s3://%s/%s",
-                test_scenario_config.id,
-                bucket,
-                eval_results_key,
-            )
-            return
-
-        loaded_docs = extract_loaded_documents(evaluation_results)
-
-        missing_docs = input_docs - loaded_docs
-        if missing_docs:
-            raise AssertionError(
-                f"[{test_scenario_config.id}] {len(missing_docs)} input document(s) were not loaded/extracted: "
-                f"{sorted(missing_docs)}. This suggests text extraction failed for these document types."
-            )
-
+    missing = uploaded - extracted
+    if not missing:
         logger.info(
-            "[%s] Document validation passed: all %d input documents were loaded",
-            test_scenario_config.id,
-            len(input_docs),
+            "[%s] Text extraction validated: all %d uploaded document(s) were loaded (%s)",
+            tid,
+            len(uploaded),
+            ", ".join(sorted({Path(n).suffix.lower() or "<none>" for n in uploaded})),
         )
-    except AssertionError:
-        raise
-    except Exception as e:
-        logger.error(
-            "[%s] Error validating documents: %s",
-            test_scenario_config.id,
-            e,
-        )
+        return
+
+    discovered = get_discovered_document_names(s3_client, artifact_bucket, run_prefix)
+    unsupported = sorted({Path(n).suffix.lower() or "<none>" for n in missing})
+
+    raise AssertionError(
+        f"[{tid}] {len(missing)} of {len(uploaded)} uploaded document(s) were not loaded "
+        f"after text extraction — the running ai4rag build appears not to support "
+        f"{', '.join(unsupported)}.\n"
+        f"{_format_missing_documents(missing, discovered)}\n"
+        f"  Uploaded input:  s3://{input_bucket}/{input_data_key.rstrip('/')}/\n"
+        f"  Extracted text:  s3://{artifact_bucket}/{run_prefix}/text-extraction/*/extracted_text/"
+    )
