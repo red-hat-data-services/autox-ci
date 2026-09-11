@@ -209,9 +209,12 @@ def prepare(
         benchmark_data.append({
             "question": question,
             "correct_answers": [answer],
-            # Gold id MUST include the extension: the pipeline's context_correctness
-            # metric matches the retrieved chunk's document_id (full filename) verbatim.
-            "correct_answer_document_ids": [doc_filename],
+            # Gold key MUST include the extension: the pipeline's context_correctness
+            # metric matches the retrieved chunk's document key verbatim.  The bare
+            # file name written here is expanded to the full S3 object key at upload
+            # time (see ``s3_dataset_upload._resolve_document_keys``), because the
+            # target prefix is not known during generation.
+            "correct_answer_document_keys": [doc_filename],
         })
 
         processed += 1

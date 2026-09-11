@@ -15,16 +15,22 @@ way through indexing and retrieval, this provider:
 
   * names every knowledge-base file ``{dsid}.{ext}`` (the ``dsid_`` UUID is the
     filename stem), and
-  * sets ``correct_answer_document_ids`` to those KB filenames (``{dsid}.{ext}``).
+  * sets ``correct_answer_document_keys`` to those KB filenames (``{dsid}.{ext}``).
 
 ai4rag's in-pipeline ``context_correctness`` metric compares the retrieved chunk's
-``metadata["document_id"]`` — which is the full source filename *including* the
-extension (e.g. ``dsid_<hex>.txt``) — verbatim against
-``correct_answer_document_ids``. Storing bare ``dsid_`` values here makes that
-overlap empty and pins ``context_correctness`` to 0.0, so the gold IDs must carry
-the extension too. The raw ``dsid_`` UUIDs are still preserved in the
-``selected_questions.jsonl`` sidecar (``expected_doc_ids``) for Phase 2b, which
-recovers them by stripping the extension from each retrieved filename.
+``metadata["document_id"]`` — which since ai4rag 0.16.0 is the document's *key*,
+i.e. its full S3 object key including prefix and extension (e.g.
+``datasets/rag/.../knowledge_base/dsid_<hex>.txt``) — verbatim against
+``correct_answer_document_keys``. Storing bare ``dsid_`` values here makes that
+overlap empty and pins ``context_correctness`` to 0.0, so the gold keys must carry
+the extension too. The bare ``{dsid}.{ext}`` names written here are expanded to
+full object keys at upload time (see ``s3_dataset_upload._resolve_document_keys``),
+since the target prefix is unknown during generation.
+
+The raw ``dsid_`` UUIDs are still preserved in the ``selected_questions.jsonl``
+sidecar (``expected_doc_ids``) for Phase 2b.  Note that Phase 2b must now recover
+them by taking the *basename* of each retrieved key before stripping the
+extension — stripping the extension alone leaves the prefix attached.
 
 Data source
 -----------
@@ -345,7 +351,7 @@ def prepare(
             {
                 "question": q.get("question", ""),
                 "correct_answers": [gold_answer] if gold_answer else [],
-                "correct_answer_document_ids": gold,
+                "correct_answer_document_keys": gold,
             }
         )
         selected_meta.append(q)
