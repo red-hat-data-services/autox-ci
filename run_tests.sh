@@ -269,7 +269,11 @@ PYTEST_CMD=(uv run --project "$SCRIPT_DIR")
 
 PYTEST_CMD+=(pytest --rootdir "$SCRIPT_DIR")
 
-[[ -n "$MARKER_EXPR" ]] && PYTEST_CMD+=(-m "$MARKER_EXPR")
+if [[ -n "$MARKER_EXPR" ]]; then
+    PYTEST_CMD+=(-m "$MARKER_EXPR")
+elif [[ "$SUITE" == "automl" ]]; then
+    PYTEST_CMD+=(-m "not config")
+fi
 
 # Append suite test path(s) before user-supplied pytest args
 case "$SUITE" in

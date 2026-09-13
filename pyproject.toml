@@ -65,4 +65,5 @@ markers = [
   "indexing: Documents Indexing pipeline",
   "positive: Tests expected to pass covering positive paths",
   "negative: Tests expected to fail covering negative paths",
+  "config: AutoML configuration and pipeline-argument tests",
 ]
