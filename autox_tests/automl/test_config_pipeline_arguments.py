@@ -11,6 +11,8 @@ from autox_tests.automl.configs.configs import (
 )
 from autox_tests.automl.utils import assert_sampled_test_dataset
 
+pytestmark = pytest.mark.config
+
 _BASE = {
     "train_data_secret_name": "s3-connection",
     "train_data_bucket_name": "train-bucket",
