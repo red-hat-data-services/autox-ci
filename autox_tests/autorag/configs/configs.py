@@ -73,7 +73,9 @@ class AutoRAGTestConfig:
         generation_models: Generation model IDs for the search space. Required by the
             MaaS pipeline. A JSON list, or "env" to read from AUTORAG_GENERATION_MODELS.
         optimization_max_rag_patterns: Cap on the number of RAG patterns explored.
-        input_data_key: Path to the input documents folder within the bucket.
+        input_data_keys: Paths to the input document folders within the bucket. The
+            pipeline honours only the first entry; an empty or unset list makes
+            document discovery scan the whole bucket.
         test_data_key: Path to the benchmark JSON within the test-data bucket.
         optimization_metric: Metric to optimize (e.g. "faithfulness").
         run_notebook: Whether to execute the generated notebooks in Kubernetes Jobs.
@@ -92,7 +94,7 @@ class AutoRAGTestConfig:
     embedding_models: str | list[str] | None = None
     generation_models: str | list[str] | None = None
     optimization_max_rag_patterns: int | None = None
-    input_data_key: str | None = None
+    input_data_keys: list[str] | None = None
     test_data_key: str | None = None
     optimization_metric: str | None = None
     run_notebook: bool = False
@@ -119,7 +121,7 @@ class AutoRAGTestConfig:
             "maas_secret_name": base_config["maas_secret_name"],
             "vector_db_secret_name": base_config["vector_db_secret_name"],
             "test_data_key": self.test_data_key or "",
-            "input_data_key": self.input_data_key or "",
+            "input_data_keys": list(self.input_data_keys or []),
             "optimization_metric": self.optimization_metric or "",
         }
 
@@ -189,7 +191,7 @@ def get_all_dataset_keys() -> tuple[list[str], list[str]]:
     """Return (input_data_keys, test_data_keys) deduplicated across all test configs."""
     with open(_CONFIGS_JSON_PATH) as f:
         all_items = json.load(f)
-    input_keys = list({item["input_data_key"] for item in all_items if item.get("input_data_key")})
+    input_keys = list({key for item in all_items for key in (item.get("input_data_keys") or [])})
     test_keys = list({item["test_data_key"] for item in all_items if item.get("test_data_key")})
     return input_keys, test_keys
 
@@ -205,7 +207,9 @@ class IndexingTestConfig:
         expected_result: "pass" or "fail" — whether the pipeline run should succeed.
         embedding_model_id: Embedding model ID served by MaaS. Use "env" to read from
             the ``AUTORAG_INDEXING_EMBEDDING_MODEL_ID`` env var.
-        input_data_key: Path to folder with input documents within the bucket.
+        input_data_keys: Paths to folders with input documents within the bucket. The
+            pipeline honours only the first entry; an empty or unset list makes
+            document discovery scan the whole bucket.
         collection_name: Vector store collection to reuse. Omit to create a new one.
         chunking_method: Chunking method (default: "recursive").
         chunk_size: Maximum chunk size in tokens (default: 1024).
@@ -224,7 +228,7 @@ class IndexingTestConfig:
     tags: list[str]
     expected_result: str
     embedding_model_id: str
-    input_data_key: str | None = None
+    input_data_keys: list[str] | None = None
     collection_name: str | None = None
     chunking_method: str | None = None
     chunk_size: int | None = None
@@ -260,7 +264,7 @@ class IndexingTestConfig:
             "embedding_model_id": embedding_model_id,
             "input_data_secret_name": base_config["input_data_secret_name"],
             "input_data_bucket_name": base_config["input_data_bucket_name"],
-            "input_data_key": self.input_data_key or "",
+            "input_data_keys": list(self.input_data_keys or []),
         }
         if self.collection_name is not None:
             arguments["collection_name"] = self.collection_name

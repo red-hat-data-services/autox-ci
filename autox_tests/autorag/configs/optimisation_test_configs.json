@@ -8,17 +8,17 @@
         "generation_models": ["non-existing-generation-models-for-failure"],
         "optimization_metric": "answer_correctness",
         "optimization_max_rag_patterns": 6,
-        "input_data_key": "datasets/rag/rh_summit_2026/documents",
+        "input_data_keys": ["datasets/rag/rh_summit_2026/documents"],
         "test_data_key": "datasets/rag/rh_summit_2026/benchmark_data.json"
     },
     {
         "id": "TC-F-3",
-        "description": "Verify failure on incorrect input_data_key.",
+        "description": "Verify failure on incorrect input_data_keys.",
         "tags": ["negative", "optimisation"],
         "expected_result": "fail",
         "embedding_models": "env",
         "generation_models": "env",
-        "input_data_key": "non/existing/key",
+        "input_data_keys": ["non/existing/key"],
         "test_data_key": "datasets/rag/rh_summit_2026/benchmark_data.json",
         "optimization_metric": "answer_correctness",
         "optimization_max_rag_patterns": 6
@@ -33,7 +33,7 @@
         "generation_models": "env",
         "optimization_max_rag_patterns": 4,
         "optimization_metric": "answer_correctness",
-        "input_data_key": "datasets/rag/rh_summit_2026/documents",
+        "input_data_keys": ["datasets/rag/rh_summit_2026/documents"],
         "test_data_key": "datasets/rag/rh_summit_2026/benchmark_data.json"
     },
     {
@@ -46,7 +46,7 @@
         "generation_models": "env",
         "optimization_max_rag_patterns": 4,
         "optimization_metric": "faithfulness",
-        "input_data_key": "datasets/rag/rh_summit_2026/documents",
+        "input_data_keys": ["datasets/rag/rh_summit_2026/documents"],
         "test_data_key": "datasets/rag/rh_summit_2026/benchmark_data.json"
     },
     {
@@ -59,7 +59,7 @@
         "generation_models": "env",
         "optimization_max_rag_patterns": 6,
         "optimization_metric": "answer_correctness",
-        "input_data_key": "datasets/rag/rh_summit_2026/documents",
+        "input_data_keys": ["datasets/rag/rh_summit_2026/documents"],
         "test_data_key": "datasets/rag/rh_summit_2026/benchmark_data.json"
     },
     {
@@ -72,7 +72,7 @@
         "generation_models": "env",
         "optimization_max_rag_patterns": 4,
         "optimization_metric": "answer_correctness",
-        "input_data_key": "datasets/rag/mixed_formats/documents",
+        "input_data_keys": ["datasets/rag/mixed_formats/documents"],
         "test_data_key": "datasets/rag/mixed_formats/benchmark_data.json"
     }
 ]

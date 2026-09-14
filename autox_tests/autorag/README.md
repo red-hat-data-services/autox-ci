@@ -56,7 +56,8 @@ Scenarios live in `configs/test_configs.json`. Each entry specifies:
 | `tags` | List of tags for runtime filtering via `-t` / `AUTORAG_FUNCTIONAL_TESTS_TAGS` |
 | `expected_result` | `"pass"` or `"fail"` |
 | `embedding_models` / `generation_models` | MaaS model IDs (JSON list, or `"env"` to read from `AUTORAG_EMBEDDING_MODELS` / `AUTORAG_GENERATION_MODELS`); required by the pipeline |
-| `optimization_metric`, `optimization_max_rag_patterns`, `input_data_key`, `test_data_key` | Per-scenario parameter overrides |
+| `optimization_metric`, `optimization_max_rag_patterns`, `test_data_key` | Per-scenario parameter overrides |
+| `input_data_keys` | JSON list of document-folder paths within the input bucket; the pipeline honours only the first entry |
 
 > The vector-store backend (Milvus / PGVector) is auto-detected by the pipeline from the
 > `VECTOR_DB_SECRET_NAME` secret's key prefixes; it is no longer a per-scenario parameter.
