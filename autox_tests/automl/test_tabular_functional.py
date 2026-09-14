@@ -44,6 +44,7 @@ from .utils import (
     find_test_dataset_csv,
     run_deployment_test,
 )
+from autox_tests.lib.s3_data import list_s3_objects
 
 logger = logging.getLogger(__name__)
 
@@ -127,6 +128,15 @@ class TestAutoMLTabularFunctional:
             model_entries = collect_model_metrics_and_sizes(
                 s3_client_automl_functional, bucket, prefix
             )
+            artifact_keys = [
+                obj["Key"]
+                for obj in list_s3_objects(
+                    s3_client_automl_functional, bucket, prefix
+                )
+            ]
+            pkl_keys = [key for key in artifact_keys if key.endswith(".pkl")]
+            ipynb_keys = [key for key in artifact_keys if key.endswith(".ipynb")]
+            json_keys = [key for key in artifact_keys if key.endswith(".json")]
             leaderboard_key, leaderboard_html = find_leaderboard_html(
                 s3_client_automl_functional, bucket, prefix
             )
@@ -162,6 +172,50 @@ class TestAutoMLTabularFunctional:
                 f"[{test_config.id}] Expected at least 1 model with metrics under {prefix}; "
                 f"found {len(model_entries)}"
             )
+            assert len(pkl_keys) >= 1, (
+                f"[{test_config.id}] Expected at least one .pkl model artifact under "
+                f"{prefix}; found {pkl_keys}"
+            )
+            assert len(ipynb_keys) >= 1, (
+                f"[{test_config.id}] Expected at least one .ipynb notebook under "
+                f"{prefix}; found {ipynb_keys}"
+            )
+
+            metrics_json = [
+                key for key in json_keys if key.endswith("metrics/metrics.json")
+            ]
+            feature_importance_json = [
+                key
+                for key in json_keys
+                if key.endswith("metrics/feature_importance.json")
+            ]
+            assert len(metrics_json) >= 1, (
+                f"[{test_config.id}] Expected at least one metrics.json under "
+                f"{prefix}; found {metrics_json}"
+            )
+            assert len(feature_importance_json) >= 1, (
+                f"[{test_config.id}] Expected at least one feature_importance.json under "
+                f"{prefix}; found {feature_importance_json}"
+            )
+
+            if test_config.task_type in {"binary", "multiclass"}:
+                confusion_matrix_json = [
+                    key
+                    for key in json_keys
+                    if key.endswith("metrics/confusion_matrix.json")
+                ]
+                curves_json = [
+                    key for key in json_keys if key.endswith("metrics/curves.json")
+                ]
+                assert len(confusion_matrix_json) >= 1, (
+                    f"[{test_config.id}] Expected at least one confusion_matrix.json "
+                    f"for {test_config.task_type} task under {prefix}; "
+                    f"found {confusion_matrix_json}"
+                )
+                assert len(curves_json) >= 1, (
+                    f"[{test_config.id}] Expected at least one curves.json for "
+                    f"{test_config.task_type} task under {prefix}; found {curves_json}"
+                )
 
             primary_metric_key = TASK_PRIMARY_METRICS_TABULAR.get(test_config.task_type)
             if primary_metric_key:

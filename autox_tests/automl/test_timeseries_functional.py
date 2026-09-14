@@ -131,6 +131,17 @@ class TestAutoMLTimeseriesFunctional:
             model_entries = collect_model_metrics_and_sizes(
                 s3_client_automl_functional, bucket, prefix
             )
+            artifact_keys = [
+                obj["Key"]
+                for obj in list_s3_objects(
+                    s3_client_automl_functional, bucket, prefix
+                )
+            ]
+            model_keys = [
+                key
+                for key in artifact_keys
+                if key.endswith((".pkl", ".zip")) or "predictor" in key.lower()
+            ]
             leaderboard_key, leaderboard_html = find_leaderboard_html(
                 s3_client_automl_functional, bucket, prefix
             )
@@ -165,6 +176,14 @@ class TestAutoMLTimeseriesFunctional:
             assert len(model_entries) >= 1, (
                 f"[{test_config.id}] Expected at least 1 model with metrics under {prefix}; "
                 f"found {len(model_entries)}"
+            )
+            assert len(artifact_keys) >= 1, (
+                f"[{test_config.id}] Expected at least one artifact under {prefix}; "
+                f"found {artifact_keys}"
+            )
+            assert len(model_keys) >= 1, (
+                f"[{test_config.id}] Expected at least one model artifact under {prefix}; "
+                f"found {model_keys}"
             )
 
             for entry in model_entries:
