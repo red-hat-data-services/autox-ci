@@ -12,6 +12,7 @@ Passing criteria for expected-pass tests (from RHAIENG-4142):
 - Pipeline run finishes with status success
 - At least 1 pattern is generated
 - All desired artifacts exist (indexing notebook, inference notebook, evaluation_results.json, pattern.json)
+- Every uploaded input document has extracted text (no document silently skipped, RHOAIENG-91789)
 - The selected indexing and inference notebooks execute in Kubernetes Jobs.
 """
 
@@ -34,6 +35,7 @@ from .utils import (
     _pick_best_pattern_notebooks,
     _run_pipeline_and_wait,
     _validate_artifacts_in_s3,
+    validate_extracted_documents,
 )
 
 logger = logging.getLogger(__name__)
@@ -184,6 +186,18 @@ class TestAutoRAGFunctional:
         assert len(artifacts["evaluation_results_keys"]) >= 1, (
             f"[{test_scenario_config.id}] Expected evaluation_results.json under {prefix}; "
             f"found {artifacts['evaluation_results_keys']}"
+        )
+
+        # Every uploaded document must appear in the text-extraction output; a format the
+        # running ai4rag cannot read is skipped silently and would otherwise pass
+        # (RHOAIENG-91789). Checked before notebook execution so a document gap fails fast.
+        validate_extracted_documents(
+            s3_client_functional,
+            functional_env_config["input_data_bucket_name"],
+            test_scenario_config.input_data_key,
+            artifact_bucket,
+            prefix,
+            test_scenario_config,
         )
 
         if test_scenario_config.run_notebook:
