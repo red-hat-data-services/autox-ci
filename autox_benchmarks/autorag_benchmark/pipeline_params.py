@@ -36,8 +36,9 @@ def build_pipeline_arguments(
         "vector_db_secret_name": settings.vector_db_secret_name,
     }
 
-    if "input_data_key" in dataset and dataset["input_data_key"]:
-        args["input_data_key"] = str(dataset["input_data_key"])
+    # The pipeline takes a list but honours only its first entry; manifests stay single-valued.
+    if dataset.get("input_data_key"):
+        args["input_data_keys"] = [str(dataset["input_data_key"])]
 
     if "optimization_metric" in dataset:
         args["optimization_metric"] = str(dataset["optimization_metric"])

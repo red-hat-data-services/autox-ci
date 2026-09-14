@@ -172,7 +172,7 @@ def prepare(
         benchmark_data.append({
             "question": question,
             "correct_answers": [answer],
-            "correct_answer_document_ids": correct_doc_ids,
+            "correct_answer_document_keys": correct_doc_ids,
         })
 
         processed += 1

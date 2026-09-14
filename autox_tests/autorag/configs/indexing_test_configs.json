@@ -1,11 +1,11 @@
 [
     {
         "id": "IDX-F-2",
-        "description": "Verify failure on non-existing input_data_key.",
+        "description": "Verify failure on non-existing input_data_keys.",
         "tags": ["negative", "indexing"],
         "expected_result": "fail",
         "embedding_model_id": "env",
-        "input_data_key": "non/existing/path/to/documents",
+        "input_data_keys": ["non/existing/path/to/documents"],
         "expected_failing_task": ["documents-discovery"]
     },
     {
@@ -14,7 +14,7 @@
         "tags": ["negative", "indexing"],
         "expected_result": "fail",
         "embedding_model_id": "non-existing-embedding-model-id-for-failure",
-        "input_data_key": "datasets/rag/rh_summit_2026/documents",
+        "input_data_keys": ["datasets/rag/rh_summit_2026/documents"],
         "expected_failing_task": ["documents-indexing"]
     },
     {
@@ -23,7 +23,7 @@
         "tags": ["positive", "smoke", "indexing"],
         "expected_result": "pass",
         "embedding_model_id": "env",
-        "input_data_key": "datasets/rag/rh_summit_2026/documents"
+        "input_data_keys": ["datasets/rag/rh_summit_2026/documents"]
     },
     {
         "id": "IDX-P-2",
@@ -31,7 +31,7 @@
         "tags": ["positive", "indexing"],
         "expected_result": "pass",
         "embedding_model_id": "env",
-        "input_data_key": "datasets/rag/rh_summit_2026/documents",
+        "input_data_keys": ["datasets/rag/rh_summit_2026/documents"],
         "chunk_size": 512,
         "chunk_overlap": 50
     }
