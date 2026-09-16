@@ -34,6 +34,7 @@ from .utils import (
     _collect_failure_details,
     _get_failed_task_names,
     _run_pipeline_and_wait,
+    assert_experiment_notebook_artifact,
     assert_expected_error_pattern,
     collect_model_metrics_and_sizes,
     column_sample_to_instances,
@@ -181,6 +182,18 @@ class TestAutoMLTabularFunctional:
 
             assert test_dataset_key is not None, (
                 f"[{test_config.id}] No sampled_test_dataset artifact found under {prefix}"
+            )
+            experiment_notebook_key = assert_experiment_notebook_artifact(
+                s3_client_automl_functional,
+                bucket,
+                prefix,
+                run_id=run_id,
+                namespace=automl_functional_config["rhoai_project"],
+            )
+            logger.info(
+                "[%s] experiment_notebook_key=%s",
+                test_config.id,
+                experiment_notebook_key,
             )
             if (
                 test_config.expected_test_dataset_rows is not None

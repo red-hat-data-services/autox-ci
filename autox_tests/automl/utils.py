@@ -241,6 +241,60 @@ def find_test_dataset_csv(s3_client, bucket: str, run_prefix: str) -> str | None
     return None
 
 
+def assert_experiment_notebook_artifact(
+    s3_client, bucket: str, run_prefix: str, *, run_id: str, namespace: str
+) -> str:
+    """Assert the run-level AutoML experiment notebook exists and has core sections.
+
+    This deliberately inspects notebook JSON only; it never executes notebook code.
+    The output artifact key is discovered instead of hard-coded because KFP storage
+    layouts differ between backends.
+    """
+    notebook_keys = sorted(
+        obj["Key"]
+        for obj in list_s3_objects(s3_client, bucket, run_prefix)
+        if obj["Key"].endswith(".ipynb") and "experiment_notebook" in obj["Key"]
+    )
+    assert notebook_keys, (
+        f"No run-level experiment notebook artifact found under s3://{bucket}/{run_prefix}"
+    )
+
+    notebook_key = notebook_keys[0]
+    try:
+        payload = s3_client.get_object(Bucket=bucket, Key=notebook_key)["Body"].read()
+        notebook = json.loads(payload)
+    except Exception as exc:
+        raise AssertionError(
+            f"Could not read experiment notebook s3://{bucket}/{notebook_key}: {exc}"
+        ) from exc
+
+    assert notebook.get("nbformat", 0) >= 4, (
+        f"Experiment notebook at s3://{bucket}/{notebook_key} is not nbformat 4+"
+    )
+    cells = notebook.get("cells")
+    assert isinstance(cells, list) and cells, (
+        f"Experiment notebook at s3://{bucket}/{notebook_key} has no cells"
+    )
+
+    headings = "\n".join(
+        "".join(cell.get("source", []))
+        for cell in cells
+        if cell.get("cell_type") == "markdown"
+    ).lower()
+    for section in ("preflight", "run defaults", "submit pipeline run"):
+        assert section in headings, (
+            f"Experiment notebook at s3://{bucket}/{notebook_key} is missing "
+            f"the {section!r} section"
+        )
+
+    source = "\n".join("".join(cell.get("source", [])) for cell in cells)
+    assert run_id in source, "Experiment notebook does not contain its KFP run ID"
+    assert namespace in source, (
+        "Experiment notebook does not contain its project namespace"
+    )
+    return notebook_key
+
+
 def assert_sampled_test_dataset(
     s3_client,
     bucket: str,
