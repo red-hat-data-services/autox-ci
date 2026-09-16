@@ -172,6 +172,21 @@ def run_notebooks_as_k8s_job(
         )
         for name in unique_secrets
     ]
+    s3_secret_name = unique_secrets[0] if unique_secrets else None
+    s3_bucket_env = (
+        k8s_client.V1EnvVar(
+            name="AWS_S3_BUCKET",
+            value_from=k8s_client.V1EnvVarSource(
+                secret_key_ref=k8s_client.V1SecretKeySelector(
+                    name=s3_secret_name,
+                    key="AWS_S3_BUCKET",
+                    optional=False,
+                )
+            ),
+        )
+        if s3_secret_name
+        else k8s_client.V1EnvVar(name="AWS_S3_BUCKET", value=bucket)
+    )
     container = k8s_client.V1Container(
         name="notebook-runner",
         image=image,
@@ -183,6 +198,8 @@ def run_notebooks_as_k8s_job(
         command=["python", "-c", _NOTEBOOK_JOB_PROGRAM],
         env=[
             k8s_client.V1EnvVar(name="NOTEBOOK_S3_BUCKET", value=bucket),
+            # Keep the product notebook's bucket variable sourced from the S3 Secret.
+            s3_bucket_env,
             k8s_client.V1EnvVar(name="NOTEBOOK_S3_KEYS", value=json.dumps(notebook_keys)),
             k8s_client.V1EnvVar(name="NOTEBOOK_RUNNER_IMAGE", value=image),
             k8s_client.V1EnvVar(
