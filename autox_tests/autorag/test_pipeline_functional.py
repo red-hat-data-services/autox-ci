@@ -191,10 +191,14 @@ class TestAutoRAGFunctional:
         # Every uploaded document must appear in the text-extraction output; a format the
         # running ai4rag cannot read is skipped silently and would otherwise pass
         # (RHOAIENG-91789). Checked before notebook execution so a document gap fails fast.
+        input_data_keys = test_scenario_config.input_data_keys or []
+        assert input_data_keys, (
+            f"[{test_scenario_config.id}] input_data_keys must be set for document extraction validation"
+        )
         validate_extracted_documents(
             s3_client_functional,
             functional_env_config["input_data_bucket_name"],
-            test_scenario_config.input_data_key,
+            input_data_keys[0],
             artifact_bucket,
             prefix,
             test_scenario_config,
