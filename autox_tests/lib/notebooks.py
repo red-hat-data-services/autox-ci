@@ -13,6 +13,7 @@ RHOAI_NOTEBOOK_RUNNER_IMAGE_ENV = "RHOAI_NOTEBOOK_RUNNER_IMAGE"
 RHOAI_NOTEBOOK_JOB_TIMEOUT_ENV = "RHOAI_NOTEBOOK_JOB_TIMEOUT"
 RHOAI_NOTEBOOK_CPU_ENV = "RHOAI_NOTEBOOK_CPU"
 RHOAI_NOTEBOOK_MEMORY_ENV = "RHOAI_NOTEBOOK_MEMORY"
+RHOAI_NOTEBOOK_PIP_SECRET_ENV = "RHOAI_NOTEBOOK_PIP_SECRET_NAME"
 _DEFAULT_NOTEBOOK_JOB_TIMEOUT_SECONDS = 900
 _DEFAULT_NOTEBOOK_CPU = "2"
 _DEFAULT_NOTEBOOK_MEMORY = "4Gi"
@@ -195,6 +196,9 @@ def run_notebooks_as_k8s_job(
     cpu = (os.environ.get(RHOAI_NOTEBOOK_CPU_ENV) or _DEFAULT_NOTEBOOK_CPU).strip()
     memory = (os.environ.get(RHOAI_NOTEBOOK_MEMORY_ENV) or _DEFAULT_NOTEBOOK_MEMORY).strip()
     unique_secrets = list(dict.fromkeys(name for name in secret_names if name))
+    pip_secret = (os.environ.get(RHOAI_NOTEBOOK_PIP_SECRET_ENV) or "").strip()
+    if pip_secret:
+        unique_secrets.append(pip_secret)
     env_from = [
         k8s_client.V1EnvFromSource(
             secret_ref=k8s_client.V1SecretEnvSource(name=name, optional=False)
