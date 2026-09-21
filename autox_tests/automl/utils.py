@@ -242,7 +242,7 @@ def find_test_dataset_csv(s3_client, bucket: str, run_prefix: str) -> str | None
 
 
 def assert_experiment_notebook_artifact(
-    s3_client, bucket: str, run_prefix: str, *, run_id: str, namespace: str
+    s3_client, bucket: str, run_prefix: str
 ) -> str:
     """Assert the run-level AutoML experiment notebook exists and has core sections.
 
@@ -250,10 +250,11 @@ def assert_experiment_notebook_artifact(
     The output artifact key is discovered instead of hard-coded because KFP storage
     layouts differ between backends.
     """
+    notebook_filename = "automl_experiment_notebook.ipynb"
     notebook_keys = sorted(
         obj["Key"]
         for obj in list_s3_objects(s3_client, bucket, run_prefix)
-        if obj["Key"].endswith(".ipynb") and "experiment_notebook" in obj["Key"]
+        if obj["Key"].endswith(notebook_filename)
     )
     assert notebook_keys, (
         f"No run-level experiment notebook artifact found under s3://{bucket}/{run_prefix}"
@@ -276,21 +277,27 @@ def assert_experiment_notebook_artifact(
         f"Experiment notebook at s3://{bucket}/{notebook_key} has no cells"
     )
 
-    headings = "\n".join(
+    markdown_source = "\n".join(
         "".join(cell.get("source", []))
         for cell in cells
         if cell.get("cell_type") == "markdown"
     ).lower()
-    for section in ("preflight", "run defaults", "submit pipeline run"):
-        assert section in headings, (
+    for section in (
+        "kfp-connection",
+        "run-defaults",
+        "training-data",
+        "pipeline-parameters",
+        "preflight-checks",
+        "submit run",
+    ):
+        assert section in markdown_source, (
             f"Experiment notebook at s3://{bucket}/{notebook_key} is missing "
             f"the {section!r} section"
         )
 
     source = "\n".join("".join(cell.get("source", [])) for cell in cells)
-    assert run_id in source, "Experiment notebook does not contain its KFP run ID"
-    assert namespace in source, (
-        "Experiment notebook does not contain its project namespace"
+    assert "<REPLACE_" not in source, (
+        "Experiment notebook contains unreplaced configuration placeholders"
     )
     return notebook_key
 
