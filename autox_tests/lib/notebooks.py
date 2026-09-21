@@ -14,6 +14,7 @@ RHOAI_NOTEBOOK_JOB_TIMEOUT_ENV = "RHOAI_NOTEBOOK_JOB_TIMEOUT"
 RHOAI_NOTEBOOK_CPU_ENV = "RHOAI_NOTEBOOK_CPU"
 RHOAI_NOTEBOOK_MEMORY_ENV = "RHOAI_NOTEBOOK_MEMORY"
 RHOAI_NOTEBOOK_PIP_SECRET_ENV = "RHOAI_NOTEBOOK_PIP_SECRET_NAME"
+RHOAI_NOTEBOOK_DOCLING_SECRET_ENV = "RHOAI_NOTEBOOK_DOCLING_SECRET_NAME"
 _DEFAULT_NOTEBOOK_JOB_TIMEOUT_SECONDS = 900
 _DEFAULT_NOTEBOOK_CPU = "2"
 _DEFAULT_NOTEBOOK_MEMORY = "4Gi"
@@ -38,6 +39,32 @@ s3 = boto3.client(
     not in ("0", "false", "no"),
 )
 print(f"Running notebooks with image: {os.environ['NOTEBOOK_RUNNER_IMAGE']}", flush=True)
+
+docling_prefix = os.environ.get("DOCLING_ARTIFACTS_S3_PREFIX", "").strip().lstrip("/")
+docling_bucket = os.environ.get("DOCLING_ARTIFACTS_S3_BUCKET", "").strip()
+docling_path = os.environ.get("DOCLING_ARTIFACTS_PATH", "").strip()
+if docling_prefix or docling_bucket or docling_path:
+    if not (docling_prefix and docling_bucket and docling_path):
+        raise RuntimeError(
+            "Docling artifact configuration requires DOCLING_ARTIFACTS_S3_BUCKET, "
+            "DOCLING_ARTIFACTS_S3_PREFIX, and DOCLING_ARTIFACTS_PATH"
+        )
+    destination = Path(docling_path)
+    downloaded = 0
+    for page in s3.get_paginator("list_objects_v2").paginate(Bucket=docling_bucket, Prefix=docling_prefix):
+        for item in page.get("Contents", []):
+            key = item["Key"]
+            relative = key.removeprefix(docling_prefix)
+            if not relative:
+                continue
+            target = destination / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            s3.download_file(docling_bucket, key, str(target))
+            downloaded += 1
+    if not downloaded:
+        raise RuntimeError(f"No Docling artifacts found at s3://{docling_bucket}/{docling_prefix}")
+    os.environ.setdefault("HF_HUB_OFFLINE", "1")
+    print(f"Downloaded {downloaded} Docling artifacts to {destination}", flush=True)
 
 for index, notebook_key in enumerate(json.loads(os.environ["NOTEBOOK_S3_KEYS"])):
     workdir = Path("/tmp/notebooks") / str(index)
@@ -199,6 +226,10 @@ def run_notebooks_as_k8s_job(
     pip_secret = (os.environ.get(RHOAI_NOTEBOOK_PIP_SECRET_ENV) or "").strip()
     if pip_secret:
         unique_secrets.append(pip_secret)
+    docling_secret = (os.environ.get(RHOAI_NOTEBOOK_DOCLING_SECRET_ENV) or "").strip()
+    if docling_secret:
+        unique_secrets.append(docling_secret)
+    unique_secrets = list(dict.fromkeys(unique_secrets))
     env_from = [
         k8s_client.V1EnvFromSource(
             secret_ref=k8s_client.V1SecretEnvSource(name=name, optional=False)
