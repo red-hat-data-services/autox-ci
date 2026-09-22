@@ -74,5 +74,18 @@
         "optimization_metric": "answer_correctness",
         "input_data_keys": ["datasets/rag/mixed_formats/documents"],
         "test_data_key": "datasets/rag/mixed_formats/benchmark_data.json"
+    },
+    {
+        "id": "TC-P-5",
+        "description": "Run scenario with audio document formats (.mp4, .mp3. .wav).",
+        "tags": ["positive", "audio", "answer_correctness", "optimisation"],
+        "expected_result": "pass",
+        "run_notebook": false,
+        "embedding_models": "env",
+        "generation_models": "env",
+        "optimization_max_rag_patterns": 4,
+        "optimization_metric": "answer_correctness",
+        "input_data_keys": ["datasets/rag/audio/documents"],
+        "test_data_key": "datasets/rag/audio/benchmark_data.json"
     }
 ]
