@@ -18,12 +18,35 @@ def make_kfp_client(config):
         host = host + "/"
     verify_ssl = os.environ.get("KFP_VERIFY_SSL", "true").strip().lower()
     verify_ssl = verify_ssl not in ("0", "false", "no")
-    return kfp.Client(
+    client = kfp.Client(
         host=host,
         namespace=config["rhoai_project"],
         existing_token=config.get("rhoai_token"),
         verify_ssl=verify_ssl,
     )
+    _disable_gcp_token_refresh(client)
+    return client
+
+
+def _disable_gcp_token_refresh(client) -> None:
+    """Turn an expired bearer token into a readable error instead of an opaque TypeError.
+
+    On a 401 the KFP SDK calls ``_refresh_api_client_token()``, which only knows how to
+    mint *GCP* credentials. Off GCP it returns ``None`` and the SDK assigns that to
+    ``api_key['authorization']``; every later request then dies inside urllib3 with
+    ``TypeError: expected string or bytes-like object, got 'NoneType'``. Once the token
+    expires mid-session that hits every remaining test, and none of the messages mention
+    authentication. Raising here surfaces the real cause on the first 401.
+    """
+
+    def _expired_bearer_token():
+        raise RuntimeError(
+            "KFP API returned 401 Unauthorized: the bearer token (RHOAI_TOKEN) is no longer "
+            "valid — it most likely expired mid-run. Refresh it (`oc whoami -t`) in the env "
+            "file and re-run. Long suites outlive short-lived OpenShift tokens."
+        )
+
+    client._refresh_api_client_token = _expired_bearer_token
 
 
 def make_s3_client(config):

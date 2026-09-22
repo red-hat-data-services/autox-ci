@@ -70,10 +70,19 @@ def get_functional_config():
     i_secret = (os.environ.get("INPUT_DATA_SECRET_NAME") or default_secret).strip()
     t_bucket = (os.environ.get("TEST_DATA_BUCKET_NAME") or "").strip()
     i_bucket = (os.environ.get("INPUT_DATA_BUCKET_NAME") or "").strip()
-    ogx_secret = (os.environ.get("OGX_SECRET_NAME") or "").strip()
+    maas_secret = (os.environ.get("MAAS_SECRET_NAME") or "").strip()
+    vector_db_secret = (os.environ.get("VECTOR_DB_SECRET_NAME") or "").strip()
 
     if not all(
-        [base.get("rhoai_token"), t_secret, t_bucket, i_secret, i_bucket, ogx_secret]
+        [
+            base.get("rhoai_token"),
+            t_secret,
+            t_bucket,
+            i_secret,
+            i_bucket,
+            maas_secret,
+            vector_db_secret,
+        ]
     ):
         return None
 
@@ -104,7 +113,8 @@ def get_functional_config():
         "test_data_bucket_name": t_bucket,
         "input_data_secret_name": i_secret,
         "input_data_bucket_name": i_bucket,
-        "ogx_secret_name": ogx_secret,
+        "maas_secret_name": maas_secret,
+        "vector_db_secret_name": vector_db_secret,
         "s3_endpoint": endpoint,
         "s3_access_key": access,
         "s3_secret_key": secret,
@@ -191,9 +201,12 @@ def get_indexing_functional_config():
     ).strip()
     i_secret = (os.environ.get("INPUT_DATA_SECRET_NAME") or default_secret).strip()
     i_bucket = (os.environ.get("INPUT_DATA_BUCKET_NAME") or "").strip()
-    ogx_secret = (os.environ.get("OGX_SECRET_NAME") or "").strip()
+    maas_secret = (os.environ.get("MAAS_SECRET_NAME") or "").strip()
+    vector_db_secret = (os.environ.get("VECTOR_DB_SECRET_NAME") or "").strip()
 
-    if not all([base.get("rhoai_token"), i_secret, i_bucket, ogx_secret]):
+    if not all(
+        [base.get("rhoai_token"), i_secret, i_bucket, maas_secret, vector_db_secret]
+    ):
         return None
 
     endpoint = (os.environ.get("ARTIFACTS_AWS_S3_ENDPOINT") or "").strip() or base.get("s3_endpoint")
@@ -211,7 +224,8 @@ def get_indexing_functional_config():
         "rhoai_kfp_url": kfp_url.rstrip("/") if kfp_url else None,
         "input_data_secret_name": i_secret,
         "input_data_bucket_name": i_bucket,
-        "ogx_secret_name": ogx_secret,
+        "maas_secret_name": maas_secret,
+        "vector_db_secret_name": vector_db_secret,
         "s3_endpoint": endpoint,
         "s3_access_key": access,
         "s3_secret_key": secret,

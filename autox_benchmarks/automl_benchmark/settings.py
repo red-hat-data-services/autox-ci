@@ -8,12 +8,56 @@ from typing import Any
 
 from benchmark_common.paths import resolve_under
 
+# User-facing AutoML training quality tiers (pipelines-components preset param).
+VALID_PRESETS: frozenset[str] = frozenset({"speed", "balanced"})
+DEFAULT_PRESETS: tuple[str, ...] = ("speed",)
+
 
 def _artifact_root_from_storage(storage_cfg: dict[str, Any], key: str, default: str) -> str:
     """Strip slashes; empty string allowed when the key is set explicitly in config."""
     if key not in storage_cfg:
         return default.strip().strip("/")
     return str(storage_cfg.get(key) or "").strip().strip("/")
+
+
+def normalize_presets(value: Any) -> tuple[str, ...]:
+    """Parse ``run.presets`` / CLI / env into an ordered, deduplicated tuple of valid presets.
+
+    Accepts a comma-separated string, a single preset string, or a list/tuple.
+    """
+    if value is None:
+        return DEFAULT_PRESETS
+    if isinstance(value, str):
+        parts = [p.strip() for p in value.split(",") if p.strip()]
+    elif isinstance(value, (list, tuple)):
+        parts = [str(p).strip() for p in value if str(p).strip()]
+    else:
+        raise ValueError(
+            f"presets must be a string or list of strings; got {type(value).__name__}: {value!r}"
+        )
+    if not parts:
+        raise ValueError(f"presets must be non-empty; valid values: {sorted(VALID_PRESETS)}")
+    invalid = [p for p in parts if p not in VALID_PRESETS]
+    if invalid:
+        raise ValueError(
+            f"Invalid preset(s) {invalid}; valid values: {sorted(VALID_PRESETS)}"
+        )
+    seen: set[str] = set()
+    out: list[str] = []
+    for p in parts:
+        if p not in seen:
+            seen.add(p)
+            out.append(p)
+    return tuple(out)
+
+
+def presets_from_run_config(run_cfg: dict[str, Any]) -> tuple[str, ...]:
+    """Resolve presets from ``run.presets`` (preferred) or singular ``run.preset``."""
+    if "presets" in run_cfg and run_cfg.get("presets") is not None:
+        return normalize_presets(run_cfg.get("presets"))
+    if "preset" in run_cfg and run_cfg.get("preset") is not None:
+        return normalize_presets(run_cfg.get("preset"))
+    return DEFAULT_PRESETS
 
 
 @dataclass(frozen=True)
@@ -28,6 +72,7 @@ class BenchmarkSettings:
     artifact_s3_root_tabular: str
     artifact_s3_root_timeseries: str
     top_n: int
+    presets: tuple[str, ...]
     poll_interval_seconds: float
     timeout_seconds: float
     enable_caching: bool
@@ -96,6 +141,7 @@ def benchmark_settings_from_config(cfg: dict[str, Any], config_dir: Path) -> Ben
         artifact_s3_root_tabular=tab_root,
         artifact_s3_root_timeseries=ts_root,
         top_n=int(run_cfg.get("top_n", 3)),
+        presets=presets_from_run_config(run_cfg),
         poll_interval_seconds=float(run_cfg.get("poll_interval_seconds", 30)),
         timeout_seconds=float(run_cfg.get("timeout_seconds", 86400)),
         enable_caching=bool(run_cfg.get("enable_caching", False)),

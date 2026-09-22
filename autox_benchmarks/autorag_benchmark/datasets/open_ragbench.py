@@ -214,7 +214,7 @@ def prepare(
         benchmark_data.append({
             "question": question_text,
             "correct_answers": [answer_text],
-            "correct_answer_document_ids": [local_doc_id],
+            "correct_answer_document_keys": [local_doc_id],
         })
         processed += 1
         if processed % 10 == 0:

@@ -131,7 +131,7 @@ def prepare(
         benchmark_data.append({
             "question": question,
             "correct_answers": answer_texts,
-            "correct_answer_document_ids": [written_docs[ctx_hash]],
+            "correct_answer_document_keys": [written_docs[ctx_hash]],
         })
         processed += 1
 

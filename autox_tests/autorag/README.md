@@ -53,14 +53,18 @@ Scenarios live in `configs/test_configs.json`. Each entry specifies:
 |---|---|
 | `id` | Short identifier shown in pytest output (e.g. `TC-P-1`) |
 | `description` | Human-readable summary |
-| `tags` | List of tags for runtime filtering via `-t` / `TESTS_TAGS` |
+| `tags` | List of tags for runtime filtering via `-t` / `AUTORAG_FUNCTIONAL_TESTS_TAGS` |
 | `expected_result` | `"pass"` or `"fail"` |
-| `vector_io_provider_id` | Milvus provider ID for this scenario |
-| `pipeline_params_overrides` | Per-scenario parameter overrides |
+| `embedding_models` / `generation_models` | MaaS model IDs (JSON list, or `"env"` to read from `AUTORAG_EMBEDDING_MODELS` / `AUTORAG_GENERATION_MODELS`); required by the pipeline |
+| `optimization_metric`, `optimization_max_rag_patterns`, `test_data_key` | Per-scenario parameter overrides |
+| `input_data_keys` | JSON list of document-folder paths within the input bucket; the pipeline honours only the first entry |
+
+> The vector-store backend (Milvus / PGVector) is auto-detected by the pipeline from the
+> `VECTOR_DB_SECRET_NAME` secret's key prefixes; it is no longer a per-scenario parameter.
 
 ### Tag filtering
 
-Pass tags via `--tags` / `-t` on the CLI or set `TESTS_TAGS` in the environment. Only scenarios matching **all** specified tags are selected.
+Pass tags via `--tags` / `-t` on the CLI or set `AUTORAG_FUNCTIONAL_TESTS_TAGS` in the environment. Only scenarios matching **all** specified tags are selected.
 
 ## Pass / fail criteria
 
@@ -68,7 +72,7 @@ Pass tags via `--tags` / `-t` on the CLI or set `TESTS_TAGS` in the environment.
 1. Pipeline run finishes with state `SUCCEEDED`
 2. At least 1 pattern artifact exists in S3
 3. Indexing notebook, inference notebook, and `evaluation_results.json` exist in S3
-4. A randomly selected indexing and inference notebook executes successfully via papermill
+4. When `run_notebook: true`, the best indexing and inference notebooks execute successfully in a Kubernetes Job; `RHOAI_NOTEBOOK_RUNNER_IMAGE` is required
 
 **Expected-fail scenarios:**
 1. Pipeline run finishes with state `FAILED` (not `SUCCEEDED`, not timeout)

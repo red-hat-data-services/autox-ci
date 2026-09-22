@@ -19,7 +19,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Same runtime stack as `dependencies`; kept so `pip install -e ".[test_rhoai]"` / `test_automl` match docs.
+# Same runtime stack as `dependencies`; kept for `pip install -e ".[test_rhoai]"` compatibility.
 test_rhoai = []
 # AutoML and AutoRAG benchmarking orchestration + dataset generation
 benchmarks = [
@@ -31,31 +31,7 @@ benchmarks = [
   "Pillow>=10.0.0",
   "requests>=2.31.0",
 ]
-test_automl = [
-  "papermill",
-  "ipykernel",
-  "autogluon.common==1.5.0+rhaiv.5",
-  "autogluon.core==1.5.0+rhaiv.5",
-  "autogluon.features==1.5.0+rhaiv.5",
-  "autogluon.tabular[lightgbm,xgboost,tabm,fastai]==1.5.0+rhaiv.5",
-  "autogluon.timeseries==1.5.0+rhaiv.5",
-]
-test_autorag = [
-  "nbformat",
-  "notebook",
-  "papermill",
-  "pip",
-  "ipykernel",
-  "ai4rag~=0.10.4",
-]
 
-[tool.uv]
-conflicts = [
-  [
-    { extra = "test_automl" },
-    { extra = "test_autorag" },
-  ],
-]
 
 [[tool.uv.index]]
 name = "rhai"
@@ -89,4 +65,5 @@ markers = [
   "indexing: Documents Indexing pipeline",
   "positive: Tests expected to pass covering positive paths",
   "negative: Tests expected to fail covering negative paths",
+  "config: AutoML configuration and pipeline-argument tests",
 ]

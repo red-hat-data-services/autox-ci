@@ -386,7 +386,7 @@ Standard format used by all datasets:
         "correct_answers": [
             "The main challenges are..."
         ],
-        "correct_answer_document_ids": [
+        "correct_answer_document_keys": [
             "open_ragbench_2404.00822v2.txt"
         ]
     }
@@ -401,13 +401,34 @@ Standard format used by all datasets:
         "correct_answers": [
             "The slide shows a comparison chart..."
         ],
-        "correct_answer_document_ids": [
+        "correct_answer_document_keys": [
             "slidevqa_deck123_page_1.png",
             "slidevqa_deck123_page_2.png"
         ]
     }
 ]
 ```
+
+### Document keys and the upload step
+
+A document's *key* is its full S3 object key — that is the value ai4rag carries as
+`DoclingDocument.name` through chunking, indexing and evaluation, and the value
+`correct_answer_document_keys` is matched against. A bare file name does not match
+and silently scores 0.
+
+Generators still write bare file names, as shown above, because the destination
+prefix does not exist yet at generation time. `upload_dataset_to_s3` expands them
+on the way to S3:
+
+```
+doc_0.txt  ->  datasets/rag/beir/scifact/50/knowledge_base/doc_0.txt
+```
+
+So the local `benchmark_data.json` holds bare names while the uploaded copy holds
+full keys. Names are resolved against the knowledge base directory, so a file
+nested inside it keeps its relative path. A name matching no file, or one that is
+ambiguous across subdirectories, raises at upload rather than failing silently
+mid-pipeline.
 
 ## Extending with New Datasets
 

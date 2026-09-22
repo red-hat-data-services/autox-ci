@@ -3,38 +3,16 @@
 import logging
 import os
 import secrets
-import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-from autox_tests.lib.kfp_run_state import _normalize_state
-from autox_tests.lib.notebooks import NOTEBOOK_KERNEL_NAME as _NOTEBOOK_KERNEL_NAME
-from autox_tests.lib.notebooks import ensure_notebook_kernel_registered as _ensure_notebook_kernel_registered
+from autox_tests.lib.kfp_run_state import _get_failed_task_names, _normalize_state  # noqa: F401
+from autox_tests.lib.notebooks import run_notebooks_as_k8s_job
 from autox_tests.lib.s3_data import upload_file_to_s3
 
 logger = logging.getLogger(__name__)
 
 
-def _get_failed_task_names(client, run_id: str) -> list[str]:
-    """Return display names of user-visible FAILED/ERROR tasks from a pipeline run."""
-    try:
-        run_detail = client.get_run(run_id)
-        run_obj = getattr(run_detail, "run", run_detail)
-        rd = getattr(run_obj, "run_details", None)
-        task_list = getattr(rd, "task_details", None) if rd else None
-        if not task_list:
-            return []
-        failed = []
-        for task in task_list:
-            name = getattr(task, "display_name", None) or getattr(task, "task_id", "?")
-            if name in ("root", "executor") or name.endswith("-driver"):
-                continue
-            if _normalize_state(getattr(task, "state", None)) in ("FAILED", "ERROR", "SYSTEM_ERROR"):
-                failed.append(name)
-        return failed
-    except Exception as exc:
-        logger.warning("Could not get failed task names for run %s: %s", run_id, exc)
-        return []
 
 
 def _make_docrag_run_name():
@@ -175,57 +153,13 @@ def _validate_artifacts_in_s3(s3_client, bucket, prefix):
                     result["inference_notebook_keys"].append(key)
                 if "evaluation_results.json" in key:
                     result["evaluation_results_keys"].append(key)
-                if "leaderboard" in lower_key or key.endswith(".html") or key.endswith("/html_artifact"):
+                if "leaderboard" in lower_key or key.endswith(".html") or key.endswith("/leaderboard_html"):
                     result["leaderboard_keys"].append(key)
                 if "v1_responses_body.json" in key:
                     result["responses_body_keys"].append(key)
     except Exception as e:
         raise AssertionError(f"Failed to list S3 artifacts under s3://{bucket}/{prefix}: {e}") from e
     return result
-
-
-_NOTEBOOK_ENV_PREFIXES = ("OGX_CLIENT_", "AWS_")
-_SYSTEM_ENV_KEYS = frozenset({"PATH", "HOME", "TMPDIR", "TEMP", "TMP", "LANG", "LC_ALL", "USER", "LOGNAME", "SHELL"})
-
-
-def _inject_and_run(notebook_path: Path, output_path: Path) -> None:
-    """Inject mocked input() function into the notebook and execute it."""
-    import nbformat
-    import papermill as pm
-
-    _ensure_notebook_kernel_registered()
-
-    with open(notebook_path, "r", encoding="utf-8") as f:
-        nb = nbformat.read(f, as_version=4)
-
-    mock_code = 'def input(prompt=""):\n    return "Sample query?"'
-    nb.cells.insert(0, nbformat.v4.new_code_cell(mock_code))
-
-    injected_path = notebook_path.with_name(f"injected_{notebook_path.name}")
-    with open(injected_path, "w", encoding="utf-8") as f:
-        nbformat.write(nb, f)
-
-    original_cwd = os.getcwd()
-    original_environ = os.environ.copy()
-    try:
-        safe_cwd = output_path.parent
-        safe_cwd.mkdir(parents=True, exist_ok=True)
-        os.chdir(safe_cwd)
-
-        filtered_env = {
-            k: v
-            for k, v in original_environ.items()
-            if k in _SYSTEM_ENV_KEYS or any(k.startswith(p) for p in _NOTEBOOK_ENV_PREFIXES)
-        }
-        os.environ.clear()
-        os.environ.update(filtered_env)
-
-        pm.execute_notebook(str(injected_path), str(output_path), kernel_name=_NOTEBOOK_KERNEL_NAME)
-    finally:
-        os.environ.clear()
-        os.environ.update(original_environ)
-        os.chdir(original_cwd)
-        injected_path.unlink(missing_ok=True)
 
 
 def _common_prefix_len(a: str, b: str) -> int:
@@ -410,8 +344,8 @@ def _pick_best_pattern_notebooks(s3_client, bucket, artifacts):
     return indexing_keys[0], inference_keys[0]
 
 
-def _download_and_execute_notebooks(s3_client, bucket, notebook_keys):
-    """Download notebooks from S3 and execute them via papermill.
+def _download_and_execute_notebooks(s3_client, bucket, notebook_keys, *, config):
+    """Execute generated notebooks sequentially in one Kubernetes Job pod.
 
     Args:
         s3_client: Boto3 S3 client.
@@ -421,23 +355,209 @@ def _download_and_execute_notebooks(s3_client, bucket, notebook_keys):
     Raises:
         AssertionError: If any notebook fails execution.
     """
-    import papermill as pm
+    del s3_client  # The Job downloads notebooks with its injected S3 secret.
+    run_notebooks_as_k8s_job(
+        bucket=bucket,
+        notebook_keys=notebook_keys,
+        config=config,
+        secret_names=[
+            str(config.get("s3_secret_name") or config.get("input_data_secret_name") or ""),
+            str(config.get("maas_secret_name") or ""),
+            str(config.get("vector_db_secret_name") or ""),
+        ],
+        inject_mock_input=True,
+    )
 
-    errors = []
-    with tempfile.TemporaryDirectory(prefix="autorag-pipeline-notebook-") as tmpdir:
-        for key in notebook_keys:
-            filename = Path(key).name
-            input_path = Path(tmpdir) / f"input_{filename}"
-            output_path = Path(tmpdir) / f"output_{filename}"
 
-            s3_client.download_file(bucket, key, str(input_path))
+def get_uploaded_document_names(s3_client, bucket: str, input_data_key: str) -> set[str]:
+    """Return the filenames of every document uploaded under the pipeline's input prefix.
 
-            try:
-                _inject_and_run(input_path, output_path)
-            except pm.PapermillExecutionError as e:
-                errors.append(f"Notebook {filename} (key={key}) failed: {e}")
-            except Exception as e:
-                errors.append(f"Notebook {filename} (key={key}) execution error: {e}")
+    This is the authoritative "uploaded input set" the pipeline was asked to ingest — read
+    from S3 rather than from the repo's local data directory, since the two can drift and
+    only the bucket reflects what the pipeline actually saw.
 
-    if errors:
-        raise AssertionError("Notebook execution failures:\n" + "\n".join(errors))
+    Args:
+        s3_client: Boto3 S3 client.
+        bucket: Bucket holding the input documents.
+        input_data_key: S3 prefix of the input documents
+            (e.g. 'datasets/rag/mixed_formats/documents').
+
+    Returns:
+        Set of document filenames, e.g. {'doc.md', 'doc.txt'}.
+    """
+    from autox_tests.lib.s3_data import list_s3_objects
+
+    prefix = input_data_key.rstrip("/") + "/"
+    objects = list_s3_objects(s3_client, bucket, prefix)
+
+    return {
+        obj["Key"].rsplit("/", 1)[-1]
+        for obj in objects
+        if not obj["Key"].endswith("/")
+    }
+
+
+def get_extracted_document_names(s3_client, bucket: str, run_prefix: str) -> set[str]:
+    """Return the filenames of documents the text-extraction task produced output for.
+
+    The task writes one JSON per successfully extracted document to
+    ``<run_prefix>/text-extraction/<id>/extracted_text/<document filename>.json``, so the
+    presence of that file is the ground truth for "this document was loaded".
+
+    Args:
+        s3_client: Boto3 S3 client.
+        bucket: Bucket holding the pipeline artifacts.
+        run_prefix: Artifact prefix for the run
+            (e.g. 'documents-rag-optimization-pipeline/<run_id>').
+
+    Returns:
+        Set of document filenames that have extracted text.
+    """
+    from autox_tests.lib.s3_data import list_s3_objects
+
+    names = set()
+    for obj in list_s3_objects(s3_client, bucket, run_prefix):
+        key = obj["Key"]
+        if "/text-extraction/" not in key or "/extracted_text/" not in key:
+            continue
+        leaf = key.rsplit("/", 1)[-1]
+        if not leaf.endswith(".json"):
+            continue
+        names.add(leaf[: -len(".json")])
+    return names
+
+
+def get_discovered_document_names(s3_client, bucket: str, run_prefix: str) -> set[str] | None:
+    """Return the filenames listed in the documents-discovery descriptor, or None if absent.
+
+    Used only to attribute a missing document to the stage that dropped it: a document
+    absent from the descriptor never reached text extraction at all. A missing or
+    malformed descriptor degrades the error message but never hides the failure.
+
+    Args:
+        s3_client: Boto3 S3 client.
+        bucket: Bucket holding the pipeline artifacts.
+        run_prefix: Artifact prefix for the run.
+
+    Returns:
+        Set of discovered document filenames, or None if the descriptor is unavailable.
+    """
+    from autox_tests.lib.s3_data import list_s3_objects, read_s3_json
+
+    descriptor_key = next(
+        (
+            obj["Key"]
+            for obj in list_s3_objects(s3_client, bucket, run_prefix)
+            if obj["Key"].endswith("/documents_descriptor.json")
+        ),
+        None,
+    )
+    if descriptor_key is None:
+        return None
+
+    descriptor = read_s3_json(s3_client, bucket, descriptor_key)
+    if not isinstance(descriptor, dict):
+        return None
+
+    documents = descriptor.get("documents")
+    if not isinstance(documents, list):
+        return None
+
+    return {
+        str(entry["key"]).rsplit("/", 1)[-1]
+        for entry in documents
+        if isinstance(entry, dict) and entry.get("key")
+    }
+
+
+def _format_missing_documents(missing: set[str], discovered: set[str] | None) -> str:
+    """Render missing documents grouped by the pipeline stage that dropped them."""
+    if discovered is None:
+        return "\n".join(
+            ["  Dropped before indexing (stage could not be determined):"]
+            + [f"    - {name}" for name in sorted(missing)]
+        )
+
+    lines = []
+    never_discovered = sorted(missing - discovered)
+    if never_discovered:
+        lines.append("  Dropped at documents-discovery (never reached text extraction):")
+        lines += [f"    - {name}" for name in never_discovered]
+
+    discovered_not_extracted = sorted(missing & discovered)
+    if discovered_not_extracted:
+        lines.append("  Reached text extraction but produced no extracted text:")
+        lines += [f"    - {name}" for name in discovered_not_extracted]
+
+    return "\n".join(lines)
+
+
+def validate_extracted_documents(
+    s3_client,
+    input_bucket: str,
+    input_data_key: str,
+    artifact_bucket: str,
+    run_prefix: str,
+    test_scenario_config,
+) -> None:
+    """Fail the test if any uploaded document is missing after text extraction.
+
+    Implements RHOAIENG-91789: a document whose format the running ai4rag cannot handle is
+    skipped silently and the pipeline still reports SUCCEEDED. Comparing the uploaded input
+    set against the text-extraction output turns that capability gap into a test failure
+    naming the offending files and extensions.
+
+    This check is deliberately fail-closed: every path that prevents the comparison from
+    being made raises rather than returning, because a validation that silently opts out
+    reproduces the very false-pass this function exists to catch.
+
+    Args:
+        s3_client: Boto3 S3 client (same endpoint serves both buckets).
+        input_bucket: Bucket holding the uploaded input documents.
+        input_data_key: S3 prefix of the input documents.
+        artifact_bucket: Bucket holding the pipeline artifacts.
+        run_prefix: Artifact prefix for the run.
+        test_scenario_config: Test scenario configuration (used for the test id).
+
+    Raises:
+        AssertionError: If any uploaded document has no extracted text, or if the
+            artifacts needed to make that determination are missing.
+    """
+    tid = test_scenario_config.id
+
+    uploaded = get_uploaded_document_names(s3_client, input_bucket, input_data_key)
+    if not uploaded:
+        raise AssertionError(
+            f"[{tid}] No input documents found under s3://{input_bucket}/{input_data_key} — "
+            "cannot verify text extraction. Check input_data_key and that the dataset is uploaded."
+        )
+
+    extracted = get_extracted_document_names(s3_client, artifact_bucket, run_prefix)
+    if not extracted:
+        raise AssertionError(
+            f"[{tid}] No extracted_text artifacts found under "
+            f"s3://{artifact_bucket}/{run_prefix} — text extraction produced nothing for any of "
+            f"the {len(uploaded)} uploaded document(s)."
+        )
+
+    missing = uploaded - extracted
+    if not missing:
+        logger.info(
+            "[%s] Text extraction validated: all %d uploaded document(s) were loaded (%s)",
+            tid,
+            len(uploaded),
+            ", ".join(sorted({Path(n).suffix.lower() or "<none>" for n in uploaded})),
+        )
+        return
+
+    discovered = get_discovered_document_names(s3_client, artifact_bucket, run_prefix)
+    unsupported = sorted({Path(n).suffix.lower() or "<none>" for n in missing})
+
+    raise AssertionError(
+        f"[{tid}] {len(missing)} of {len(uploaded)} uploaded document(s) were not loaded "
+        f"after text extraction — the running ai4rag build appears not to support "
+        f"{', '.join(unsupported)}.\n"
+        f"{_format_missing_documents(missing, discovered)}\n"
+        f"  Uploaded input:  s3://{input_bucket}/{input_data_key.rstrip('/')}/\n"
+        f"  Extracted text:  s3://{artifact_bucket}/{run_prefix}/text-extraction/*/extracted_text/"
+    )

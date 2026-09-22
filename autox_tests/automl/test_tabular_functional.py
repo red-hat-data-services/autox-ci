@@ -9,14 +9,16 @@ Passing criteria for positive scenarios:
 - At least 1 model with metrics exists in S3
 - Leaderboard HTML artifact exists in S3
 - Test dataset CSV artifact exists in S3
+- User-provided test scenarios (`user_test_data` tag): `sampled_test_dataset` row count matches the external CSV, not a default 80/20 holdout
 
 Passing criteria for negative scenarios:
 - Pipeline run finishes with FAILED status within capped timeout
 - At least one of the expected_failing_task names appears in the run's failed tasks
+- expected_error_pattern (when set) matches the task errors or failed-pod logs, so the run
+  cannot pass on an unrelated fault that happens to hit the expected task
 """
 
 import logging
-import os
 import random
 import time
 
@@ -32,14 +34,18 @@ from .utils import (
     _collect_failure_details,
     _get_failed_task_names,
     _run_pipeline_and_wait,
+    assert_experiment_notebook_artifact,
+    assert_expected_error_pattern,
     collect_model_metrics_and_sizes,
     column_sample_to_instances,
     column_sample_to_v2_inputs,
     download_and_execute_automl_notebook,
+    assert_sampled_test_dataset,
     find_leaderboard_html,
     find_test_dataset_csv,
     run_deployment_test,
 )
+from autox_tests.lib.s3_data import list_s3_objects
 
 logger = logging.getLogger(__name__)
 
@@ -49,11 +55,6 @@ TABULAR_POSITIVE_CONFIGS = get_tabular_configs_for_run(pass_type="positive")
 TABULAR_NEGATIVE_CONFIGS = get_tabular_configs_for_run(pass_type="negative")
 
 _EXPECTED_FAIL_TIMEOUT_CAP = 600
-
-DEPLOY_AFTER_TRAINING: bool = os.environ.get(
-    "RHOAI_DEPLOY_AFTER_TRAINING", ""
-).strip().lower() in ("1", "true", "yes")
-
 
 @pytest.mark.tabular
 @pytest.mark.positive
@@ -128,6 +129,15 @@ class TestAutoMLTabularFunctional:
             model_entries = collect_model_metrics_and_sizes(
                 s3_client_automl_functional, bucket, prefix
             )
+            artifact_keys = [
+                obj["Key"]
+                for obj in list_s3_objects(
+                    s3_client_automl_functional, bucket, prefix
+                )
+            ]
+            pkl_keys = [key for key in artifact_keys if key.endswith(".pkl")]
+            ipynb_keys = [key for key in artifact_keys if key.endswith(".ipynb")]
+            json_keys = [key for key in artifact_keys if key.endswith(".json")]
             leaderboard_key, leaderboard_html = find_leaderboard_html(
                 s3_client_automl_functional, bucket, prefix
             )
@@ -163,6 +173,50 @@ class TestAutoMLTabularFunctional:
                 f"[{test_config.id}] Expected at least 1 model with metrics under {prefix}; "
                 f"found {len(model_entries)}"
             )
+            assert len(pkl_keys) >= 1, (
+                f"[{test_config.id}] Expected at least one .pkl model artifact under "
+                f"{prefix}; found {pkl_keys}"
+            )
+            assert len(ipynb_keys) >= 1, (
+                f"[{test_config.id}] Expected at least one .ipynb notebook under "
+                f"{prefix}; found {ipynb_keys}"
+            )
+
+            metrics_json = [
+                key for key in json_keys if key.endswith("metrics/metrics.json")
+            ]
+            feature_importance_json = [
+                key
+                for key in json_keys
+                if key.endswith("metrics/feature_importance.json")
+            ]
+            assert len(metrics_json) >= 1, (
+                f"[{test_config.id}] Expected at least one metrics.json under "
+                f"{prefix}; found {metrics_json}"
+            )
+            assert len(feature_importance_json) >= 1, (
+                f"[{test_config.id}] Expected at least one feature_importance.json under "
+                f"{prefix}; found {feature_importance_json}"
+            )
+
+            if test_config.task_type in {"binary", "multiclass"}:
+                confusion_matrix_json = [
+                    key
+                    for key in json_keys
+                    if key.endswith("metrics/confusion_matrix.json")
+                ]
+                curves_json = [
+                    key for key in json_keys if key.endswith("metrics/curves.json")
+                ]
+                assert len(confusion_matrix_json) >= 1, (
+                    f"[{test_config.id}] Expected at least one confusion_matrix.json "
+                    f"for {test_config.task_type} task under {prefix}; "
+                    f"found {confusion_matrix_json}"
+                )
+                assert len(curves_json) >= 1, (
+                    f"[{test_config.id}] Expected at least one curves.json for "
+                    f"{test_config.task_type} task under {prefix}; found {curves_json}"
+                )
 
             primary_metric_key = TASK_PRIMARY_METRICS_TABULAR.get(test_config.task_type)
             if primary_metric_key:
@@ -183,15 +237,45 @@ class TestAutoMLTabularFunctional:
             assert test_dataset_key is not None, (
                 f"[{test_config.id}] No sampled_test_dataset artifact found under {prefix}"
             )
-
-            notebook_entries = [e for e in model_entries if e["notebook_key"]]
-            if notebook_entries:
-                chosen = random.choice(notebook_entries)
-                download_and_execute_automl_notebook(
-                    s3_client_automl_functional, bucket, chosen["notebook_key"]
+            # Skip experiment notebook validation in 3.6-ea.2 release
+            # experiment_notebook_key = assert_experiment_notebook_artifact(
+            #     s3_client_automl_functional,
+            #     bucket,
+            #     prefix,
+            #     run_id=run_id,
+            #     namespace=automl_functional_config["rhoai_project"],
+            # )
+            # logger.info(
+            #     "[%s] experiment_notebook_key=%s",
+            #     test_config.id,
+            #     experiment_notebook_key,
+            # )
+            if (
+                test_config.expected_test_dataset_rows is not None
+                or test_config.expected_test_dataset_contains
+            ):
+                assert_sampled_test_dataset(
+                    s3_client_automl_functional,
+                    bucket,
+                    test_dataset_key,
+                    scenario_id=test_config.id,
+                    expected_rows=test_config.expected_test_dataset_rows,
+                    must_contain=test_config.expected_test_dataset_contains,
                 )
 
-            if DEPLOY_AFTER_TRAINING and model_entries:
+            notebook_entries = [e for e in model_entries if e["notebook_key"]]
+            if test_config.run_notebook and notebook_entries:
+                chosen = random.choice(notebook_entries)
+                download_and_execute_automl_notebook(
+                    s3_client_automl_functional,
+                    bucket,
+                    chosen["notebook_key"],
+                    config=add_kubeconfig_to_config(
+                        automl_functional_config, rhoai_cluster_kubeconfig
+                    ),
+                )
+
+            if test_config.deploy and model_entries:
                 instances = (
                     column_sample_to_instances(test_config.inference_sample)
                     if test_config.inference_sample
@@ -236,7 +320,7 @@ class TestAutoMLTabularFunctional:
                 )
 
         if (
-            DEPLOY_AFTER_TRAINING
+            test_config.deploy
             and deployment_result
             and not deployment_result.get("skipped")
         ):
@@ -343,3 +427,7 @@ class TestAutoMLTabularFunctionalNegative:
                 f"[{test_config.id}] Expected one of {test_config.expected_failing_task} to fail; "
                 f"actual failed tasks: {failed_task_names}"
             )
+
+        assert_expected_error_pattern(
+            test_config.id, test_config.expected_error_pattern, failure_details
+        )

@@ -20,6 +20,7 @@ def test_credentials_dict_from_env_automl(monkeypatch: pytest.MonkeyPatch) -> No
     monkeypatch.setenv("RHOAI_TEST_S3_SECRET_NAME", "s3-secret")
     monkeypatch.setenv("AWS_ACCESS_KEY_ID", "key")
     monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "secret")
+    monkeypatch.setenv("BENCHMARK_PRESETS", "speed,balanced")
 
     overlay = credentials_dict_from_env()
     assert overlay["kfp"]["host"] == "https://kfp.example.com"
@@ -28,6 +29,7 @@ def test_credentials_dict_from_env_automl(monkeypatch: pytest.MonkeyPatch) -> No
     assert overlay["storage"]["train_data_bucket_name"] == "train-bucket"
     assert overlay["pipeline"]["train_data_secret_name"] == "s3-secret"
     assert overlay["s3"]["aws_access_key_id"] == "key"
+    assert overlay["run"]["presets"] == "speed,balanced"
 
 
 def test_load_credentials_overlay_from_fixture_env(automl_env_file, monkeypatch: pytest.MonkeyPatch) -> None:

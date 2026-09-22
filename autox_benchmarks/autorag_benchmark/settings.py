@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -19,11 +19,10 @@ class BenchmarkSettings:
     input_data_bucket_name: str
     test_data_secret_name: str
     test_data_bucket_name: str
-    ogx_secret_name: str
-    vector_io_provider_id: str
+    maas_secret_name: str
+    vector_db_secret_name: str
     optimization_metric: str
     optimization_max_rag_patterns: int
-    system_prompt: str
     poll_interval_seconds: float
     timeout_seconds: float
     enable_caching: bool
@@ -34,6 +33,8 @@ class BenchmarkSettings:
     benchmark_s3_prefix: str
     preset: str
     upload_benchmark_results: bool
+    embedding_models: list[str] = field(default_factory=list)
+    generation_models: list[str] = field(default_factory=list)
     pipeline_mode: str = "package"
 
 
@@ -59,8 +60,8 @@ def benchmark_settings_from_config(cfg: dict[str, Any], config_dir: Path) -> Ben
     input_data_bucket = storage_cfg.get("input_data_bucket_name")
     test_data_secret = pipeline_cfg.get("test_data_secret_name")
     test_data_bucket = storage_cfg.get("test_data_bucket_name")
-    ogx_secret = pipeline_cfg.get("ogx_secret_name")
-    vector_io_provider = pipeline_cfg.get("vector_io_provider_id")
+    maas_secret = pipeline_cfg.get("maas_secret_name")
+    vector_db_secret = pipeline_cfg.get("vector_db_secret_name")
 
     if not all(
         [
@@ -68,14 +69,14 @@ def benchmark_settings_from_config(cfg: dict[str, Any], config_dir: Path) -> Ben
             input_data_bucket,
             test_data_secret,
             test_data_bucket,
-            ogx_secret,
-            vector_io_provider,
+            maas_secret,
+            vector_db_secret,
         ]
     ):
         raise ValueError(
             "Required configuration missing. Please set in .env: "
             "pipeline.input_data_secret_name, pipeline.test_data_secret_name, "
-            "pipeline.ogx_secret_name, pipeline.vector_io_provider_id, "
+            "pipeline.maas_secret_name, pipeline.vector_db_secret_name, "
             "storage.input_data_bucket_name, storage.test_data_bucket_name"
         )
 
@@ -104,11 +105,12 @@ def benchmark_settings_from_config(cfg: dict[str, Any], config_dir: Path) -> Ben
         input_data_bucket_name=str(input_data_bucket),
         test_data_secret_name=str(test_data_secret),
         test_data_bucket_name=str(test_data_bucket),
-        ogx_secret_name=str(ogx_secret),
-        vector_io_provider_id=str(vector_io_provider),
-        optimization_metric=str(run_cfg.get("optimization_metric", "faithfulness")),
+        maas_secret_name=str(maas_secret),
+        vector_db_secret_name=str(vector_db_secret),
+        optimization_metric=str(run_cfg.get("optimization_metric", "overall_score")),
         optimization_max_rag_patterns=int(run_cfg.get("optimization_max_rag_patterns", 8)),
-        system_prompt=str(run_cfg.get("system_prompt", "")),
+        embedding_models=list(run_cfg.get("embedding_models") or []),
+        generation_models=list(run_cfg.get("generation_models") or []),
         poll_interval_seconds=float(run_cfg.get("poll_interval_seconds", 30)),
         timeout_seconds=float(run_cfg.get("timeout_seconds", 86400)),
         enable_caching=bool(run_cfg.get("enable_caching", False)),

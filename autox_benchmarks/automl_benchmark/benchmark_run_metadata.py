@@ -160,6 +160,7 @@ def build_input_params(
         package_name = "unknown"
     out: dict[str, Any] = {
         "top_n": settings.top_n,
+        "presets": list(settings.presets),
         "run_name_prefix": settings.run_name_prefix,
         "enable_caching": settings.enable_caching,
         "poll_interval_seconds": settings.poll_interval_seconds,

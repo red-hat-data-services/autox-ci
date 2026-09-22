@@ -9,8 +9,9 @@ import pytest
 from automl_benchmark.pipeline_params import (
     build_pipeline_arguments,
     is_timeseries_dataset,
+    presets_for_dataset,
 )
-from automl_benchmark.settings import BenchmarkSettings
+from automl_benchmark.settings import BenchmarkSettings, normalize_presets
 
 
 def _settings(
@@ -18,6 +19,7 @@ def _settings(
     timeseries: Path,
     *,
     top_n: int = 3,
+    presets: tuple[str, ...] = ("speed",),
 ) -> BenchmarkSettings:
     return BenchmarkSettings(
         config_dir=tabular.parent.parent,
@@ -31,6 +33,7 @@ def _settings(
         upload_benchmark_results=False,
         experiment_name="exp",
         top_n=top_n,
+        presets=presets,
         poll_interval_seconds=30.0,
         timeout_seconds=3600.0,
         enable_caching=False,
@@ -61,13 +64,14 @@ def test_build_tabular_arguments(
         "label_column": "y",
         "task_type": "binary",
     }
-    args = build_pipeline_arguments(ds, settings)
+    args = build_pipeline_arguments(ds, settings, preset="speed")
     assert args["train_data_secret_name"] == "secret"
     assert args["train_data_bucket_name"] == "bucket"
     assert args["train_data_file_key"] == "datasets/classification/a.csv"
     assert args["label_column"] == "y"
     assert args["task_type"] == "binary"
     assert args["top_n"] == 3
+    assert args["preset"] == "speed"
 
 
 def test_build_timeseries_arguments(
@@ -84,12 +88,13 @@ def test_build_timeseries_arguments(
         "prediction_length": 7,
         "known_covariates_names": ["cov_a"],
     }
-    args = build_pipeline_arguments(ds, settings)
+    args = build_pipeline_arguments(ds, settings, preset="balanced")
     assert args["target"] == "value"
     assert args["id_column"] == "item_id"
     assert args["timestamp_column"] == "ts"
     assert args["prediction_length"] == 7
     assert args["known_covariates_names"] == ["cov_a"]
+    assert args["preset"] == "balanced"
     assert "label_column" not in args
 
 
@@ -105,7 +110,7 @@ def test_timeseries_target_fallback_to_label_column(
         "timestamp_column": "ts",
         "label_column": "fallback_target",
     }
-    args = build_pipeline_arguments(ds, settings)
+    args = build_pipeline_arguments(ds, settings, preset="speed")
     assert args["target"] == "fallback_target"
 
 
@@ -121,7 +126,7 @@ def test_timeseries_missing_target_raises(
         "timestamp_column": "ts",
     }
     with pytest.raises(ValueError, match="target"):
-        build_pipeline_arguments(ds, settings)
+        build_pipeline_arguments(ds, settings, preset="speed")
 
 
 def test_pipeline_arguments_override(
@@ -135,9 +140,10 @@ def test_pipeline_arguments_override(
         "task_type": "binary",
         "pipeline_arguments": {"top_n": 9, "custom_flag": True},
     }
-    args = build_pipeline_arguments(ds, settings)
+    args = build_pipeline_arguments(ds, settings, preset="speed")
     assert args["top_n"] == 9
     assert args["custom_flag"] is True
+    assert args["preset"] == "speed"
 
 
 def test_pipeline_params_alias(
@@ -151,6 +157,52 @@ def test_pipeline_params_alias(
         "task_type": "binary",
         "pipeline_params": {"top_n": 5},
     }
-    assert build_pipeline_arguments(ds, settings)["top_n"] == 5
+    assert build_pipeline_arguments(ds, settings, preset="speed")["top_n"] == 5
 
 
+def test_manifest_preset_does_not_override_sweep_argument(
+    tabular_pipeline_path: Path,
+    timeseries_pipeline_path: Path,
+) -> None:
+    """Manifest preset selects the sweep; the loop's ``preset=`` wins in arguments."""
+    settings = _settings(tabular_pipeline_path, timeseries_pipeline_path, presets=("speed",))
+    ds = {
+        "train_data_file_key": "k.csv",
+        "label_column": "y",
+        "task_type": "binary",
+        "pipeline_arguments": {"preset": "balanced"},
+    }
+    assert presets_for_dataset(ds, settings) == ("balanced",)
+    args = build_pipeline_arguments(ds, settings, preset="balanced")
+    assert args["preset"] == "balanced"
+
+
+def test_presets_for_dataset_uses_settings_default(
+    tabular_pipeline_path: Path,
+    timeseries_pipeline_path: Path,
+) -> None:
+    settings = _settings(
+        tabular_pipeline_path,
+        timeseries_pipeline_path,
+        presets=("speed", "balanced"),
+    )
+    ds = {"train_data_file_key": "k.csv", "label_column": "y", "task_type": "binary"}
+    assert presets_for_dataset(ds, settings) == ("speed", "balanced")
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (None, ("speed",)),
+        ("speed", ("speed",)),
+        ("speed,balanced", ("speed", "balanced")),
+        (["balanced", "speed", "speed"], ("balanced", "speed")),
+    ],
+)
+def test_normalize_presets(value: object, expected: tuple[str, ...]) -> None:
+    assert normalize_presets(value) == expected
+
+
+def test_normalize_presets_rejects_invalid() -> None:
+    with pytest.raises(ValueError, match="Invalid preset"):
+        normalize_presets("best_quality")
