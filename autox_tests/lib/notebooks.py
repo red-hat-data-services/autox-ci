@@ -73,6 +73,30 @@ for index, notebook_key in enumerate(json.loads(os.environ["NOTEBOOK_S3_KEYS"]))
     output_path = workdir / "output.ipynb"
     s3.download_file(os.environ["NOTEBOOK_S3_BUCKET"], notebook_key, str(input_path))
 
+    # Only disconnected environments configure a pip Secret to provide the
+    # package index. In that case, replace the generated cell's hard-coded extra
+    # index with the plain install command.
+    if os.environ.get("NOTEBOOK_HAS_PIP_SECRET", "false").lower() == "true":
+        with input_path.open(encoding="utf-8") as f:
+            notebook = nbformat.read(f, as_version=4)
+        install_cell_with_extra_index = '''import os
+
+os.environ["PIP_EXTRA_INDEX_URL"] = (
+    "https://console.redhat.com/api/pypi/public-rhai/rhoai/3.6-EA2/cpu-ubi9-test/simple/"
+)
+%pip install autogluon.tabular[lightgbm,xgboost,tabm,fastai]==1.5.0+rhaiv.7 | tail -n 1'''
+        install_cell = (
+            "%pip install autogluon.tabular[lightgbm,xgboost,tabm,fastai]"
+            "==1.5.0+rhaiv.7 | tail -n 1"
+        )
+        for cell in notebook.cells:
+            if cell.cell_type == "code" and cell.source == install_cell_with_extra_index:
+                cell.source = install_cell
+                with input_path.open("w", encoding="utf-8") as f:
+                    nbformat.write(notebook, f)
+                print(f"Patched AutoGluon install cell in {notebook_key}", flush=True)
+                break
+
     # Some generated indexing notebooks contain a malformed text-extraction cell:
     # the assignment and function call are concatenated, and the progress f-string
     # uses escaped braces. Replace only that exact broken cell before execution.
@@ -255,6 +279,9 @@ def run_notebooks_as_k8s_job(
             k8s_client.V1EnvVar(name="AWS_S3_BUCKET", value=artifact_bucket),
             k8s_client.V1EnvVar(name="NOTEBOOK_S3_KEYS", value=json.dumps(notebook_keys)),
             k8s_client.V1EnvVar(name="NOTEBOOK_RUNNER_IMAGE", value=image),
+            k8s_client.V1EnvVar(
+                name="NOTEBOOK_HAS_PIP_SECRET", value="true" if pip_secret else "false"
+            ),
             k8s_client.V1EnvVar(
                 name="S3_SSL_VERIFY",
                 value=os.environ.get("S3_SSL_VERIFY", "true"),
