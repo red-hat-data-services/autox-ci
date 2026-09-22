@@ -1,0 +1,10 @@
+# Text Extraction Pipeline
+
+Documents are downloaded from S3 storage concurrently, each document is converted using the Docling DocumentConverter, the resulting DoclingDocument is saved as a JSON file, and plain text files bypass the converter and are wrapped directly into a DoclingDocument.
+
+The extraction pipeline:
+1. Download documents from S3 concurrently (8 threads)
+2. Convert using Docling DocumentConverter
+3. Save as DoclingDocument JSON
+4. Plain text files skip conversion
+5. Preserve full S3 object keys as document identity

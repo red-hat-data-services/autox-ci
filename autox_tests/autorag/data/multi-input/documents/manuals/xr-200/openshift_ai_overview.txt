@@ -1,0 +1,5 @@
+# OpenShift AI Overview
+
+AutoRAG supports PDF, DOCX, PPTX, Markdown, HTML, plain text, OpenDocument formats (ODT, ODP), AsciiDoc, LaTeX, EPUB, email formats (EML), Quarto Markdown (.qmd), R Markdown (.Rmd), and XHTML.
+
+The AutoRAG system is built on OpenShift AI and provides enterprise-grade document processing capabilities.

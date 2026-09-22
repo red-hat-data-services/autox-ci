@@ -87,5 +87,21 @@
         "optimization_metric": "answer_correctness",
         "input_data_keys": ["datasets/rag/audio/documents"],
         "test_data_key": "datasets/rag/audio/benchmark_data.json"
+    },
+    {
+        "id": "TC-P-6",
+        "description": "Run scenario with multi source document digest.",
+        "tags": ["positive", "multi-input", "answer_correctness", "optimisation"],
+        "expected_result": "pass",
+        "run_notebook": false,
+        "embedding_models": "env",
+        "generation_models": "env",
+        "optimization_max_rag_patterns": 4,
+        "optimization_metric": "answer_correctness",
+        "input_data_keys": [
+            "datasets/rag/multi-input-split/set_a",
+            "datasets/rag/multi-input-split/set_b"
+        ],
+        "test_data_key": "datasets/rag/multi-input-split/benchmark_data.json"
     }
 ]

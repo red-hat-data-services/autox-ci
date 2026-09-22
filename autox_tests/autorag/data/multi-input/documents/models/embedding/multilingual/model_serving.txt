@@ -1,0 +1,13 @@
+# Multilingual Model Serving
+
+The search space preparation stage can automatically detect the language of the document corpus and pre-select appropriate embedding models. For multilingual corpora, BGE-M3 is commonly used.
+
+Supported Models:
+- BGE-M3: Multilingual, 100+ languages
+- sentence-transformers: English optimized
+- Cross-lingual models: For translation tasks
+
+Language Detection:
+- Automatic detection from corpus sample
+- Manual override available
+- Per-document language specification supported
