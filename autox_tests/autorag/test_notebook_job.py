@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import sys
 from types import SimpleNamespace
 
 import pytest
@@ -10,6 +12,70 @@ from kubernetes import client as k8s_client
 from autox_tests.lib import notebooks
 
 pytestmark = pytest.mark.config
+
+
+@pytest.mark.parametrize("has_pip_secret", [False, True])
+def test_notebook_job_rewrites_automl_extra_index_cell_only_with_pip_secret(
+    monkeypatch: pytest.MonkeyPatch, tmp_path, has_pip_secret: bool
+) -> None:
+    """Patch the AutoML install cell only when a pip Secret is configured."""
+    original_cell = '''import os
+
+os.environ["PIP_EXTRA_INDEX_URL"] = (
+    "https://console.redhat.com/api/pypi/public-rhai/rhoai/3.6-EA2/cpu-ubi9-test/simple/"
+)
+%pip install autogluon.tabular[lightgbm,xgboost,tabm,fastai]==1.5.0+rhaiv.7 | tail -n 1'''
+    captured: dict[str, object] = {}
+
+    class _S3:
+        def download_file(self, bucket: str, key: str, path: str) -> None:
+            del bucket, key
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump({"cells": [{"cell_type": "code", "source": original_cell}]}, f)
+
+    class _Nbformat:
+        @staticmethod
+        def read(file, as_version: int):
+            del as_version
+            return SimpleNamespace(
+                cells=[SimpleNamespace(**cell) for cell in json.load(file)["cells"]]
+            )
+
+        @staticmethod
+        def write(notebook, file) -> None:
+            json.dump(
+                {"cells": [vars(cell) for cell in notebook.cells]}, file
+            )
+
+    def execute_notebook(input_path: str, output_path: str, **kwargs) -> None:
+        del output_path, kwargs
+        with open(input_path, encoding="utf-8") as f:
+            captured["source"] = json.load(f)["cells"][0]["source"]
+
+    monkeypatch.setitem(sys.modules, "boto3", SimpleNamespace(client=lambda *_, **__: _S3()))
+    monkeypatch.setitem(sys.modules, "nbformat", _Nbformat)
+    monkeypatch.setitem(sys.modules, "papermill", SimpleNamespace(execute_notebook=execute_notebook))
+    monkeypatch.setenv("NOTEBOOK_S3_BUCKET", "artifacts")
+    monkeypatch.setenv(
+        "NOTEBOOK_S3_KEYS", json.dumps(["model/notebooks/automl_predictor_notebook.ipynb"])
+    )
+    monkeypatch.setenv("NOTEBOOK_RUNNER_IMAGE", "example.invalid/notebook:latest")
+    monkeypatch.setenv("NOTEBOOK_WORKDIR", str(tmp_path))
+    monkeypatch.setenv("NOTEBOOK_HAS_PIP_SECRET", str(has_pip_secret).lower())
+    monkeypatch.delenv("DOCLING_ARTIFACTS_S3_PREFIX", raising=False)
+    monkeypatch.delenv("DOCLING_ARTIFACTS_S3_BUCKET", raising=False)
+    monkeypatch.delenv("DOCLING_ARTIFACTS_PATH", raising=False)
+
+    program = notebooks._NOTEBOOK_JOB_PROGRAM.replace(
+        'Path("/tmp/notebooks")', 'Path(os.environ["NOTEBOOK_WORKDIR"])'
+    )
+    exec(compile(program, "notebook-job-program", "exec"), {})
+
+    expected_cell = (
+        "%pip install autogluon.tabular[lightgbm,xgboost,tabm,fastai]"
+        "==1.5.0+rhaiv.7 | tail -n 1"
+    )
+    assert captured["source"] == (expected_cell if has_pip_secret else original_cell)
 
 
 class _BatchApi:
@@ -27,21 +93,26 @@ class _BatchApi:
 
 
 @pytest.mark.parametrize(
-    ("docling_secret_name", "expected_secrets"),
+    ("docling_secret_name", "pip_secret_name", "expected_secrets"),
     [
-        (None, ["s3", "maas", "vector", "pip"]),
-        ("docling", ["s3", "maas", "vector", "pip", "docling"]),
+        (None, None, ["s3", "maas", "vector"]),
+        (None, "pip", ["s3", "maas", "vector", "pip"]),
+        ("docling", "pip", ["s3", "maas", "vector", "pip", "docling"]),
     ],
 )
 def test_notebook_job_only_injects_docling_for_disconnected_autorag(
     monkeypatch: pytest.MonkeyPatch,
     docling_secret_name: str | None,
+    pip_secret_name: str | None,
     expected_secrets: list[str],
 ) -> None:
     """Connected and AutoML Jobs never require the optional Docling Secret."""
     batch_api = _BatchApi()
     monkeypatch.setenv("RHOAI_NOTEBOOK_RUNNER_IMAGE", "example.invalid/notebook:latest")
-    monkeypatch.setenv("RHOAI_NOTEBOOK_PIP_SECRET_NAME", "pip")
+    if pip_secret_name:
+        monkeypatch.setenv("RHOAI_NOTEBOOK_PIP_SECRET_NAME", pip_secret_name)
+    else:
+        monkeypatch.delenv("RHOAI_NOTEBOOK_PIP_SECRET_NAME", raising=False)
     if docling_secret_name:
         monkeypatch.setenv("RHOAI_NOTEBOOK_DOCLING_SECRET_NAME", docling_secret_name)
     else:
@@ -65,3 +136,5 @@ def test_notebook_job_only_injects_docling_for_disconnected_autorag(
         for source in batch_api.job.spec.template.spec.containers[0].env_from
     ]
     assert injected == expected_secrets
+    env = {item.name: item.value for item in batch_api.job.spec.template.spec.containers[0].env}
+    assert env["NOTEBOOK_HAS_PIP_SECRET"] == str(bool(pip_secret_name)).lower()
