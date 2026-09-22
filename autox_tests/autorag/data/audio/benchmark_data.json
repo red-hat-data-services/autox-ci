@@ -1,0 +1,119 @@
+[
+  {
+    "question": "Ile zwinnych pancerników w armii Królewny Kapi pełniło rolę zwiadowców?",
+    "correct_answers": [
+      "3 200",
+      "3200",
+      "trzy tysiące dwieście"
+    ],
+    "correct_answer_document_keys": [
+      "datasets/rag/audio/documents/capybara_story.m4a"
+    ]
+  },
+  {
+    "question": "Ilu leniwców odpowiadało za logistykę i zaopatrzenie w armii kapibary?",
+    "correct_answers": [
+      "450",
+      "czterysta pięćdziesiąt"
+    ],
+    "correct_answer_document_keys": [
+      "datasets/rag/audio/documents/capybara_story.m4a"
+    ]
+  },
+  {
+    "question": "Jak miał na imię Imperator władający Imperium Termitów?",
+    "correct_answers": [
+      "Chitinos VII",
+      "Imperator Chitinos VII",
+      "Chitinos"
+    ],
+    "correct_answer_document_keys": [
+      "datasets/rag/audio/documents/termites_story.wav"
+    ]
+  },
+  {
+    "question": "Na jakiej głębokości pod powierzchnią ziemi znajdował się tron Imperatora termitów?",
+    "correct_answers": [
+      "45 metrów",
+      "45 m"
+    ],
+    "correct_answer_document_keys": [
+      "datasets/rag/audio/documents/termites_story.wav"
+    ]
+  },
+  {
+    "question": "Ilu latających zwiadowców wysłały do boju termity?",
+    "correct_answers": [
+      "250 000",
+      "250000",
+      "ćwierć miliona"
+    ],
+    "correct_answer_document_keys": [
+      "datasets/rag/audio/documents/termites_story.wav"
+    ]
+  },
+  {
+    "question": "Ile jaj nakazał złożyć Imperator termitów po przegranej bitwie, by odbudować armię?",
+    "correct_answers": [
+      "10 milionów",
+      "10000000",
+      "dziesięć milionów"
+    ],
+    "correct_answer_document_keys": [
+      "datasets/rag/audio/documents/termites_story.wav"
+    ]
+  },
+  {
+    "question": "Jak miał na imię szeregowy mrówkojad walczący na pierwszej linii frontu?",
+    "correct_answers": [
+      "Barnaba",
+      "Szeregowy Barnaba"
+    ],
+    "correct_answer_document_keys": [
+      "datasets/rag/audio/documents/anteater_story.mp3"
+    ]
+  },
+  {
+    "question": "Jakiej długości pazury bojowe miał szeregowy Barnaba?",
+    "correct_answers": [
+      "10-centymetrowe",
+      "10 cm",
+      "10 centymetrów"
+    ],
+    "correct_answer_document_keys": [
+      "datasets/rag/audio/documents/anteater_story.mp3"
+    ]
+  },
+  {
+    "question": "Z jaką częstotliwością uderzał w korytarze wroga taktyczny język Barnaby?",
+    "correct_answers": [
+      "150 uderzeń na minutę",
+      "150 na minutę",
+      "150 razy na minutę"
+    ],
+    "correct_answer_document_keys": [
+      "datasets/rag/audio/documents/anteater_story.mp3"
+    ]
+  },
+  {
+    "question": "Ilu termitów szacunkowo pochłonął szeregowy Barnaba podczas 3 godzin walki?",
+    "correct_answers": [
+      "8 500",
+      "8500",
+      "osiem i pół tysiąca"
+    ],
+    "correct_answer_document_keys": [
+      "datasets/rag/audio/documents/anteater_story.mp3"
+    ]
+  },
+  {
+    "question": "Jak nazywał się kolega Barnaby z oddziału, który po bitwie cierpiał na wzdęty brzuch?",
+    "correct_answers": [
+      "Stefan",
+      "Kapral Stefan"
+    ],
+    "correct_answer_document_keys": [
+      "datasets/rag/audio/documents/anteater_story.mp3"
+    ]
+  }
+]
