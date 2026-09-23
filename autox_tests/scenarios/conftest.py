@@ -17,6 +17,7 @@ import pytest
 from autox_tests.conftest import _ensure_datascience_pipelines_application
 from autox_tests.lib.dspa_support import get_dspa_route_kfp_base_url
 from autox_tests.lib.env import load_tests_env, resolve_suite_asset_path
+from autox_tests.lib.kfp_retry import install_kfp_api_retries
 from autox_tests.lib.pipeline_yaml_sources import (
     PIPELINE_YAML_AUTORAG_ENV,
     PIPELINE_YAML_TABULAR_ENV,
@@ -393,7 +394,9 @@ def kfp_client_automl(
     }
     if not get_rhoai_integration_https_verify():
         client_kw["verify_ssl"] = False
-    return kfp.Client(**client_kw)
+    client = kfp.Client(**client_kw)
+    install_kfp_api_retries(client)
+    return client
 
 
 @pytest.fixture(scope="session")
@@ -437,7 +440,9 @@ def kfp_client_autorag(
     }
     if not get_rhoai_integration_https_verify():
         client_kw["verify_ssl"] = False
-    return kfp.Client(**client_kw)
+    client = kfp.Client(**client_kw)
+    install_kfp_api_retries(client)
+    return client
 
 
 @pytest.fixture(scope="session")
