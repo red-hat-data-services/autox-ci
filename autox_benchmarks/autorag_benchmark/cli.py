@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import logging
 import os
-import sys
 from pathlib import Path
 
 from autorag_benchmark.orchestrator import BenchmarkOrchestrator
@@ -60,6 +59,31 @@ def main(argv: list[str] | None = None) -> int:
             "Equivalent to BENCHMARK_USE_MANAGED_PIPELINES=true"
         ),
     )
+    parser.add_argument(
+        "--run-indexing",
+        action="store_true",
+        help=(
+            "After HPO, extract the best pattern and submit a documents-indexing-pipeline "
+            "run on the full corpus (using full_input_data_key from the manifest)."
+        ),
+    )
+    parser.add_argument(
+        "--pattern-name",
+        type=str,
+        default=None,
+        metavar="NAME",
+        help="Override automatic best-pattern selection with a specific pattern name.",
+    )
+    parser.add_argument(
+        "--run-e2e-evaluation",
+        action="store_true",
+        help="After indexing, evaluate the selected HPO pattern against the full QA set and indexed collection.",
+    )
+    parser.add_argument(
+        "--generate-report",
+        action="store_true",
+        help="Write a self-contained HTML indexing and full-corpus quality report next to the CSV.",
+    )
     parser.add_argument("-v", "--verbose", action="store_true")
     parser.add_argument(
         "--package-path",
@@ -77,6 +101,15 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.managed_pipelines:
         os.environ["BENCHMARK_USE_MANAGED_PIPELINES"] = "true"
+
+    if args.run_indexing:
+        os.environ["BENCHMARK_RUN_INDEXING"] = "true"
+    if args.pattern_name:
+        os.environ["BENCHMARK_INDEXING_PATTERN_NAME"] = args.pattern_name
+    if args.run_e2e_evaluation:
+        os.environ["BENCHMARK_RUN_E2E_EVALUATION"] = "true"
+    if args.generate_report:
+        os.environ["BENCHMARK_GENERATE_REPORT"] = "true"
 
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,
