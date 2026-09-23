@@ -17,6 +17,7 @@ from autox_tests.lib.dspa_support import (
     verify_kfp_api_health,
     wait_for_dspa_ready,
 )
+from autox_tests.lib.kfp_retry import install_kfp_api_retries
 from autox_tests.lib.rhoai_support import (
     build_temp_kubeconfig,
     ensure_rhoai_project_and_s3_secret,
@@ -272,6 +273,7 @@ def make_kfp_client_for_session(
         client_kw["verify_ssl"] = False
     client = kfp.Client(**client_kw)
 
+    install_kfp_api_retries(client)
     from autox_tests.lib.clients import _disable_gcp_token_refresh
 
     _disable_gcp_token_refresh(client)
