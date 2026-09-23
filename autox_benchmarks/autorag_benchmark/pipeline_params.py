@@ -36,9 +36,9 @@ def build_pipeline_arguments(
         "vector_db_secret_name": settings.vector_db_secret_name,
     }
 
-    # The pipeline takes a list but honours only its first entry; manifests stay single-valued.
+    # The managed optimization pipeline takes a single input_data_key (string).
     if dataset.get("input_data_key"):
-        args["input_data_keys"] = [str(dataset["input_data_key"])]
+        args["input_data_key"] = str(dataset["input_data_key"])
 
     if "optimization_metric" in dataset:
         args["optimization_metric"] = str(dataset["optimization_metric"])
