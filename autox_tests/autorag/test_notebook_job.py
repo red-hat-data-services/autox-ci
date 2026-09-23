@@ -15,16 +15,30 @@ pytestmark = pytest.mark.config
 
 
 @pytest.mark.parametrize("has_pip_secret", [False, True])
+@pytest.mark.parametrize(
+    "install_command",
+    [
+        "%pip install autogluon.tabular[lightgbm,xgboost,tabm,fastai]==1.5.0+rhaiv.7 | tail -n 1",
+        "%pip install autogluon.timeseries==1.5.0+rhaiv.7 | tail -n 1",
+    ],
+)
+@pytest.mark.parametrize("blank_before_install", [False, True])
 def test_notebook_job_rewrites_automl_extra_index_cell_only_with_pip_secret(
-    monkeypatch: pytest.MonkeyPatch, tmp_path, has_pip_secret: bool
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+    has_pip_secret: bool,
+    install_command: str,
+    blank_before_install: bool,
 ) -> None:
     """Patch the AutoML install cell only when a pip Secret is configured."""
-    original_cell = '''import os
-
-os.environ["PIP_EXTRA_INDEX_URL"] = (
-    "https://console.redhat.com/api/pypi/public-rhai/rhoai/3.6-EA2/cpu-ubi9-test/simple/"
-)
-%pip install autogluon.tabular[lightgbm,xgboost,tabm,fastai]==1.5.0+rhaiv.7 | tail -n 1'''
+    original_cell = (
+        "import os\n\n"
+        'os.environ["PIP_EXTRA_INDEX_URL"] = (\n'
+        '    "https://console.redhat.com/api/pypi/public-rhai/rhoai/3.6-EA2/cpu-ubi9-test/simple/"\n'
+        ")\n"
+        + ("\n" if blank_before_install else "")
+        + install_command
+    )
     captured: dict[str, object] = {}
 
     class _S3:
@@ -71,10 +85,7 @@ os.environ["PIP_EXTRA_INDEX_URL"] = (
     )
     exec(compile(program, "notebook-job-program", "exec"), {})
 
-    expected_cell = (
-        "%pip install autogluon.tabular[lightgbm,xgboost,tabm,fastai]"
-        "==1.5.0+rhaiv.7 | tail -n 1"
-    )
+    expected_cell = original_cell.replace("PIP_EXTRA_INDEX_URL", "PIP_EXTRA_INDEX_URL_DEV")
     assert captured["source"] == (expected_cell if has_pip_secret else original_cell)
 
 

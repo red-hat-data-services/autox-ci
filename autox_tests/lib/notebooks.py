@@ -74,28 +74,25 @@ for index, notebook_key in enumerate(json.loads(os.environ["NOTEBOOK_S3_KEYS"]))
     s3.download_file(os.environ["NOTEBOOK_S3_BUCKET"], notebook_key, str(input_path))
 
     # Only disconnected environments configure a pip Secret to provide the
-    # package index. In that case, replace the generated cell's hard-coded extra
-    # index with the plain install command.
+    # package index. Disable the generated notebook's hard-coded extra index so
+    # pip uses the index configured by that Secret instead. Match AutoGluon
+    # install cells rather than one exact cell, as tabular and time-series
+    # templates differ slightly.
     if os.environ.get("NOTEBOOK_HAS_PIP_SECRET", "false").lower() == "true":
         with input_path.open(encoding="utf-8") as f:
             notebook = nbformat.read(f, as_version=4)
-        install_cell_with_extra_index = '''import os
-
-os.environ["PIP_EXTRA_INDEX_URL"] = (
-    "https://console.redhat.com/api/pypi/public-rhai/rhoai/3.6-EA2/cpu-ubi9-test/simple/"
-)
-%pip install autogluon.tabular[lightgbm,xgboost,tabm,fastai]==1.5.0+rhaiv.7 | tail -n 1'''
-        install_cell = (
-            "%pip install autogluon.tabular[lightgbm,xgboost,tabm,fastai]"
-            "==1.5.0+rhaiv.7 | tail -n 1"
-        )
         for cell in notebook.cells:
-            if cell.cell_type == "code" and cell.source == install_cell_with_extra_index:
-                cell.source = install_cell
-                with input_path.open("w", encoding="utf-8") as f:
-                    nbformat.write(notebook, f)
-                print(f"Patched AutoGluon install cell in {notebook_key}", flush=True)
-                break
+            if (
+                cell.cell_type == "code"
+                and "PIP_EXTRA_INDEX_URL" in cell.source
+                and "%pip install autogluon." in cell.source
+            ):
+                cell.source = cell.source.replace(
+                    "PIP_EXTRA_INDEX_URL", "PIP_EXTRA_INDEX_URL_DEV"
+                )
+        with input_path.open("w", encoding="utf-8") as f:
+            nbformat.write(notebook, f)
+        print(f"Patched AutoGluon install cell in {notebook_key}", flush=True)
 
     # Some generated indexing notebooks contain a malformed text-extraction cell:
     # the assignment and function call are concatenated, and the progress f-string
