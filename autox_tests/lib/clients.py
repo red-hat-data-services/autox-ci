@@ -3,6 +3,8 @@
 import logging
 import os
 
+from autox_tests.lib.kfp_retry import install_kfp_api_retries
+
 logger = logging.getLogger(__name__)
 
 
@@ -24,6 +26,7 @@ def make_kfp_client(config):
         existing_token=config.get("rhoai_token"),
         verify_ssl=verify_ssl,
     )
+    install_kfp_api_retries(client)
     _disable_gcp_token_refresh(client)
     return client
 

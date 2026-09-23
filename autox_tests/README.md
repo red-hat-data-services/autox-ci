@@ -150,6 +150,7 @@ cp autox_tests/.env.ml.example autox_tests/.env.ml
 | `RHOAI_PIPELINE_RUN_TIMEOUT` | `3600` | Max seconds to wait for a pipeline run |
 | `KFP_DISABLE_EXECUTION_CACHING_BY_DEFAULT` | `true` | Disable KFP step caching |
 | `AUTOML_FUNCTIONAL_TEST_KEEP_ARTIFACTS` | `false` | Skip S3 artifact cleanup after the session |
+| `KFP_API_RETRY_ATTEMPTS` | `5` | Total attempts for transient read-only KFP API requests |
 
 #### Per-scenario optional checks
 
