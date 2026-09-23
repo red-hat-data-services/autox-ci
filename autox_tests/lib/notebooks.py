@@ -81,6 +81,7 @@ for index, notebook_key in enumerate(json.loads(os.environ["NOTEBOOK_S3_KEYS"]))
     if os.environ.get("NOTEBOOK_HAS_PIP_SECRET", "false").lower() == "true":
         with input_path.open(encoding="utf-8") as f:
             notebook = nbformat.read(f, as_version=4)
+        patched = False
         for cell in notebook.cells:
             if (
                 cell.cell_type == "code"
@@ -90,9 +91,11 @@ for index, notebook_key in enumerate(json.loads(os.environ["NOTEBOOK_S3_KEYS"]))
                 cell.source = cell.source.replace(
                     "PIP_EXTRA_INDEX_URL", "PIP_EXTRA_INDEX_URL_DEV"
                 )
-        with input_path.open("w", encoding="utf-8") as f:
-            nbformat.write(notebook, f)
-        print(f"Patched AutoGluon install cell in {notebook_key}", flush=True)
+                patched = True
+        if patched:
+            with input_path.open("w", encoding="utf-8") as f:
+                nbformat.write(notebook, f)
+            print(f"Patched AutoGluon install cell in {notebook_key}", flush=True)
 
     # Some generated indexing notebooks contain a malformed text-extraction cell:
     # the assignment and function call are concatenated, and the progress f-string
