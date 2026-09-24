@@ -73,9 +73,9 @@ class AutoRAGTestConfig:
         generation_models: Generation model IDs for the search space. Required by the
             MaaS pipeline. A JSON list, or "env" to read from AUTORAG_GENERATION_MODELS.
         optimization_max_rag_patterns: Cap on the number of RAG patterns explored.
-        input_data_keys: Paths to the input document folders within the bucket. The
-            pipeline honours only the first entry; an empty or unset list makes
-            document discovery scan the whole bucket.
+        input_data_keys: Paths to the input document folders within the bucket.
+            The pipeline discovers the union of all entries; an empty or unset
+            list makes document discovery scan the whole bucket.
         test_data_key: Path to the benchmark JSON within the test-data bucket.
         optimization_metric: Metric to optimize (e.g. "faithfulness").
         run_notebook: Whether to execute the generated notebooks in Kubernetes Jobs.
@@ -207,9 +207,9 @@ class IndexingTestConfig:
         expected_result: "pass" or "fail" — whether the pipeline run should succeed.
         embedding_model_id: Embedding model ID served by MaaS. Use "env" to read from
             the ``AUTORAG_INDEXING_EMBEDDING_MODEL_ID`` env var.
-        input_data_keys: Paths to folders with input documents within the bucket. The
-            pipeline honours only the first entry; an empty or unset list makes
-            document discovery scan the whole bucket.
+        input_data_keys: Paths to folders with input documents within the bucket.
+            The pipeline discovers the union of all entries; an empty or unset
+            list makes document discovery scan the whole bucket.
         collection_name: Vector store collection to reuse. Omit to create a new one.
         chunking_method: Chunking method (default: "recursive").
         chunk_size: Maximum chunk size in tokens (default: 1024).
