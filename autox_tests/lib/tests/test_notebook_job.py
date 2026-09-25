@@ -89,6 +89,83 @@ def test_notebook_job_rewrites_automl_extra_index_cell_only_with_pip_secret(
     assert captured["source"] == (expected_cell if has_pip_secret else original_cell)
 
 
+def test_notebook_job_prints_pip_output_when_papermill_fails(
+    monkeypatch: pytest.MonkeyPatch, tmp_path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Pip diagnostics saved in output.ipynb must reach the failed Job's logs."""
+
+    class _S3:
+        def download_file(self, bucket: str, key: str, path: str) -> None:
+            del bucket, key
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump({"cells": []}, f)
+
+    class _Nbformat:
+        @staticmethod
+        def read(file, as_version: int):
+            del as_version
+            return SimpleNamespace(cells=json.load(file)["cells"])
+
+    def execute_notebook(input_path: str, output_path: str, **kwargs) -> None:
+        del input_path, kwargs
+        with open(output_path, "w", encoding="utf-8") as f:
+            json.dump(
+                {
+                    "cells": [
+                        {
+                            "cell_type": "code",
+                            "source": "%pip install ai4rag",
+                            "outputs": [
+                                {
+                                    "output_type": "stream",
+                                    "text": "ERROR: No matching distribution found for ai4rag\\n",
+                                }
+                            ],
+                        },
+                        {
+                            "cell_type": "code",
+                            "source": "from ai4rag import missing",
+                            "outputs": [
+                                {
+                                    "output_type": "error",
+                                    "traceback": ["ModuleNotFoundError: No module named 'ai4rag'"],
+                                }
+                            ],
+                        },
+                    ]
+                },
+                f,
+            )
+        error = RuntimeError("notebook execution failed")
+        error.cell_index = 1
+        raise error
+
+    monkeypatch.setitem(sys.modules, "boto3", SimpleNamespace(client=lambda *_, **__: _S3()))
+    monkeypatch.setitem(sys.modules, "nbformat", _Nbformat)
+    monkeypatch.setitem(sys.modules, "papermill", SimpleNamespace(execute_notebook=execute_notebook))
+    monkeypatch.setenv("NOTEBOOK_S3_BUCKET", "artifacts")
+    monkeypatch.setenv("NOTEBOOK_S3_KEYS", json.dumps(["rag_patterns/indexing.ipynb"]))
+    monkeypatch.setenv("NOTEBOOK_RUNNER_IMAGE", "example.invalid/notebook:latest")
+    monkeypatch.setenv("NOTEBOOK_WORKDIR", str(tmp_path))
+    monkeypatch.setenv("NOTEBOOK_INJECT_MOCK_INPUT", "false")
+    monkeypatch.setenv("NOTEBOOK_HAS_PIP_SECRET", "false")
+    monkeypatch.delenv("DOCLING_ARTIFACTS_S3_PREFIX", raising=False)
+    monkeypatch.delenv("DOCLING_ARTIFACTS_S3_BUCKET", raising=False)
+    monkeypatch.delenv("DOCLING_ARTIFACTS_PATH", raising=False)
+
+    program = notebooks._NOTEBOOK_JOB_PROGRAM.replace(
+        'Path("/tmp/notebooks")', 'Path(os.environ["NOTEBOOK_WORKDIR"])'
+    )
+    with pytest.raises(RuntimeError, match="notebook execution failed"):
+        exec(compile(program, "notebook-job-program", "exec"), {})
+
+    output = capsys.readouterr().out
+    assert "NOTEBOOK EXECUTION DIAGNOSTICS" in output
+    assert "package-install output" in output
+    assert "No matching distribution found for ai4rag" in output
+    assert "ModuleNotFoundError: No module named 'ai4rag'" in output
+
+
 class _BatchApi:
     def __init__(self, *args, **kwargs):
         self.job = None
