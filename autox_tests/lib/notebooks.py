@@ -40,6 +40,62 @@ s3 = boto3.client(
 )
 print(f"Running notebooks with image: {os.environ['NOTEBOOK_RUNNER_IMAGE']}", flush=True)
 
+
+def _notebook_output_text(output):
+    # Return the useful text from one nbformat output object.
+    output_type = output.get("output_type", "unknown")
+    if output_type == "stream":
+        return output.get("text", "")
+    if output_type == "error":
+        return "\n".join(output.get("traceback", [])) or (
+            f"{output.get('ename', 'Error')}: {output.get('evalue', '')}"
+        )
+    data = output.get("data", {})
+    return data.get("text/plain", "") or str(data)
+
+
+def _print_notebook_failure_diagnostics(notebook_key, output_path, error):
+    # Papermill writes cell output to ``output_path`` rather than the Job's stdout.
+    # The Job is ephemeral, so echo the relevant saved output before propagating
+    # the error; the functional test already collects the failed Job's log.
+    print(f"\n===== NOTEBOOK EXECUTION DIAGNOSTICS: {notebook_key} =====", flush=True)
+    print(f"Papermill error: {error}", flush=True)
+    if not output_path.exists():
+        print("No executed notebook was written by Papermill.", flush=True)
+        return
+
+    try:
+        with output_path.open(encoding="utf-8") as f:
+            executed_notebook = nbformat.read(f, as_version=4)
+    except Exception as diagnostics_error:
+        print(f"Could not read executed notebook: {diagnostics_error}", flush=True)
+        return
+
+    failed_cell_index = getattr(error, "cell_index", None)
+    for index, cell in enumerate(executed_notebook.cells):
+        if cell.get("cell_type") != "code":
+            continue
+        source = cell.get("source", "")
+        is_install_cell = "%pip" in source or "pip install" in source
+        is_failed_cell = index == failed_cell_index or any(
+            output.get("output_type") == "error" for output in cell.get("outputs", [])
+        )
+        if not (is_install_cell or is_failed_cell):
+            continue
+
+        label = "package-install output" if is_install_cell else "failed-cell output"
+        print(f"--- {label} (cell {index}) ---", flush=True)
+        text = "\n".join(
+            _notebook_output_text(output) for output in cell.get("outputs", [])
+        ).strip()
+        # Keep diagnostics useful without letting a verbose resolver consume all
+        # of the pod-log tail included in the assertion failure.
+        if len(text) > 12000:
+            text = "[output truncated to final 12000 characters]\n" + text[-12000:]
+        print(text or "[cell produced no captured output]", flush=True)
+    print("===== END NOTEBOOK EXECUTION DIAGNOSTICS =====", flush=True)
+
+
 docling_prefix = os.environ.get("DOCLING_ARTIFACTS_S3_PREFIX", "").strip().lstrip("/")
 docling_bucket = os.environ.get("DOCLING_ARTIFACTS_S3_BUCKET", "").strip()
 docling_path = os.environ.get("DOCLING_ARTIFACTS_PATH", "").strip()
@@ -133,12 +189,16 @@ print(
         with input_path.open("w", encoding="utf-8") as f:
             nbformat.write(notebook, f)
 
-    pm.execute_notebook(
-        str(input_path),
-        str(output_path),
-        cwd=str(workdir),
-        kernel_name=os.environ.get("NOTEBOOK_KERNEL_NAME", "python3"),
-    )
+    try:
+        pm.execute_notebook(
+            str(input_path),
+            str(output_path),
+            cwd=str(workdir),
+            kernel_name=os.environ.get("NOTEBOOK_KERNEL_NAME", "python3"),
+        )
+    except Exception as error:
+        _print_notebook_failure_diagnostics(notebook_key, output_path, error)
+        raise
 """
 
 
