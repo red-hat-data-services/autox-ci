@@ -89,7 +89,7 @@ def _fetch_indexing_report(
 def _assert_indexing_report(report: dict, test_config: "IndexingTestConfig") -> None:
     """Assert correctness of the indexing_report.json produced by the pipeline."""
     tid = test_config.id
-    vsb = report.get("settings", {}).get("vector_store_binding", {})
+    vsb = report.get("settings", {}).get("store_binding", {})
     chk = report.get("settings", {}).get("chunking", {})
     emb = report.get("settings", {}).get("embedding", {})
 

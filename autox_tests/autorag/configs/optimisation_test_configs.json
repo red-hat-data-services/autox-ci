@@ -24,6 +24,30 @@
         "optimization_max_rag_patterns": 6
     },
     {
+        "id": "TC-F-4",
+        "description": "Verify failure when more than 10 input document prefixes are provided.",
+        "tags": ["negative", "optimisation", "input-limit"],
+        "expected_result": "fail",
+        "embedding_models": "env",
+        "generation_models": "env",
+        "input_data_keys": [
+            "datasets/rag/rh_summit_2026/documents",
+            "non/existing/input-prefix-01",
+            "non/existing/input-prefix-02",
+            "non/existing/input-prefix-03",
+            "non/existing/input-prefix-04",
+            "non/existing/input-prefix-05",
+            "non/existing/input-prefix-06",
+            "non/existing/input-prefix-07",
+            "non/existing/input-prefix-08",
+            "non/existing/input-prefix-09",
+            "non/existing/input-prefix-10"
+        ],
+        "test_data_key": "datasets/rag/rh_summit_2026/benchmark_data.json",
+        "optimization_metric": "answer_correctness",
+        "optimization_max_rag_patterns": 4
+    },
+    {
         "id": "TC-P-1",
         "description": "Run simple scenario with 4 patterns optimizing answer_correctness.",
         "tags": ["positive", "smoke", "answer_correctness", "optimisation"],
@@ -87,5 +111,21 @@
         "optimization_metric": "answer_correctness",
         "input_data_keys": ["datasets/rag/audio/documents"],
         "test_data_key": "datasets/rag/audio/benchmark_data.json"
+    },
+    {
+        "id": "TC-P-6",
+        "description": "Run scenario with multi source document digest.",
+        "tags": ["positive", "multi-input", "answer_correctness", "optimisation"],
+        "expected_result": "pass",
+        "run_notebook": false,
+        "embedding_models": "env",
+        "generation_models": "env",
+        "optimization_max_rag_patterns": 4,
+        "optimization_metric": "answer_correctness",
+        "input_data_keys": [
+            "datasets/rag/multi-input-split/set_a",
+            "datasets/rag/multi-input-split/set_b"
+        ],
+        "test_data_key": "datasets/rag/multi-input-split/benchmark_data.json"
     }
 ]

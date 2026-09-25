@@ -1,0 +1,14 @@
+# Optimization Algorithm
+
+AutoRAG uses Generalized Additive Models (GAM) as the primary optimization algorithm. GAM models the relationship between RAG parameters and evaluation scores, enabling efficient exploration of the search space. A random search optimizer is also available as a baseline.
+
+GAM Optimization:
+- Efficient parameter space exploration
+- Models parameter-score relationships
+- Suitable for complex hyperparameter tuning
+- Fast convergence on optimal configurations
+
+Random Search:
+- Baseline comparison
+- Good for validation
+- No assumptions about parameter space

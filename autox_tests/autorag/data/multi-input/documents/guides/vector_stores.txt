@@ -1,0 +1,17 @@
+# Vector Store Backends
+
+AutoRAG supports Milvus (both inline Milvus Lite and remote deployment), ChromaDB for development and small-scale deployments, and PGVector as a PostgreSQL extension for vector similarity search.
+
+Milvus:
+- Best for production workloads
+- Supports clustering and replication
+- High throughput
+
+ChromaDB:
+- Lightweight in-memory option
+- Good for development and testing
+- Quick setup
+
+PGVector:
+- Integrates with PostgreSQL
+- Good for existing SQL environments

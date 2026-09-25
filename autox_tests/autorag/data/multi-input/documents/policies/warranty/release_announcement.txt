@@ -1,0 +1,11 @@
+# AutoRAG 2024 Release Announcement
+
+Release Date: September 1, 2026
+
+Major Features:
+- Improved document key handling with full S3 path preservation
+- Multi-location corpus support without filename collisions
+- Enhanced evaluation metrics and reporting
+- Backward compatible with previous versions
+
+AutoRAG 2024 with improved document key handling and multi-location support.

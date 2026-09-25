@@ -1,0 +1,14 @@
+# XR-300 Setup Guide
+
+Configuration steps for XR-300 model setup and deployment.
+
+Prerequisites:
+- OpenShift 4.14 or later
+- 8GB RAM minimum
+- 50GB disk space
+
+Installation:
+1. Download the XR-300 package
+2. Extract to /opt/xr-300
+3. Run setup.sh
+4. Configure via web interface at https://localhost:8443

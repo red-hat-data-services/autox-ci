@@ -666,5 +666,5 @@ def autorag_pipeline_arguments(cfg: dict[str, Any]) -> dict[str, Any]:
         "input_data_bucket_name": cfg["input_data_bucket_name"],
         "input_data_keys": [cfg["input_data_key"]] if cfg["input_data_key"] else [],
         "maas_secret_name": cfg["maas_secret_name"],
-        "vector_db_secret_name": cfg["vector_db_secret_name"],
+        "db_secret_name": cfg["vector_db_secret_name"],
     }

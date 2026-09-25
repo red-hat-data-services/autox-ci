@@ -1,0 +1,11 @@
+# Data Privacy and Security
+
+All document processing occurs within the customer's OpenShift cluster, ensuring sensitive corporate documents never leave the organization's infrastructure boundary. Pipeline access is controlled through OpenShift RBAC. S3 credentials and OGX API keys are stored as Kubernetes secrets and injected into pipeline pods at runtime.
+
+Security Features:
+- On-premise processing
+- No external data transmission
+- RBAC-based access control
+- Encrypted secrets management
+- Audit logging enabled
+- Compliance with HIPAA, GDPR, SOC2
