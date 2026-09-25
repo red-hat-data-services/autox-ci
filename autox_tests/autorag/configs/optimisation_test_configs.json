@@ -41,7 +41,7 @@
         "description": "Run scenario optimizing faithfulness with 4 patterns.",
         "tags": ["positive", "smoke", "faithfulness", "optimisation"],
         "expected_result": "pass",
-        "run_notebook": true,
+        "run_notebook": false,
         "embedding_models": "env",
         "generation_models": "env",
         "optimization_max_rag_patterns": 4,

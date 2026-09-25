@@ -23,7 +23,7 @@ _NOTEBOOK_JOB_POLL_SECONDS = 15
 logger = logging.getLogger(__name__)
 
 
-_NOTEBOOK_JOB_PROGRAM = r"""import json
+_NOTEBOOK_JOB_PROGRAM = r'''import json
 import os
 from pathlib import Path
 
@@ -73,35 +73,6 @@ for index, notebook_key in enumerate(json.loads(os.environ["NOTEBOOK_S3_KEYS"]))
     output_path = workdir / "output.ipynb"
     s3.download_file(os.environ["NOTEBOOK_S3_BUCKET"], notebook_key, str(input_path))
 
-    # Some generated indexing notebooks contain a malformed text-extraction cell:
-    # the assignment and function call are concatenated, and the progress f-string
-    # uses escaped braces. Replace only that exact broken cell before execution.
-    if notebook_key.lower().endswith("indexing.ipynb"):
-        with input_path.open(encoding="utf-8") as f:
-            notebook = nbformat.read(f, as_version=4)
-        for cell in notebook.cells:
-            if (
-                cell.cell_type == "code"
-                and 'extracted_text_dir = step_output_dir / "extracted_text"extraction_result' in cell.source
-            ):
-                cell.source = '''extracted_text_dir = step_output_dir / "extracted_text"
-
-extraction_result = extract_text(
-    documents=result.to_dict()["documents"],
-    bucket=result.bucket,
-    output_dir=extracted_text_dir,
-    docling_artifacts_path=os.getenv("DOCLING_ARTIFACTS_PATH"),
-)
-
-print(
-    f"Extracted {extraction_result.processed_count}/{extraction_result.total_documents} documents "
-    f"({extraction_result.error_count} errors)"
-)'''
-                with input_path.open("w", encoding="utf-8") as f:
-                    nbformat.write(notebook, f)
-                print(f"Patched malformed text-extraction cell in {notebook_key}", flush=True)
-                break
-
     if os.environ.get("NOTEBOOK_INJECT_MOCK_INPUT", "false").lower() == "true":
         with input_path.open(encoding="utf-8") as f:
             notebook = nbformat.read(f, as_version=4)
@@ -115,7 +86,7 @@ print(
         cwd=str(workdir),
         kernel_name=os.environ.get("NOTEBOOK_KERNEL_NAME", "python3"),
     )
-"""
+'''
 
 
 def notebook_runner_image() -> str | None:
