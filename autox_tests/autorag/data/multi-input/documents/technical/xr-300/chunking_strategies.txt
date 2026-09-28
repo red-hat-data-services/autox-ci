@@ -1,0 +1,14 @@
+# Chunking Methods in AutoRAG
+
+AutoRAG supports two chunking methods: hybrid chunking using Docling's HybridChunker which is structure-aware and preserves document hierarchy but does not support overlap, and recursive chunking using LangChain's RecursiveCharacterTextSplitter which exports to markdown first and supports configurable chunk overlap from 0 to 256 tokens.
+
+Hybrid Chunking:
+- Structure-aware
+- Preserves document hierarchy
+- No overlap support
+- Better for complex documents
+
+Recursive Chunking:
+- Configurable overlap (0-256 tokens)
+- Good for text-heavy documents
+- Simple to configure

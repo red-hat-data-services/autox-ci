@@ -1,0 +1,11 @@
+# AutoRAG Pipeline Architecture
+
+The six stages are:
+1. Document Discovery (list and filter S3 objects)
+2. Text Extraction (convert to DoclingDocument)
+3. Test Data Loading (load benchmark Q&A data)
+4. Search Space Preparation (build hyperparameter search space)
+5. RAG Templates Optimization (run HPO loop)
+6. Assets Generation (produce pattern JSON, notebooks, and reports)
+
+Each stage is containerized and can run independently or as part of the full pipeline.

@@ -1,0 +1,15 @@
+# Enterprise Deployment
+
+Prerequisites for deploying AutoRAG on OpenShift:
+
+- Red Hat OpenShift cluster version 4.14 or later
+- Red Hat OpenShift AI operator installed
+- Data Science Pipelines Application (DSPA) configured
+- S3-compatible object storage for document corpus and artifacts
+- OGX platform for embedding and foundation model serving
+
+Deployment Architecture:
+- Containerized components
+- Kubernetes native
+- Auto-scaling support
+- High availability setup

@@ -1,0 +1,15 @@
+# OpenShift Deployment
+
+Deploy on OpenShift with proper RBAC and Kubernetes secrets for S3 credentials and OGX API keys.
+
+Access Control:
+- OpenShift RBAC for pipeline access
+- Kubernetes secrets for credentials
+- Service accounts for pods
+- Network policies for security
+
+Configuration:
+1. Create secrets for S3 and OGX
+2. Configure DSPA instance
+3. Deploy AutoRAG components
+4. Set up RBAC policies

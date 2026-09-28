@@ -1,0 +1,9 @@
+# Docling Integration - README
+
+Same document name as documentation/xr-200 but in different location for testing no-collision handling.
+
+This demonstrates that AutoRAG can now properly handle:
+- Multiple files with the same name
+- Different locations in the corpus
+- Correct document key assignment
+- Accurate retrieval without confusion

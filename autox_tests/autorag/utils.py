@@ -369,8 +369,22 @@ def _download_and_execute_notebooks(s3_client, bucket, notebook_keys, *, config)
     )
 
 
-def get_uploaded_document_names(s3_client, bucket: str, input_data_key: str) -> set[str]:
-    """Return the filenames of every document uploaded under the pipeline's input prefix.
+def _normalize_input_data_keys(input_data_keys: list[str] | None) -> list[str]:
+    """Normalize input prefixes using ai4rag's documents-discovery semantics."""
+    normalized: list[str] = []
+    for key in input_data_keys or []:
+        cleaned = (key or "").strip().lstrip("/")
+        if cleaned not in normalized:
+            normalized.append(cleaned)
+
+    # The root prefix subsumes every other prefix, and an empty list means root.
+    return [""] if not normalized or "" in normalized else normalized
+
+
+def get_uploaded_document_names(
+    s3_client, bucket: str, input_data_keys: list[str] | None
+) -> set[str]:
+    """Return filenames of documents uploaded under the pipeline's input prefixes.
 
     This is the authoritative "uploaded input set" the pipeline was asked to ingest — read
     from S3 rather than from the repo's local data directory, since the two can drift and
@@ -379,22 +393,28 @@ def get_uploaded_document_names(s3_client, bucket: str, input_data_key: str) -> 
     Args:
         s3_client: Boto3 S3 client.
         bucket: Bucket holding the input documents.
-        input_data_key: S3 prefix of the input documents
-            (e.g. 'datasets/rag/mixed_formats/documents').
+        input_data_keys: S3 prefixes of the input documents (e.g.
+            ``['datasets/rag/mixed_formats/documents']``). The union of all
+            entries is listed. An empty or unset list lists the whole bucket.
 
     Returns:
         Set of document filenames, e.g. {'doc.md', 'doc.txt'}.
     """
     from autox_tests.lib.s3_data import list_s3_objects
 
-    prefix = input_data_key.rstrip("/") + "/"
-    objects = list_s3_objects(s3_client, bucket, prefix)
-
-    return {
-        obj["Key"].rsplit("/", 1)[-1]
-        for obj in objects
-        if not obj["Key"].endswith("/")
-    }
+    names = set()
+    for input_data_key in _normalize_input_data_keys(input_data_keys):
+        # S3's whole-bucket prefix is "", not "/". Adding a slash here would
+        # incorrectly exclude every ordinary object key when the input is empty.
+        prefix = input_data_key.rstrip("/")
+        if prefix:
+            prefix += "/"
+        names.update(
+            obj["Key"].rsplit("/", 1)[-1]
+            for obj in list_s3_objects(s3_client, bucket, prefix)
+            if not obj["Key"].endswith("/")
+        )
+    return names
 
 
 def get_extracted_document_names(s3_client, bucket: str, run_prefix: str) -> set[str]:
@@ -495,7 +515,7 @@ def _format_missing_documents(missing: set[str], discovered: set[str] | None) ->
 def validate_extracted_documents(
     s3_client,
     input_bucket: str,
-    input_data_key: str,
+    input_data_keys: list[str] | None,
     artifact_bucket: str,
     run_prefix: str,
     test_scenario_config,
@@ -514,7 +534,8 @@ def validate_extracted_documents(
     Args:
         s3_client: Boto3 S3 client (same endpoint serves both buckets).
         input_bucket: Bucket holding the uploaded input documents.
-        input_data_key: S3 prefix of the input documents.
+        input_data_keys: S3 prefixes of the input documents. Their union is
+            used; an empty or unset list means the whole input bucket.
         artifact_bucket: Bucket holding the pipeline artifacts.
         run_prefix: Artifact prefix for the run.
         test_scenario_config: Test scenario configuration (used for the test id).
@@ -525,11 +546,19 @@ def validate_extracted_documents(
     """
     tid = test_scenario_config.id
 
-    uploaded = get_uploaded_document_names(s3_client, input_bucket, input_data_key)
+    resolved_input_data_keys = _normalize_input_data_keys(input_data_keys)
+    uploaded = get_uploaded_document_names(s3_client, input_bucket, resolved_input_data_keys)
+    input_location = (
+        f"s3://{input_bucket}"
+        if resolved_input_data_keys == [""]
+        else ", ".join(
+            f"s3://{input_bucket}/{key.rstrip('/')}" for key in resolved_input_data_keys
+        )
+    )
     if not uploaded:
         raise AssertionError(
-            f"[{tid}] No input documents found under s3://{input_bucket}/{input_data_key} — "
-            "cannot verify text extraction. Check input_data_key and that the dataset is uploaded."
+            f"[{tid}] No input documents found under {input_location} — cannot verify text extraction. "
+            "Check input_data_keys and that the dataset is uploaded."
         )
 
     extracted = get_extracted_document_names(s3_client, artifact_bucket, run_prefix)
@@ -558,6 +587,6 @@ def validate_extracted_documents(
         f"after text extraction — the running ai4rag build appears not to support "
         f"{', '.join(unsupported)}.\n"
         f"{_format_missing_documents(missing, discovered)}\n"
-        f"  Uploaded input:  s3://{input_bucket}/{input_data_key.rstrip('/')}/\n"
+        f"  Uploaded input:  {input_location}\n"
         f"  Extracted text:  s3://{artifact_bucket}/{run_prefix}/text-extraction/*/extracted_text/"
     )

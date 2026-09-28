@@ -1,0 +1,11 @@
+# Evaluation Metrics
+
+AutoRAG uses answer correctness (semantic similarity and factual overlap), faithfulness (whether answers are grounded in retrieved context), context relevance (quality of retrieval), and LLM-as-a-judge for subjective quality assessment on dimensions like helpfulness, coherence, and completeness.
+
+Key Metrics:
+1. Answer Correctness (0-1): Semantic similarity to ground truth
+2. Faithfulness (0-1): Grounding in retrieved context
+3. Context Relevance (0-1): Quality of retrieval
+4. LLM-as-Judge: Subjective quality dimensions
+
+All metrics are aggregated into an overall score.

@@ -73,16 +73,16 @@ class AutoRAGTestConfig:
         generation_models: Generation model IDs for the search space. Required by the
             MaaS pipeline. A JSON list, or "env" to read from AUTORAG_GENERATION_MODELS.
         optimization_max_rag_patterns: Cap on the number of RAG patterns explored.
-        input_data_keys: Paths to the input document folders within the bucket. The
-            pipeline honours only the first entry; an empty or unset list makes
-            document discovery scan the whole bucket.
+        input_data_keys: Paths to the input document folders within the bucket.
+            The pipeline discovers the union of all entries; an empty or unset
+            list makes document discovery scan the whole bucket.
         test_data_key: Path to the benchmark JSON within the test-data bucket.
         optimization_metric: Metric to optimize (e.g. "faithfulness").
         run_notebook: Whether to execute the generated notebooks in Kubernetes Jobs.
 
     The vector-store backend is no longer a pipeline parameter: the pipeline
-    auto-detects it from the secret named by ``vector_db_secret_name`` (MILVUS_* vs
-    PGVECTOR_* keys), which the harness wires from the VECTOR_DB_SECRET_NAME env var.
+    auto-detects it from the secret named by ``db_secret_name`` (MILVUS_* vs
+    PGVECTOR_* keys), which the harness sources from the VECTOR_DB_SECRET_NAME env var.
     """
 
     __test__ = False  # prevent pytest collection
@@ -119,7 +119,7 @@ class AutoRAGTestConfig:
             "input_data_secret_name": base_config["input_data_secret_name"],
             "input_data_bucket_name": base_config["input_data_bucket_name"],
             "maas_secret_name": base_config["maas_secret_name"],
-            "vector_db_secret_name": base_config["vector_db_secret_name"],
+            "db_secret_name": base_config["vector_db_secret_name"],
             "test_data_key": self.test_data_key or "",
             "input_data_keys": list(self.input_data_keys or []),
             "optimization_metric": self.optimization_metric or "",
@@ -207,9 +207,9 @@ class IndexingTestConfig:
         expected_result: "pass" or "fail" — whether the pipeline run should succeed.
         embedding_model_id: Embedding model ID served by MaaS. Use "env" to read from
             the ``AUTORAG_INDEXING_EMBEDDING_MODEL_ID`` env var.
-        input_data_keys: Paths to folders with input documents within the bucket. The
-            pipeline honours only the first entry; an empty or unset list makes
-            document discovery scan the whole bucket.
+        input_data_keys: Paths to folders with input documents within the bucket.
+            The pipeline discovers the union of all entries; an empty or unset
+            list makes document discovery scan the whole bucket.
         collection_name: Vector store collection to reuse. Omit to create a new one.
         chunking_method: Chunking method (default: "recursive").
         chunk_size: Maximum chunk size in tokens (default: 1024).
@@ -218,7 +218,7 @@ class IndexingTestConfig:
         expected_failing_task: For negative scenarios, KFP task display names expected to fail.
 
     The vector-store backend is auto-detected by the pipeline from the secret named by
-    ``vector_db_secret_name`` (MILVUS_* vs PGVECTOR_* keys), wired from VECTOR_DB_SECRET_NAME.
+    ``db_secret_name`` (MILVUS_* vs PGVECTOR_* keys), sourced from VECTOR_DB_SECRET_NAME.
     """
 
     __test__ = False
@@ -260,7 +260,7 @@ class IndexingTestConfig:
 
         arguments: dict[str, Any] = {
             "maas_secret_name": base_config["maas_secret_name"],
-            "vector_db_secret_name": base_config["vector_db_secret_name"],
+            "db_secret_name": base_config["vector_db_secret_name"],
             "embedding_model_id": embedding_model_id,
             "input_data_secret_name": base_config["input_data_secret_name"],
             "input_data_bucket_name": base_config["input_data_bucket_name"],

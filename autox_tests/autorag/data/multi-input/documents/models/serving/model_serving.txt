@@ -1,0 +1,14 @@
+# Model Serving Configuration
+
+For English-only workloads, specialized sentence transformer models may provide better performance.
+
+Model Selection:
+- English-only: Use sentence-transformers/all-MiniLM-L6-v2
+- Multilingual: Use BGE-M3
+- Domain-specific: Use specialized models (e.g., scientific, legal)
+- Custom: Fine-tune on your domain data
+
+Performance:
+- Embedding dimension: 384 or 1024 depending on model
+- Latency: 1-10ms per embedding on GPU
+- Throughput: 1000+ embeddings/second
