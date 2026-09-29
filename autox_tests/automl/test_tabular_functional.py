@@ -237,19 +237,16 @@ class TestAutoMLTabularFunctional:
             assert test_dataset_key is not None, (
                 f"[{test_config.id}] No sampled_test_dataset artifact found under {prefix}"
             )
-            # Skip experiment notebook validation in 3.6-ea.2 release
-            # experiment_notebook_key = assert_experiment_notebook_artifact(
-            #     s3_client_automl_functional,
-            #     bucket,
-            #     prefix,
-            #     run_id=run_id,
-            #     namespace=automl_functional_config["rhoai_project"],
-            # )
-            # logger.info(
-            #     "[%s] experiment_notebook_key=%s",
-            #     test_config.id,
-            #     experiment_notebook_key,
-            # )
+            experiment_notebook_key = assert_experiment_notebook_artifact(
+                s3_client_automl_functional,
+                bucket,
+                prefix,
+            )
+            logger.info(
+                "[%s] experiment_notebook_key=%s",
+                test_config.id,
+                experiment_notebook_key,
+            )
             if (
                 test_config.expected_test_dataset_rows is not None
                 or test_config.expected_test_dataset_contains
