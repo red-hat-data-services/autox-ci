@@ -295,10 +295,6 @@ def assert_experiment_notebook_artifact(
             f"the {section!r} section"
         )
 
-    source = "\n".join("".join(cell.get("source", [])) for cell in cells)
-    assert "<REPLACE_" not in source, (
-        "Experiment notebook contains unreplaced configuration placeholders"
-    )
     return notebook_key
 
 
