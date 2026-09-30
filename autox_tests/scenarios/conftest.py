@@ -46,7 +46,7 @@ logger = logging.getLogger(__name__)
 
 
 def pytest_configure(config: pytest.Config) -> None:
-    """Load ``tests/.env`` before collection (env vars already set take precedence)."""
+    """Load ``autox_tests/.env`` before collection (env vars already set take precedence)."""
     load_tests_env()
 
 
@@ -384,7 +384,7 @@ def kfp_client_automl(
             "- Set RHOAI_KFP_URL to the Data Science Pipelines HTTPS route, or\n"
             "- Set RHOAI_CREATE_DSPA=true and ensure the ds-pipeline route is created in the project.\n"
             "If the route is slow to appear, increase RHOAI_DSPA_ROUTE_WAIT_TIMEOUT. "
-            "See tests/.env.example."
+            "Configure autox_tests/.env or export the variables."
         )
     host = str(host).rstrip("/") + "/"
     client_kw: dict[str, Any] = {
@@ -430,7 +430,7 @@ def kfp_client_autorag(
             "- Set RHOAI_KFP_URL (or KFP_HOST), or\n"
             "- Set RHOAI_CREATE_DSPA=true and ensure the pipeline route is available.\n"
             "If the route is slow to appear, increase RHOAI_DSPA_ROUTE_WAIT_TIMEOUT. "
-            "See tests/.env.example."
+            "Configure autox_tests/.env or export the variables."
         )
     host = str(host).rstrip("/") + "/"
     client_kw = {

@@ -63,7 +63,7 @@ _EXPECTED_FAIL_TIMEOUT_CAP = 600
 @pytest.mark.positive
 @pytest.mark.skipif(
     AUTOML_FUNCTIONAL_CONFIG is None,
-    reason="AutoML env incomplete (RHOAI_URL, RHOAI_TOKEN, RHOAI_PROJECT_NAME, S3, RHOAI_TRAIN_DATA_*; see .env.ml.example)",
+    reason="AutoML env incomplete (RHOAI_URL, RHOAI_TOKEN, RHOAI_PROJECT_NAME, S3, RHOAI_TRAIN_DATA_*; see autox_tests/.env.ml.example)",
 )
 class TestAutoMLTimeseriesFunctional:
     """Positive functional tests for AutoGluon timeseries training pipeline."""
@@ -323,7 +323,7 @@ class TestAutoMLTimeseriesFunctional:
 @pytest.mark.negative
 @pytest.mark.skipif(
     AUTOML_FUNCTIONAL_CONFIG is None,
-    reason="AutoML env incomplete (RHOAI_URL, RHOAI_TOKEN, RHOAI_PROJECT_NAME, S3, RHOAI_TRAIN_DATA_*; see .env.ml.example)",
+    reason="AutoML env incomplete (RHOAI_URL, RHOAI_TOKEN, RHOAI_PROJECT_NAME, S3, RHOAI_TRAIN_DATA_*; see autox_tests/.env.ml.example)",
 )
 class TestAutoMLTimeseriesFunctionalNegative:
     """Negative functional tests for AutoGluon timeseries training pipeline."""

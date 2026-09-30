@@ -172,7 +172,7 @@ def _assert_indexing_report(report: dict, test_config: "IndexingTestConfig") -> 
     reason=(
         "Indexing pipeline env incomplete "
         "(RHOAI_URL or RHOAI_KFP_URL, RHOAI_TOKEN, INPUT_DATA_BUCKET_NAME, "
-        "MAAS_SECRET_NAME, VECTOR_DB_SECRET_NAME; see .env.rag.example)"
+        "MAAS_SECRET_NAME, VECTOR_DB_SECRET_NAME; see autox_tests/.env.rag.example)"
     ),
 )
 class TestAutoRAGIndexingFunctional:
