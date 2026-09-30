@@ -5,8 +5,8 @@
       "AutoRAG supports PDF, DOCX, PPTX, Markdown, HTML, plain text, OpenDocument formats (ODT, ODP), AsciiDoc, LaTeX, EPUB, email formats (EML), Quarto Markdown (.qmd), R Markdown (.Rmd), and XHTML."
     ],
     "correct_answer_document_keys": [
-      "datasets/rag/multi-input/documents/manuals/xr-200/openshift_ai_overview.txt",
-      "datasets/rag/multi-input/documents/policies/warranty/release_announcement.txt"
+      "datasets/rag/multi-input-split/set_a/manuals/xr-200/openshift_ai_overview.txt",
+      "datasets/rag/multi-input-split/set_b/policies/warranty/release_announcement.txt"
     ]
   },
   {
@@ -15,7 +15,7 @@
       "AutoRAG supports Milvus (both inline Milvus Lite and remote deployment), ChromaDB for development and small-scale deployments, and PGVector as a PostgreSQL extension for vector similarity search."
     ],
     "correct_answer_document_keys": [
-      "datasets/rag/multi-input/documents/guides/vector_stores.txt"
+      "datasets/rag/multi-input-split/set_a/guides/vector_stores.txt"
     ]
   },
   {
@@ -24,7 +24,7 @@
       "AutoRAG supports two chunking methods: hybrid chunking using Docling's HybridChunker which is structure-aware and preserves document hierarchy but does not support overlap, and recursive chunking using LangChain's RecursiveCharacterTextSplitter which exports to markdown first and supports configurable chunk overlap from 0 to 256 tokens."
     ],
     "correct_answer_document_keys": [
-      "datasets/rag/multi-input/documents/technical/xr-300/chunking_strategies.txt"
+      "datasets/rag/multi-input-split/set_a/technical/xr-300/chunking_strategies.txt"
     ]
   },
   {
@@ -33,8 +33,8 @@
       "Documents are downloaded from S3 storage concurrently, each document is converted using the Docling DocumentConverter, the resulting DoclingDocument is saved as a JSON file, and plain text files bypass the converter and are wrapped directly into a DoclingDocument."
     ],
     "correct_answer_document_keys": [
-      "datasets/rag/multi-input/documents/documentation/xr-200/docling_integration.txt",
-      "datasets/rag/multi-input/documents/readme/docling_integration.txt"
+      "datasets/rag/multi-input-split/set_b/documentation/xr-200/docling_integration.txt",
+      "datasets/rag/multi-input-split/set_a/readme/docling_integration.txt"
     ]
   },
   {
@@ -43,7 +43,7 @@
       "AutoRAG uses Generalized Additive Models (GAM) as the primary optimization algorithm. GAM models the relationship between RAG parameters and evaluation scores, enabling efficient exploration of the search space. A random search optimizer is also available as a baseline."
     ],
     "correct_answer_document_keys": [
-      "datasets/rag/multi-input/documents/algorithms/optimization/optimization_process.txt"
+      "datasets/rag/multi-input-split/set_b/algorithms/optimization/optimization_process.txt"
     ]
   },
   {
@@ -52,8 +52,8 @@
       "Prerequisites include Red Hat OpenShift cluster version 4.14 or later, Red Hat OpenShift AI operator installed, Data Science Pipelines Application (DSPA) configured, S3-compatible object storage for document corpus and artifacts, and OGX platform for embedding and foundation model serving."
     ],
     "correct_answer_document_keys": [
-      "datasets/rag/multi-input/documents/deployment/enterprise/enterprise_deployment.txt",
-      "datasets/rag/multi-input/documents/deployment/openshift/enterprise_deployment.txt"
+      "datasets/rag/multi-input-split/set_a/deployment/enterprise/enterprise_deployment.txt",
+      "datasets/rag/multi-input-split/set_b/deployment/openshift/enterprise_deployment.txt"
     ]
   },
   {
@@ -62,7 +62,7 @@
       "The six stages are: Document Discovery (list and filter S3 objects), Text Extraction (convert to DoclingDocument), Test Data Loading (load benchmark Q&A data), Search Space Preparation (build hyperparameter search space), RAG Templates Optimization (run HPO loop), and Assets Generation (produce pattern JSON, notebooks, and reports)."
     ],
     "correct_answer_document_keys": [
-      "datasets/rag/multi-input/documents/architecture/core/pipeline_architecture.txt"
+      "datasets/rag/multi-input-split/set_a/architecture/core/pipeline_architecture.txt"
     ]
   },
   {
@@ -71,7 +71,7 @@
       "AutoRAG uses answer correctness (semantic similarity and factual overlap), faithfulness (whether answers are grounded in retrieved context), context relevance (quality of retrieval), and LLM-as-a-judge for subjective quality assessment on dimensions like helpfulness, coherence, and completeness."
     ],
     "correct_answer_document_keys": [
-      "datasets/rag/multi-input/documents/metrics/evaluation/evaluation_metrics.txt"
+      "datasets/rag/multi-input-split/set_b/metrics/evaluation/evaluation_metrics.txt"
     ]
   },
   {
@@ -80,8 +80,8 @@
       "S3 credentials are managed through Kubernetes secrets and resolved from explicit parameters first, then environment variables (AWS_S3_ENDPOINT, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_DEFAULT_REGION). During text extraction, documents are downloaded concurrently using a ThreadPoolExecutor with a maximum of 8 threads, sorted by size in descending order to avoid straggler problems."
     ],
     "correct_answer_document_keys": [
-      "datasets/rag/multi-input/documents/infrastructure/storage/s3_storage.txt",
-      "datasets/rag/multi-input/documents/infrastructure/credentials/s3_storage.txt"
+      "datasets/rag/multi-input-split/set_a/infrastructure/storage/s3_storage.txt",
+      "datasets/rag/multi-input-split/set_b/infrastructure/credentials/s3_storage.txt"
     ]
   },
   {
@@ -90,8 +90,8 @@
       "The search space preparation stage can automatically detect the language of the document corpus and pre-select appropriate embedding models. For multilingual corpora, BGE-M3 is commonly used. For English-only workloads, specialized sentence transformer models may provide better performance."
     ],
     "correct_answer_document_keys": [
-      "datasets/rag/multi-input/documents/models/embedding/multilingual/model_serving.txt",
-      "datasets/rag/multi-input/documents/models/serving/model_serving.txt"
+      "datasets/rag/multi-input-split/set_a/models/embedding/multilingual/model_serving.txt",
+      "datasets/rag/multi-input-split/set_b/models/serving/model_serving.txt"
     ]
   },
   {
@@ -100,7 +100,7 @@
       "All document processing occurs within the customer's OpenShift cluster, ensuring sensitive corporate documents never leave the organization's infrastructure boundary. Pipeline access is controlled through OpenShift RBAC. S3 credentials and OGX API keys are stored as Kubernetes secrets and injected into pipeline pods at runtime."
     ],
     "correct_answer_document_keys": [
-      "datasets/rag/multi-input/documents/security/compliance/security_compliance.txt"
+      "datasets/rag/multi-input-split/set_b/security/compliance/security_compliance.txt"
     ]
   }
 ]
