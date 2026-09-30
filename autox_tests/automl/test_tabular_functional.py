@@ -8,7 +8,7 @@ Passing criteria for positive scenarios:
 - Pipeline run finishes with SUCCEEDED status within timeout
 - At least 1 model with metrics exists in S3
 - Leaderboard HTML artifact exists in S3
-- Test dataset CSV artifact exists in S3
+- Test dataset artifact exists in S3 (Parquet or CSV)
 - User-provided test scenarios (`user_test_data` tag): `sampled_test_dataset` row count matches the external CSV, not a default 80/20 holdout
 
 Passing criteria for negative scenarios:
@@ -42,7 +42,7 @@ from .utils import (
     download_and_execute_automl_notebook,
     assert_sampled_test_dataset,
     find_leaderboard_html,
-    find_test_dataset_csv,
+    find_test_dataset_artifact,
     run_deployment_test,
 )
 from autox_tests.lib.s3_data import list_s3_objects
@@ -141,7 +141,7 @@ class TestAutoMLTabularFunctional:
             leaderboard_key, leaderboard_html = find_leaderboard_html(
                 s3_client_automl_functional, bucket, prefix
             )
-            test_dataset_key = find_test_dataset_csv(
+            test_dataset_key = find_test_dataset_artifact(
                 s3_client_automl_functional, bucket, prefix
             )
 

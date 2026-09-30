@@ -338,7 +338,7 @@ S3 keys whose *absence* is the injected fault. Everything else referenced by any
 - At least one model with a metrics JSON exists in S3
 - Primary metric present (`r2` for regression, `accuracy` for classification, `MASE` for time series)
 - Leaderboard HTML artifact exists in S3
-- Sampled test dataset CSV exists in S3
+- Sampled test dataset artifact exists in S3 as Parquet or CSV
 - User-provided test scenarios (`user_test_data` tag): `sampled_test_dataset` matches the external CSV row count rather than a default 80/20 holdout
 - When `run_notebook: true`, a selected predictor notebook completes in a Kubernetes Job
 - *(when `deploy: true`)* InferenceService becomes Ready and returns non-empty predictions

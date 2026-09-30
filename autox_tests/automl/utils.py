@@ -1,16 +1,17 @@
 """Shared utilities for AutoML functional tests."""
 
+import csv
 import json
 import logging
 import os
 import re
 import secrets
 import ssl
-import tempfile
 import time
 import urllib.error
 import urllib.request
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
+from io import BytesIO, StringIO
 from pathlib import Path
 
 from autox_tests.lib.clients import make_kfp_client, make_s3_client  # noqa: F401
@@ -232,12 +233,18 @@ def find_leaderboard_html(
     return None, None
 
 
-def find_test_dataset_csv(s3_client, bucket: str, run_prefix: str) -> str | None:
-    """Find the sampled_test_dataset artifact produced by the data loader component in S3."""
+def find_test_dataset_artifact(s3_client, bucket: str, run_prefix: str) -> str | None:
+    """Find a Parquet or CSV sampled_test_dataset artifact in S3."""
     objects = list_s3_objects(s3_client, bucket, run_prefix)
-    for obj in objects:
-        if "sampled_test_dataset" in obj["Key"]:
-            return obj["Key"]
+    keys = {obj["Key"] for obj in objects}
+    for suffix in (".parquet", ".csv"):
+        matches = sorted(
+            key
+            for key in keys
+            if key.rsplit("/", 1)[-1] == f"sampled_test_dataset{suffix}"
+        )
+        if matches:
+            return matches[0]
     return None
 
 
@@ -307,35 +314,49 @@ def assert_sampled_test_dataset(
     expected_rows: int | None = None,
     must_contain: str | None = None,
 ) -> None:
-    """Assert the data-loader test artifact matches a user-provided test CSV.
+    """Assert the data-loader test artifact matches user-provided test data.
 
-    Row count distinguishes user test data from the default 80/20 holdout. Optional
-    ``must_contain`` is a distinctive substring that cannot appear in an auto-split
-    of the training file (for example a canary label value).
+    Row count distinguishes user test data from the default holdout. Optional
+    ``must_contain`` checks parsed values for a distinctive substring that cannot
+    appear in an auto-split of the training file.
     """
     try:
         resp = s3_client.get_object(Bucket=bucket, Key=test_dataset_key)
-        text = resp["Body"].read().decode("utf-8")
+        payload = resp["Body"].read()
+        suffix = Path(test_dataset_key).suffix.lower()
+        if suffix == ".parquet":
+            import pyarrow.parquet as pq
+
+            rows = pq.read_table(BytesIO(payload)).to_pylist()
+        elif suffix == ".csv":
+            rows = list(csv.DictReader(StringIO(payload.decode("utf-8-sig"))))
+        else:
+            raise ValueError(
+                f"Unsupported sampled_test_dataset format: {suffix or '<none>'}"
+            )
     except Exception as exc:
         raise AssertionError(
             f"[{scenario_id}] Failed to read sampled_test_dataset "
             f"s3://{bucket}/{test_dataset_key}: {exc}"
         ) from exc
 
-    data_rows = [line for line in text.splitlines() if line.strip()]
-    n_data = max(0, len(data_rows) - 1)
+    n_data = len(rows)
     if expected_rows is not None:
         assert n_data == expected_rows, (
             f"[{scenario_id}] sampled_test_dataset row count {n_data} != "
-            f"expected {expected_rows} (user-provided test CSV). "
-            f"A default 80/20 holdout would not match this size. "
+            f"expected {expected_rows} (user-provided test data). "
+            f"A default holdout would not match this size. "
             f"artifact=s3://{bucket}/{test_dataset_key}"
         )
     needle = (must_contain or "").strip()
     if needle:
-        assert needle in text, (
+        assert any(
+            needle in (value.isoformat() if isinstance(value, date) else str(value))
+            for row in rows
+            for value in row.values()
+        ), (
             f"[{scenario_id}] sampled_test_dataset does not contain {needle!r}; "
-            f"the user-provided test CSV was not written to the artifact. "
+            f"the user-provided test data was not written to the artifact. "
             f"artifact=s3://{bucket}/{test_dataset_key}"
         )
 

@@ -1,15 +1,22 @@
-"""Local tests for AutoML scenario config loading and pipeline argument wiring."""
+"""Local tests for AutoML scenario config loading and artifact validation."""
 
+from datetime import datetime, timedelta
 from io import BytesIO
 
 import pytest
+import pyarrow as pa
+import pyarrow.parquet as pq
 
 from autox_tests.automl.configs.configs import (
     get_all_train_data_file_keys,
     get_tabular_configs_for_run,
     get_timeseries_configs_for_run,
 )
-from autox_tests.automl.utils import assert_sampled_test_dataset
+from autox_tests.automl import utils
+from autox_tests.automl.utils import (
+    assert_sampled_test_dataset,
+    find_test_dataset_artifact,
+)
 
 pytestmark = pytest.mark.config
 
@@ -79,7 +86,7 @@ def test_user_test_keys_are_included_for_s3_upload() -> None:
 
 
 def test_assert_sampled_test_dataset_accepts_matching_csv() -> None:
-    body = "price,area\n42424242,9999\n1,2\n"
+    body = 'price,area\n"42424242\nalt",9999\n1,2\n'
 
     class _FakeS3:
         def get_object(self, Bucket, Key):  # noqa: N803
@@ -94,4 +101,58 @@ def test_assert_sampled_test_dataset_accepts_matching_csv() -> None:
         scenario_id="TC-A-7",
         expected_rows=2,
         must_contain="42424242",
+    )
+
+
+@pytest.mark.parametrize(
+    ("keys", "expected"),
+    [
+        (["run/sampled_test_dataset.csv"], "run/sampled_test_dataset.csv"),
+        (["run/sampled_test_dataset.parquet"], "run/sampled_test_dataset.parquet"),
+        (
+            ["run/sampled_test_dataset.csv", "run/sampled_test_dataset.parquet"],
+            "run/sampled_test_dataset.parquet",
+        ),
+    ],
+)
+def test_find_test_dataset_artifact(
+    monkeypatch, keys: list[str], expected: str
+) -> None:
+    monkeypatch.setattr(
+        utils,
+        "list_s3_objects",
+        lambda client, bucket, prefix: [{"Key": key} for key in keys],
+    )
+    assert find_test_dataset_artifact(object(), "b", "run/") == expected
+
+
+@pytest.mark.parametrize("scenario_id", ["TC-A-7", "TC-B-3"])
+def test_assert_sampled_test_dataset_accepts_matching_parquet(scenario_id: str) -> None:
+    if scenario_id == "TC-A-7":
+        table = pa.table({"Risk": ["good"] * 400})
+        expected_rows = 400
+        must_contain = "good"
+    else:
+        table = pa.table(
+            {"date": [datetime(2021, 3, 4) + timedelta(days=day) for day in range(25)]}
+        )
+        expected_rows = 25
+        must_contain = "2021-03-28"
+
+    body = BytesIO()
+    pq.write_table(table, body)
+
+    class _FakeS3:
+        def get_object(self, Bucket, Key):  # noqa: N803
+            assert Bucket == "b"
+            assert Key == "sampled_test_dataset.parquet"
+            return {"Body": BytesIO(body.getvalue())}
+
+    assert_sampled_test_dataset(
+        _FakeS3(),
+        "b",
+        "sampled_test_dataset.parquet",
+        scenario_id=scenario_id,
+        expected_rows=expected_rows,
+        must_contain=must_contain,
     )
