@@ -219,6 +219,7 @@ results/
 .idea/
 **/.env.ml*
 **/.env.rag*
+
 !**/.env.ml.example
 !**/.env.rag.example
 
