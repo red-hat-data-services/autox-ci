@@ -217,8 +217,8 @@ credentials.ini
 downloaded_datasets/
 results/
 .idea/
-**/.env.ml
-**/.env.rag
+**/.env.ml*
+**/.env.rag*
 
 # Local documents and files
 local/
