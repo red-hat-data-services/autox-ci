@@ -22,9 +22,8 @@ autox_benchmarks/
 ├── automl_benchmark/          # AutoML orchestration, compare logic, S3 upload
 ├── autorag_benchmark/         # AutoRAG orchestration, pattern scores, datasets/
 ├── benchmark_common/          # Shared KFP, S3, pipeline compile, manifest helpers
-├── config/                    # Your local config (gitignored secrets)
+├── config/                    # Benchmark config and dataset manifests
 │   ├── benchmark.yaml         # Run tuning + manifest path (copy from templates/)
-│   ├── .env                     # KFP / S3 / pipeline secrets (copy from .env.example)
 │   └── dataset_manifest.yaml  # Dataset registry for your suite
 ├── pipelines/                 # Optional pre-compiled KFP IR (checked-in examples)
 ├── scripts/                   # CLI entry points (run from this directory)
@@ -34,6 +33,7 @@ autox_benchmarks/
 │   ├── generate_rag_datasets.py
 │   └── ...
 ├── templates/                 # Example benchmark.yaml, manifests
+├── .env                       # KFP / S3 / pipeline secrets (copy from .env.example)
 ├── .env.example               # Credentials template (copy to .env)
 ├── tests/                     # Unit tests (e.g. compare_logic)
 ├── docs/                      # S3 layout reference

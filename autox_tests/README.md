@@ -15,7 +15,7 @@ Two independent suites live here, each with its own env file, config JSON, and p
 
 ### Before the first run
 
-1. **S3 Data Connection (manual, once per namespace)** — In the RHOAI dashboard, create an S3 connection in your project (e.g. name `minio`). Set the same name in `.env` as `RHOAI_TRAIN_S3_SECRET_NAME` (AutoML) or `RHOAI_TEST_S3_SECRET_NAME` / `TEST_DATA_SECRET_NAME` (AutoRAG). Tests only ensure labels on that secret; they do not replace credentials from the UI by default.
+1. **S3 Data Connection (manual, once per namespace)** — In the RHOAI dashboard, create an S3 connection in your project (e.g. name `minio`). Set the same name in `autox_tests/.env.ml` as `RHOAI_TRAIN_S3_SECRET_NAME` (AutoML) or in `autox_tests/.env.rag` as `RHOAI_TEST_S3_SECRET_NAME` / `TEST_DATA_SECRET_NAME` (AutoRAG). Tests only ensure labels on that secret; they do not replace credentials from the UI by default.
 2. **DSPA (automatic)** — You do **not** need `oc apply` for a pipeline server. Leave `RHOAI_KFP_URL` empty: pytest creates a `DataSciencePipelinesApplication` (`RHOAI_DSPA_NAME`, default `dspa`) with `managedPipelines`, waits for it to become Ready, and uses the `ds-pipeline` route. If a DSPA with that name already exists, tests reuse it (HTTP 409).
 
 To use an existing pipeline server instead: set `RHOAI_KFP_URL` and `RHOAI_CREATE_DSPA=false`.

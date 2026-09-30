@@ -2,7 +2,7 @@
 
 These tests require a Red Hat OpenShift AI (RHOAI) cluster with Data Science Pipelines
 enabled, and environment variables set for cluster URL, credentials, and pipeline
-parameters. When not set, tests are skipped. See .env.example for required variables.
+parameters. When not set, tests are skipped. See autox_tests/.env.rag.example for required variables.
 
 Test scenarios are defined in optimisation_test_configs.json and loaded via configs.py. Each
 scenario specifies pipeline parameter overrides and an expected result (pass or fail).
@@ -53,7 +53,7 @@ _EXPECTED_FAIL_TIMEOUT_CAP = 600
 @pytest.mark.autorag
 @pytest.mark.skipif(
     DOCRAG_FUNCTIONAL_CONFIG is None,
-    reason="RHOAI functional test env not set (set RHOAI_KFP_URL, RHOAI_TOKEN, pipeline params; see .env.example)",
+    reason="RHOAI functional test env not set (set RHOAI_KFP_URL, RHOAI_TOKEN, pipeline params; see autox_tests/.env.rag.example)",
 )
 class TestAutoRAGFunctional:
     """Functional tests for the Documents RAG Optimization pipeline."""

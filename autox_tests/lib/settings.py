@@ -1,7 +1,7 @@
 """Environment-driven settings for root OpenShift AI KFP tests.
 
-Call :func:`load_tests_env` from ``tests/lib/env.py`` before reading configuration
-(``tests/scenarios/conftest.py`` does this at session start via ``pytest_configure``).
+Call :func:`load_tests_env` from ``autox_tests/lib/env.py`` before reading configuration
+(``autox_tests/scenarios/conftest.py`` does this at session start via ``pytest_configure``).
 """
 
 from __future__ import annotations
@@ -119,8 +119,8 @@ def get_rhoai_integration_https_verify() -> bool:
        the same falsy tokens disable verification.
     3. Else ``True`` (verify).
 
-    Environment variables already set in the process are not overridden by ``tests/.env`` until
-    :func:`tests.lib.env.load_tests_env` runs.
+    Variables already set in the process take precedence over ``autox_tests/.env``
+    when :func:`autox_tests.lib.env.load_tests_env` runs.
     """
     load_tests_env()
     for key in (RHOAI_HTTPS_VERIFY_ENV, "KFP_VERIFY_SSL"):
@@ -529,7 +529,7 @@ def describe_rhoai_automl_config_failure() -> str | None:
     if not (os.environ.get(S3_BUCKET_DATA_ENV) or "").strip():
         return (
             f"Missing {S3_BUCKET_DATA_ENV} (bucket for training data uploads and pipeline inputs).\n"
-            "See tests/.env.example."
+            "Configure autox_tests/.env or export the variables."
         )
 
     dspa = get_dspa_config_from_env()
@@ -538,11 +538,11 @@ def describe_rhoai_automl_config_failure() -> str | None:
             "Kubeflow Pipelines API URL is not configured:\n"
             f"  - Set {RHOAI_KFP_URL_ENV} to the Data Science Pipelines route, **or**\n"
             f"  - Set {RHOAI_CREATE_DSPA_ENV}=true so the suite can create a DSPA and use the ds-pipeline route.\n"
-            "See tests/.env.example."
+            "Configure autox_tests/.env or export the variables."
         )
 
     if get_rhoai_automl_config() is None:
-        return "AutoML configuration is still incomplete after validation (internal check); see tests/.env.example."
+        return "AutoML configuration is still incomplete after validation (internal check); check autox_tests/.env and exported variables."
     return None
 
 
@@ -583,7 +583,7 @@ def describe_autorag_connection_config_failure() -> str | None:
         return "AutoRAG integration requires:\n" + "\n".join(lines)
 
     if get_autorag_connection_config() is None:
-        return "AutoRAG connection config is incomplete (unexpected); see tests/.env.example."
+        return "AutoRAG connection config is incomplete (unexpected); check autox_tests/.env and exported variables."
     return None
 
 
