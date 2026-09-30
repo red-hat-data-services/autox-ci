@@ -24,7 +24,7 @@ pyproject.toml          Dependencies, extras, and pytest markers
 
 ## Quick start
 
-1. In the RHOAI UI, create an **S3 Data Connection** in your test namespace (e.g. `minio`) and point `.env` at that secret name.
+1. In the RHOAI UI, create an **S3 Data Connection** in your test namespace (e.g. `minio`) and set its secret name in the suite's local env file (`autox_tests/.env.ml` or `autox_tests/.env.rag`).
 2. Copy and fill the env template — leave **`RHOAI_KFP_URL` unset** so tests auto-create **DSPA** and import managed pipelines.
 3. Run via `run_tests.sh` (details: [autox_tests/README.md](autox_tests/README.md#running-tests-cluster-setup)).
 
@@ -37,6 +37,8 @@ cp autox_tests/.env.ml.example autox_tests/.env.ml
 cp autox_tests/.env.rag.example autox_tests/.env.rag
 ./run_tests.sh --suite autorag --env-file autox_tests/.env.rag -t smoke
 ```
+
+Git ignores the filled-in `.env.ml` and `.env.rag` files; the `.example` templates remain tracked.
 
 ## Test runner (`run_tests.sh`)
 
