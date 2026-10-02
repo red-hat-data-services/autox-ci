@@ -41,6 +41,7 @@ from .utils import (
     assert_expected_error_pattern,
     collect_model_metrics_and_sizes,
     download_and_execute_automl_notebook,
+    failed_task_matches_expected_stage,
     assert_sampled_test_dataset,
     find_leaderboard_html,
     find_test_dataset_artifact,
@@ -398,7 +399,9 @@ class TestAutoMLTimeseriesFunctionalNegative:
 
         if test_config.expected_failing_task:
             matched = any(
-                t in failed_task_names for t in test_config.expected_failing_task
+                failed_task_matches_expected_stage(expected, actual)
+                for expected in test_config.expected_failing_task
+                for actual in failed_task_names
             )
             assert matched, (
                 f"[{test_config.id}] Expected one of {test_config.expected_failing_task} to fail; "
