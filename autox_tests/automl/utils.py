@@ -69,6 +69,16 @@ TASK_PRIMARY_METRICS_TABULAR: dict[str, str] = {
 TS_PRIMARY_METRIC = "mean_absolute_scaled_error"
 
 
+def failed_task_matches_expected_stage(expected_task: str, failed_task: str) -> bool:
+    """Match a component stage despite KFP's conditional-branch task suffixes.
+
+    KFP assigns ``-2``, ``-3``, etc. to otherwise identical component tasks when
+    a pipeline compiles multiple conditional branches.  Those ordinal suffixes are
+    graph structure, not part of the AutoML component stage being tested.
+    """
+    return re.sub(r"-\d+$", "", expected_task) == re.sub(r"-\d+$", "", failed_task)
+
+
 def _make_run_name(prefix: str) -> str:
     """Return a unique run name: ``<prefix>-<6 hex chars>-<YYYYMMDD-HHMMSS>``."""
     hex_part = secrets.token_hex(3)
