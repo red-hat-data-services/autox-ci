@@ -11,6 +11,18 @@ import os
 from benchmark_common.paths import resolve_under
 
 
+def _as_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in ("1", "true", "yes", "on")
+
+
+def _resolve_bool(env_var: str, cfg_default: Any) -> bool:
+    """Env var (if set) overrides the config value; both coerce to bool."""
+    raw = os.environ.get(env_var, "").strip()
+    return _as_bool(raw) if raw else _as_bool(cfg_default)
+
+
 @dataclass(frozen=True)
 class BenchmarkSettings:
     config_dir: Path
@@ -36,6 +48,11 @@ class BenchmarkSettings:
     embedding_models: list[str] = field(default_factory=list)
     generation_models: list[str] = field(default_factory=list)
     pipeline_mode: str = "package"
+    run_indexing: bool = False
+    indexing_pattern_name: str = ""
+    indexing_timeout_seconds: float = 0.0
+    run_e2e_evaluation: bool = False
+    generate_report: bool = False
 
 
 def benchmark_settings_from_config(cfg: dict[str, Any], config_dir: Path) -> BenchmarkSettings:
@@ -91,12 +108,7 @@ def benchmark_settings_from_config(cfg: dict[str, Any], config_dir: Path) -> Ben
     bench_prefix_base = str(storage_cfg.get("benchmark_s3_prefix") or "benchmarks/rag").strip().strip("/")
     bench_prefix = f"{bench_prefix_base}/{suite}"
     upload_raw = storage_cfg.get("upload_benchmark_results")
-    if upload_raw is None:
-        upload_benchmark_results = True
-    elif isinstance(upload_raw, bool):
-        upload_benchmark_results = upload_raw
-    else:
-        upload_benchmark_results = str(upload_raw).strip().lower() in ("1", "true", "yes", "on")
+    upload_benchmark_results = True if upload_raw is None else _as_bool(upload_raw)
 
     return BenchmarkSettings(
         config_dir=config_dir,
@@ -122,4 +134,14 @@ def benchmark_settings_from_config(cfg: dict[str, Any], config_dir: Path) -> Ben
         preset=str(run_cfg.get("preset", "")),
         upload_benchmark_results=upload_benchmark_results,
         pipeline_mode=mode,
+        run_indexing=_resolve_bool("BENCHMARK_RUN_INDEXING", run_cfg.get("run_indexing", False)),
+        indexing_pattern_name=(
+            os.environ.get("BENCHMARK_INDEXING_PATTERN_NAME", "").strip()
+            or str(run_cfg.get("indexing_pattern_name", ""))
+        ),
+        indexing_timeout_seconds=float(
+            run_cfg.get("indexing_timeout_seconds", run_cfg.get("timeout_seconds", 86400))
+        ),
+        run_e2e_evaluation=_resolve_bool("BENCHMARK_RUN_E2E_EVALUATION", run_cfg.get("run_e2e_evaluation", False)),
+        generate_report=_resolve_bool("BENCHMARK_GENERATE_REPORT", run_cfg.get("generate_report", False)),
     )

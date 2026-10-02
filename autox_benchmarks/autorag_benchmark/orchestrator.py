@@ -2,19 +2,27 @@
 
 from __future__ import annotations
 
-import json
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from autorag_benchmark.config_loader import load_merged_benchmark_config
-from autorag_benchmark.pattern_scores import extract_pattern_scores, extract_pattern_scores_tabular
+from autorag_benchmark.e2e_evaluation import run_full_corpus_evaluation
+from autorag_benchmark.indexing_from_hpo import (
+    build_indexing_arguments,
+    extract_best_pattern_settings,
+    resolve_indexing_pipeline_target,
+)
+from autorag_benchmark.indexing_report_generator import generate_indexing_report
+from autorag_benchmark.metrics import calculate_scale_drift, extract_profiling_metrics, extract_quality_metrics
+from autorag_benchmark.pattern_scores import extract_pattern_scores_tabular
 from autorag_benchmark.pipeline_params import build_pipeline_arguments
 from autorag_benchmark.result_rows import (
     base_row_for_dataset,
     completed_row,
     dry_run_row,
+    indexing_row,
     run_name_for_dataset,
     submit_error_row,
     timeout_row,
@@ -31,7 +39,8 @@ from benchmark_common.manifest import load_dataset_entries
 from benchmark_common.pipeline_run import extract_run_id, filter_pipeline_arguments, redact_arguments, submit_pipeline_run, wait_for_terminal_run
 from benchmark_common.pipeline_target_resolve import resolve_autorag_pipeline_target
 from benchmark_common.results_csv import write_results_csv
-from benchmark_common.run_state import is_success_state
+from benchmark_common.run_state import is_success_state, read_run_state, unwrap_run_from_get_run
+from benchmark_common.run_timing import duration_seconds, parse_timestamp
 
 logger = logging.getLogger(__name__)
 
@@ -244,6 +253,33 @@ class BenchmarkOrchestrator:
                     repo_root=repo_root,
                 )
 
+                # ── Step 2: HPO -> Indexing -> E2E evaluation ──
+                if (
+                    is_success_state(str(state))
+                    and settings.run_indexing
+                    and not dry_run
+                ):
+                    try:
+                        indexing_rows = self._run_indexing_from_hpo(
+                            cfg=cfg,
+                            settings=settings,
+                            client=client,
+                            dataset=ds,
+                            hpo_run_id=rid,
+                            base_row=base,
+                            bucket=bucket,
+                        )
+                        rows.extend(indexing_rows)
+                    except Exception as idx_exc:
+                        logger.exception(
+                            "Indexing step failed for dataset %s (HPO run %s)", ds_id, rid,
+                        )
+                        rows.append(indexing_row(
+                            base, rid, "", "ERROR", "",
+                            input_data_key_hpo=ds.get("input_data_key", ""),
+                            indexing_report={"indexing_error": str(idx_exc)},
+                        ))
+
                 if not is_success_state(str(state)) and fail_fast:
                     logger.error("Run %s ended with state=%s", rid, state)
                     break
@@ -275,8 +311,15 @@ class BenchmarkOrchestrator:
 
         write_results_csv(rows, output_csv)
         logger.info("Wrote %d row(s) to %s", len(rows), output_csv)
+        if settings.generate_report:
+            # The HTML report is a nice-to-have; never let it block the S3 upload.
+            report_path = output_csv.with_name(f"{output_csv.stem}_indexing_report.html")
+            try:
+                generate_indexing_report(rows, report_path)
+                logger.info("Wrote indexing report to %s", report_path)
+            except Exception as exc:
+                logger.warning("Could not write indexing report: %s", exc)
 
-        # Upload batch aggregated results to S3
         upload_batch_aggregated(
             s3_cfg=s3_cfg,
             bucket=bucket,
@@ -291,3 +334,164 @@ class BenchmarkOrchestrator:
         )
 
         return 0
+
+    def _run_indexing_from_hpo(
+        self,
+        *,
+        cfg: dict[str, Any],
+        settings: BenchmarkSettings,
+        client: Any,
+        dataset: dict[str, Any],
+        hpo_run_id: str,
+        base_row: dict[str, Any],
+        bucket: str,
+    ) -> list[dict[str, Any]]:
+        """Chain: extract best HPO pattern -> submit indexing pipeline -> collect results."""
+        ds_id = dataset.get("id", "unknown")
+
+        pattern_settings = extract_best_pattern_settings(
+            run_id=hpo_run_id,
+            config=cfg,
+            bucket=bucket,
+            pattern_name_override=settings.indexing_pattern_name or None,
+        )
+
+        full_key = dataset.get("full_input_data_key") or dataset.get("input_data_key", "")
+        if not dataset.get("full_input_data_key"):
+            logger.warning(
+                "Dataset %s has no full_input_data_key; indexing will reuse the HPO "
+                "subsample key %r, which defeats full-corpus evaluation.",
+                ds_id, full_key,
+            )
+        indexing_args = build_indexing_arguments(
+            pattern_settings, settings, full_input_data_key=full_key,
+        )
+
+        indexing_target = resolve_indexing_pipeline_target(cfg, client)
+
+        indexing_run_name = run_name_for_dataset(
+            f"{settings.run_name_prefix}-indexing", ds_id,
+        )
+        logger.info(
+            "Submitting indexing run %s for dataset %s (HPO run %s, pattern %s)",
+            indexing_run_name,
+            ds_id,
+            hpo_run_id,
+            pattern_settings.get("pattern_name"),
+        )
+
+        idx_result = submit_pipeline_run(
+            client,
+            indexing_target,
+            arguments=indexing_args,
+            run_name=indexing_run_name,
+            experiment_name=settings.experiment_name,
+            enable_caching=settings.enable_caching,
+        )
+        idx_rid = extract_run_id(idx_result)
+        logger.info("Indexing run_id=%s for dataset=%s", idx_rid, ds_id)
+
+        idx_detail, idx_timed_out = wait_for_terminal_run(
+            client,
+            idx_rid,
+            timeout_seconds=settings.indexing_timeout_seconds or settings.timeout_seconds,
+            poll_interval_seconds=settings.poll_interval_seconds,
+        )
+
+        pattern_name = pattern_settings.get("pattern_name", "")
+        row_kwargs = {
+            "pattern_name": pattern_name,
+            "pattern_score": pattern_settings.get("final_score"),
+            "input_data_key_hpo": dataset.get("input_data_key", ""),
+            "input_data_key_indexing": full_key,
+        }
+
+        if idx_timed_out:
+            return [indexing_row(
+                base_row, hpo_run_id, idx_rid, "TIMEOUT",
+                settings.indexing_timeout_seconds or settings.timeout_seconds,
+                **row_kwargs,
+            )]
+
+        if idx_detail is None:
+            idx_detail = client.get_run(idx_rid)
+        idx_run = unwrap_run_from_get_run(idx_detail) or idx_detail
+        idx_state = read_run_state(idx_run)
+        created = parse_timestamp(getattr(idx_run, "created_at", None))
+        finished = parse_timestamp(getattr(idx_run, "finished_at", None))
+        dur = duration_seconds(created, finished)
+
+        report_flat, e2e_metrics = self._collect_indexing_metrics(
+            cfg=cfg,
+            settings=settings,
+            dataset=dataset,
+            hpo_run_id=hpo_run_id,
+            indexing_run_id=idx_rid,
+            indexing_state=str(idx_state),
+            indexing_duration=dur,
+            pattern_name=pattern_name,
+            bucket=bucket,
+        )
+
+        return [indexing_row(
+            base_row, hpo_run_id, idx_rid, idx_state, dur,
+            indexing_report=report_flat,
+            e2e_metrics=e2e_metrics,
+            **row_kwargs,
+        )]
+
+    def _collect_indexing_metrics(
+        self,
+        *,
+        cfg: dict[str, Any],
+        settings: BenchmarkSettings,
+        dataset: dict[str, Any],
+        hpo_run_id: str,
+        indexing_run_id: str,
+        indexing_state: str,
+        indexing_duration: float | str,
+        pattern_name: str,
+        bucket: str,
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        """Gather indexing profiling, HPO baseline, e2e quality, and scale-drift metrics.
+
+        Returns ``(indexing_report_columns, e2e_metric_columns)``.
+        """
+        wall_time = indexing_duration if isinstance(indexing_duration, (int, float)) else None
+
+        report_flat: dict[str, Any] = {}
+        if is_success_state(indexing_state):
+            # extract_profiling_metrics already flattens indexing_report.json, so we
+            # do not call extract_indexing_report separately (avoids a duplicate read).
+            try:
+                report_flat = extract_profiling_metrics(
+                    indexing_run_id, cfg, bucket, indexing_wall_time=wall_time,
+                )
+            except Exception as exc:
+                logger.warning("Could not collect indexing metrics: %s", exc)
+                report_flat = {"indexing_profiling_error": str(exc)}
+
+        try:
+            hpo_quality = extract_quality_metrics(
+                hpo_run_id, cfg, bucket, pattern_name=pattern_name, prefix="hpo_",
+            )
+        except Exception as exc:
+            logger.warning("Could not collect HPO quality baseline: %s", exc)
+            hpo_quality = {"hpo_quality_error": str(exc)}
+
+        e2e_flat: dict[str, Any] = {}
+        if is_success_state(indexing_state) and settings.run_e2e_evaluation:
+            e2e_flat = run_full_corpus_evaluation(
+                indexing_run_id=indexing_run_id,
+                hpo_run_id=hpo_run_id,
+                config_path=self.config_path,
+                env_file=self.env_file,
+                config=cfg,
+                bucket=bucket,
+                test_data_key=str(dataset.get("test_data_key") or ""),
+                pattern_name=pattern_name,
+                timeout_seconds=settings.indexing_timeout_seconds or settings.timeout_seconds,
+            )
+
+        scale_drift = calculate_scale_drift(hpo_quality, e2e_flat) if e2e_flat else {}
+        return report_flat, {**hpo_quality, **e2e_flat, **scale_drift}

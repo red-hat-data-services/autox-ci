@@ -95,6 +95,38 @@ def submit_error_row(base: dict[str, Any], message: str) -> dict[str, Any]:
     }
 
 
+def indexing_row(
+    base: dict[str, Any],
+    hpo_run_id: str,
+    indexing_run_id: str,
+    indexing_state: str,
+    indexing_duration: float | str,
+    *,
+    pattern_name: str = "",
+    pattern_score: float | None = None,
+    input_data_key_hpo: str = "",
+    input_data_key_indexing: str = "",
+    indexing_report: dict[str, Any] | None = None,
+    e2e_metrics: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    row = {
+        **base,
+        "hpo_run_id": hpo_run_id,
+        "indexing_run_id": indexing_run_id,
+        "indexing_state": indexing_state,
+        "indexing_duration_seconds": str(indexing_duration),
+        "indexing_pattern_name": pattern_name,
+        "indexing_pattern_score": pattern_score,
+        "input_data_key_hpo": input_data_key_hpo,
+        "input_data_key_indexing": input_data_key_indexing,
+    }
+    if indexing_report:
+        row.update(indexing_report)
+    if e2e_metrics:
+        row.update(e2e_metrics)
+    return row
+
+
 def run_name_for_dataset(prefix: str, dataset_id: str) -> str:
     safe = "".join(c if c.isalnum() or c in "-_" else "_" for c in dataset_id)
     return f"{prefix}-{safe}-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"

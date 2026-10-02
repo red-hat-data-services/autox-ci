@@ -28,8 +28,11 @@ datasets = [
     "Pillow>=10.0.0",
     "requests>=2.31.0",
 ]
+e2e = [
+    "ai4rag~=0.15.0",
+]
 all = [
-    "automl-benchmarks[compare,datasets]",
+    "automl-benchmarks[compare,datasets,e2e]",
 ]
 
 [tool.pytest.ini_options]
