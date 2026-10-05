@@ -15,6 +15,7 @@ RHOAI_NOTEBOOK_CPU_ENV = "RHOAI_NOTEBOOK_CPU"
 RHOAI_NOTEBOOK_MEMORY_ENV = "RHOAI_NOTEBOOK_MEMORY"
 RHOAI_NOTEBOOK_PIP_SECRET_ENV = "RHOAI_NOTEBOOK_PIP_SECRET_NAME"
 RHOAI_NOTEBOOK_DOCLING_SECRET_ENV = "RHOAI_NOTEBOOK_DOCLING_SECRET_NAME"
+NOTEBOOK_PIP_INDEX_URL_ENV = "NOTEBOOK_PIP_INDEX_URL"
 _DEFAULT_NOTEBOOK_JOB_TIMEOUT_SECONDS = 900
 _DEFAULT_NOTEBOOK_CPU = "2"
 _DEFAULT_NOTEBOOK_MEMORY = "4Gi"
@@ -38,6 +39,9 @@ s3 = boto3.client(
     verify=os.environ.get("S3_SSL_VERIFY", "true").strip().lower()
     not in ("0", "false", "no"),
 )
+notebook_pip_index_url = os.environ.get("NOTEBOOK_PIP_INDEX_URL", "").strip()
+if notebook_pip_index_url and not os.environ.get("PIP_INDEX_URL", "").strip():
+    os.environ["PIP_INDEX_URL"] = notebook_pip_index_url
 print(f"Running notebooks with image: {os.environ['NOTEBOOK_RUNNER_IMAGE']}", flush=True)
 
 
@@ -316,6 +320,32 @@ def run_notebooks_as_k8s_job(
     artifact_bucket = (
         os.environ.get("RHOAI_TEST_ARTIFACTS_BUCKET") or bucket
     ).strip()
+    container_env = [
+        k8s_client.V1EnvVar(name="NOTEBOOK_S3_BUCKET", value=bucket),
+        # Generated notebooks must read artifacts from the test artifact bucket,
+        # not the input/training bucket stored in the S3 Secret.
+        k8s_client.V1EnvVar(name="AWS_S3_BUCKET", value=artifact_bucket),
+        k8s_client.V1EnvVar(name="NOTEBOOK_S3_KEYS", value=json.dumps(notebook_keys)),
+        k8s_client.V1EnvVar(name="NOTEBOOK_RUNNER_IMAGE", value=image),
+        k8s_client.V1EnvVar(
+            name="S3_SSL_VERIFY",
+            value=os.environ.get("S3_SSL_VERIFY", "true"),
+        ),
+        k8s_client.V1EnvVar(
+            name="NOTEBOOK_INJECT_MOCK_INPUT",
+            value="true" if inject_mock_input else "false",
+        ),
+        k8s_client.V1EnvVar(
+            name="NOTEBOOK_KERNEL_NAME",
+            value=os.environ.get("RHOAI_NOTEBOOK_KERNEL_NAME", "python3"),
+        ),
+    ]
+    pip_index_url = (os.environ.get(NOTEBOOK_PIP_INDEX_URL_ENV) or "").strip()
+    if pip_index_url:
+        container_env.append(
+            k8s_client.V1EnvVar(name=NOTEBOOK_PIP_INDEX_URL_ENV, value=pip_index_url)
+        )
+
     container = k8s_client.V1Container(
         name="notebook-runner",
         image=image,
@@ -325,26 +355,7 @@ def run_notebooks_as_k8s_job(
             limits={"cpu": cpu, "memory": memory},
         ),
         command=["python", "-c", _NOTEBOOK_JOB_PROGRAM],
-        env=[
-            k8s_client.V1EnvVar(name="NOTEBOOK_S3_BUCKET", value=bucket),
-            # Generated notebooks must read artifacts from the test artifact bucket,
-            # not the input/training bucket stored in the S3 Secret.
-            k8s_client.V1EnvVar(name="AWS_S3_BUCKET", value=artifact_bucket),
-            k8s_client.V1EnvVar(name="NOTEBOOK_S3_KEYS", value=json.dumps(notebook_keys)),
-            k8s_client.V1EnvVar(name="NOTEBOOK_RUNNER_IMAGE", value=image),
-            k8s_client.V1EnvVar(
-                name="S3_SSL_VERIFY",
-                value=os.environ.get("S3_SSL_VERIFY", "true"),
-            ),
-            k8s_client.V1EnvVar(
-                name="NOTEBOOK_INJECT_MOCK_INPUT",
-                value="true" if inject_mock_input else "false",
-            ),
-            k8s_client.V1EnvVar(
-                name="NOTEBOOK_KERNEL_NAME",
-                value=os.environ.get("RHOAI_NOTEBOOK_KERNEL_NAME", "python3"),
-            ),
-        ],
+        env=container_env,
         env_from=env_from or None,
     )
     job = k8s_client.V1Job(

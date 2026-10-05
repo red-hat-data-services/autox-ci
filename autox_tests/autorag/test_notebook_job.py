@@ -100,3 +100,32 @@ def test_notebook_job_uses_docling_path_for_offline_cell_execution(
     )
     assert "if not docling_path:" in notebooks._NOTEBOOK_JOB_PROGRAM
     compile(notebooks._NOTEBOOK_JOB_PROGRAM, "notebook-runner", "exec")
+
+
+def test_notebook_job_passes_pip_index_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An explicitly configured package index is available to notebook cells."""
+    batch_api = _BatchApi()
+    monkeypatch.setenv("RHOAI_NOTEBOOK_RUNNER_IMAGE", "example.invalid/notebook:latest")
+    monkeypatch.setenv("NOTEBOOK_PIP_INDEX_URL", "https://pypi.example.invalid/simple")
+    monkeypatch.setattr(
+        notebooks,
+        "make_k8s_core_api_from_config",
+        lambda config: SimpleNamespace(api_client=object()),
+    )
+    monkeypatch.setattr(k8s_client, "BatchV1Api", lambda *args, **kwargs: batch_api)
+
+    notebooks.run_notebooks_as_k8s_job(
+        bucket="artifacts",
+        notebook_keys=["indexing.ipynb"],
+        config={"rhoai_project": "test-project"},
+        secret_names=[],
+    )
+
+    env = {
+        variable.name: variable.value
+        for variable in batch_api.job.spec.template.spec.containers[0].env
+    }
+    assert env["NOTEBOOK_PIP_INDEX_URL"] == "https://pypi.example.invalid/simple"
+    assert "not os.environ.get(\"PIP_INDEX_URL\", \"\").strip()" in (
+        notebooks._NOTEBOOK_JOB_PROGRAM
+    )
