@@ -96,6 +96,41 @@ def _print_notebook_failure_diagnostics(notebook_key, output_path, error):
     print("===== END NOTEBOOK EXECUTION DIAGNOSTICS =====", flush=True)
 
 
+def _exclude_first_code_cells_after_sections(notebook, section_titles):
+    # Replace the first code cell after each named Markdown section with a no-op.
+    titles = {title.strip().lower() for title in section_titles}
+    pending_titles = set()
+
+    for cell in notebook.cells:
+        if cell.get("cell_type") == "markdown":
+            for line in cell.get("source", "").splitlines():
+                heading = line.strip()
+                if not heading.startswith("#"):
+                    continue
+                title = heading.lstrip("#").strip().lower()
+                if title in titles:
+                    pending_titles.add(title)
+                break
+            continue
+
+        if cell.get("cell_type") != "code" or not pending_titles:
+            continue
+
+        cell["source"] = "# Skipped by the AutoX notebook runner.\npass\n"
+        print(
+            "Skipping first code cell under section(s): "
+            + ", ".join(sorted(pending_titles)),
+            flush=True,
+        )
+        pending_titles.clear()
+
+
+_DISCONNECTED_ONLY_NOTEBOOK_SECTIONS = (
+    "Configure Models for Disconnected Environments",
+    "Validate Offline Configuration",
+)
+
+
 docling_prefix = os.environ.get("DOCLING_ARTIFACTS_S3_PREFIX", "").strip().lstrip("/")
 docling_bucket = os.environ.get("DOCLING_ARTIFACTS_S3_BUCKET", "").strip()
 docling_path = os.environ.get("DOCLING_ARTIFACTS_PATH", "").strip()
@@ -133,6 +168,18 @@ for index, notebook_key in enumerate(json.loads(os.environ["NOTEBOOK_S3_KEYS"]))
         with input_path.open(encoding="utf-8") as f:
             notebook = nbformat.read(f, as_version=4)
         notebook.cells.insert(0, nbformat.v4.new_code_cell('def input(prompt=""):\n    return "Sample query?"'))
+        with input_path.open("w", encoding="utf-8") as f:
+            nbformat.write(notebook, f)
+
+    # DOCLING_ARTIFACTS_PATH is required by the generated notebook for
+    # disconnected clusters. Preserve the offline setup and validation cells
+    # whenever that disconnected-cluster signal is present.
+    if not docling_path:
+        with input_path.open(encoding="utf-8") as f:
+            notebook = nbformat.read(f, as_version=4)
+        _exclude_first_code_cells_after_sections(
+            notebook, _DISCONNECTED_ONLY_NOTEBOOK_SECTIONS
+        )
         with input_path.open("w", encoding="utf-8") as f:
             nbformat.write(notebook, f)
 
