@@ -92,6 +92,9 @@ def test_notebook_job_uses_docling_path_for_offline_cell_execution(
         for variable in batch_api.job.spec.template.spec.containers[0].env
     }
     assert "NOTEBOOK_EXCLUDE_FIRST_CODE_CELLS_AFTER_SECTIONS" not in env
+    assert "_exclude_code_cells_before_next_markdown_after_sections" in (
+        notebooks._NOTEBOOK_JOB_PROGRAM
+    )
     assert 'cell["source"] = "# Skipped by the AutoX notebook runner.' in (
         notebooks._NOTEBOOK_JOB_PROGRAM
     )

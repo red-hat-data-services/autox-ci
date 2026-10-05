@@ -96,33 +96,32 @@ def _print_notebook_failure_diagnostics(notebook_key, output_path, error):
     print("===== END NOTEBOOK EXECUTION DIAGNOSTICS =====", flush=True)
 
 
-def _exclude_first_code_cells_after_sections(notebook, section_titles):
-    # Replace the first code cell after each named Markdown section with a no-op.
+def _exclude_code_cells_before_next_markdown_after_sections(notebook, section_titles):
+    # Replace code cells in each named Markdown section with no-ops.
     titles = {title.strip().lower() for title in section_titles}
-    pending_titles = set()
+    active_title = None
 
     for cell in notebook.cells:
         if cell.get("cell_type") == "markdown":
+            active_title = None
             for line in cell.get("source", "").splitlines():
                 heading = line.strip()
                 if not heading.startswith("#"):
                     continue
                 title = heading.lstrip("#").strip().lower()
                 if title in titles:
-                    pending_titles.add(title)
+                    active_title = title
                 break
             continue
 
-        if cell.get("cell_type") != "code" or not pending_titles:
+        if cell.get("cell_type") != "code" or active_title is None:
             continue
 
         cell["source"] = "# Skipped by the AutoX notebook runner.\npass\n"
         print(
-            "Skipping first code cell under section(s): "
-            + ", ".join(sorted(pending_titles)),
+            "Skipping code cell under section: " + active_title,
             flush=True,
         )
-        pending_titles.clear()
 
 
 _DISCONNECTED_ONLY_NOTEBOOK_SECTIONS = (
@@ -177,7 +176,7 @@ for index, notebook_key in enumerate(json.loads(os.environ["NOTEBOOK_S3_KEYS"]))
     if not docling_path:
         with input_path.open(encoding="utf-8") as f:
             notebook = nbformat.read(f, as_version=4)
-        _exclude_first_code_cells_after_sections(
+        _exclude_code_cells_before_next_markdown_after_sections(
             notebook, _DISCONNECTED_ONLY_NOTEBOOK_SECTIONS
         )
         with input_path.open("w", encoding="utf-8") as f:
