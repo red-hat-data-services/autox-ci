@@ -1,0 +1,47 @@
+[
+    {
+        "question": "What does Poor visibility of economic performance and drivers by customer segments result in?",
+        "correct_answers": [
+            "Business Under-performance"
+        ],
+        "correct_answer_document_keys": [
+            "datasets/rag/slidevqa/documents/slidevqa_agileftpbwm201008-1225530207520998-9_95_page_4.png"
+        ]
+    },
+    {
+        "question": "What kind of potential Clients is the largest in terms of Volume?",
+        "correct_answers": [
+            "Personal/Premier Banking Customers"
+        ],
+        "correct_answer_document_keys": [
+            "datasets/rag/slidevqa/documents/slidevqa_agileftpbwm201008-1225530207520998-9_95_page_6.png"
+        ]
+    },
+    {
+        "question": "What is the name of the person who is congratulated because his GROSS INCOME has just become A TOTALLY GROSS INCOME?",
+        "correct_answers": [
+            "HENDERSON"
+        ],
+        "correct_answer_document_keys": [
+            "datasets/rag/slidevqa/documents/slidevqa_agileftpbwm201008-1225530207520998-9_95_page_10.png"
+        ]
+    },
+    {
+        "question": "What is necessary to do between \"Gather Client Inputs\" and \"Consider Themes, Constraints and Asset Locations\"?",
+        "correct_answers": [
+            "Determine Broad Long-Term Target Allocation"
+        ],
+        "correct_answer_document_keys": [
+            "datasets/rag/slidevqa/documents/slidevqa_agileftpbwm201008-1225530207520998-9_95_page_15.png"
+        ]
+    },
+    {
+        "question": "What is Indonesia's GDP in billions of dollars?",
+        "correct_answers": [
+            "868.3"
+        ],
+        "correct_answer_document_keys": [
+            "datasets/rag/slidevqa/documents/slidevqa_aguidetoindonesiasnewgovernment-141104024232-conversion-gate02_95_page_2.png"
+        ]
+    }
+]

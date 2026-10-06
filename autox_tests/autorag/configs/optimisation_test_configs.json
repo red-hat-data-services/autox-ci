@@ -129,6 +129,21 @@
         "test_data_key": "datasets/rag/multi-input-split/benchmark_data.json"
     },
     {
+        "id": "TC-P-7",
+        "description": "Run scenario with PDF to check OCR.",
+        "tags": ["positive", "pdf", "answer_correctness", "optimisation"],
+        "expected_result": "pass",
+        "run_notebook": true,
+        "embedding_models": "env",
+        "generation_models": "env",
+        "optimization_max_rag_patterns": 4,
+        "optimization_metric": "answer_correctness",
+        "input_data_keys": [
+            "datasets/rag/pdf_notebook_smoke/documents"
+        ],
+        "test_data_key": "datasets/rag/pdf_notebook_smoke/benchmark_data.json"
+    },
+    {
         "id": "TC-P-8",
         "description": "Run scenario over image-only slide decks (SlideVQA PNGs), which yield text only when OCR runs.",
         "tags": ["positive", "ocr", "answer_correctness", "optimisation"],
@@ -138,7 +153,7 @@
         "generation_models": "env",
         "optimization_max_rag_patterns": 4,
         "optimization_metric": "answer_correctness",
-        "input_data_keys": ["datasets/rag/slidevqa/val/png/10/knowledge_base"],
-        "test_data_key": "datasets/rag/slidevqa/val/png/10/benchmark_data.json"
+        "input_data_keys": ["datasets/rag/slidevqa/documents"],
+        "test_data_key": "datasets/rag/slidevqa/benchmark_data.json"
     }
 ]
