@@ -13,8 +13,6 @@ from autox_tests.lib.s3_data import upload_file_to_s3
 logger = logging.getLogger(__name__)
 
 
-
-
 def _make_docrag_run_name():
     """Return a run name: docrag-func-<6 hex chars>-<YYYYMMDD-HHMMSS>."""
     hex_part = secrets.token_hex(3)

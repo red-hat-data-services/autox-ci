@@ -15,6 +15,7 @@ RHOAI_NOTEBOOK_CPU_ENV = "RHOAI_NOTEBOOK_CPU"
 RHOAI_NOTEBOOK_MEMORY_ENV = "RHOAI_NOTEBOOK_MEMORY"
 RHOAI_NOTEBOOK_PIP_SECRET_ENV = "RHOAI_NOTEBOOK_PIP_SECRET_NAME"
 RHOAI_NOTEBOOK_DOCLING_SECRET_ENV = "RHOAI_NOTEBOOK_DOCLING_SECRET_NAME"
+NOTEBOOK_PIP_INDEX_URL_ENV = "NOTEBOOK_PIP_INDEX_URL"
 _DEFAULT_NOTEBOOK_JOB_TIMEOUT_SECONDS = 900
 _DEFAULT_NOTEBOOK_CPU = "2"
 _DEFAULT_NOTEBOOK_MEMORY = "4Gi"
@@ -38,6 +39,9 @@ s3 = boto3.client(
     verify=os.environ.get("S3_SSL_VERIFY", "true").strip().lower()
     not in ("0", "false", "no"),
 )
+notebook_pip_index_url = os.environ.get("NOTEBOOK_PIP_INDEX_URL", "").strip()
+if notebook_pip_index_url and not os.environ.get("PIP_INDEX_URL", "").strip():
+    os.environ["PIP_INDEX_URL"] = notebook_pip_index_url
 print(f"Running notebooks with image: {os.environ['NOTEBOOK_RUNNER_IMAGE']}", flush=True)
 
 
@@ -96,6 +100,40 @@ def _print_notebook_failure_diagnostics(notebook_key, output_path, error):
     print("===== END NOTEBOOK EXECUTION DIAGNOSTICS =====", flush=True)
 
 
+def _exclude_code_cells_before_next_markdown_after_sections(notebook, section_titles):
+    # Replace code cells in each named Markdown section with no-ops.
+    titles = {title.strip().lower() for title in section_titles}
+    active_title = None
+
+    for cell in notebook.cells:
+        if cell.get("cell_type") == "markdown":
+            active_title = None
+            for line in cell.get("source", "").splitlines():
+                heading = line.strip()
+                if not heading.startswith("#"):
+                    continue
+                title = heading.lstrip("#").strip().lower()
+                if title in titles:
+                    active_title = title
+                break
+            continue
+
+        if cell.get("cell_type") != "code" or active_title is None:
+            continue
+
+        cell["source"] = "# Skipped by the AutoX notebook runner.\npass\n"
+        print(
+            "Skipping code cell under section: " + active_title,
+            flush=True,
+        )
+
+
+_DISCONNECTED_ONLY_NOTEBOOK_SECTIONS = (
+    "Configure Models for Disconnected Environments",
+    "Validate Offline Configuration",
+)
+
+
 docling_prefix = os.environ.get("DOCLING_ARTIFACTS_S3_PREFIX", "").strip().lstrip("/")
 docling_bucket = os.environ.get("DOCLING_ARTIFACTS_S3_BUCKET", "").strip()
 docling_path = os.environ.get("DOCLING_ARTIFACTS_PATH", "").strip()
@@ -133,6 +171,18 @@ for index, notebook_key in enumerate(json.loads(os.environ["NOTEBOOK_S3_KEYS"]))
         with input_path.open(encoding="utf-8") as f:
             notebook = nbformat.read(f, as_version=4)
         notebook.cells.insert(0, nbformat.v4.new_code_cell('def input(prompt=""):\n    return "Sample query?"'))
+        with input_path.open("w", encoding="utf-8") as f:
+            nbformat.write(notebook, f)
+
+    # DOCLING_ARTIFACTS_PATH is required by the generated notebook for
+    # disconnected clusters. Preserve the offline setup and validation cells
+    # whenever that disconnected-cluster signal is present.
+    if not docling_path:
+        with input_path.open(encoding="utf-8") as f:
+            notebook = nbformat.read(f, as_version=4)
+        _exclude_code_cells_before_next_markdown_after_sections(
+            notebook, _DISCONNECTED_ONLY_NOTEBOOK_SECTIONS
+        )
         with input_path.open("w", encoding="utf-8") as f:
             nbformat.write(notebook, f)
 
@@ -270,6 +320,32 @@ def run_notebooks_as_k8s_job(
     artifact_bucket = (
         os.environ.get("RHOAI_TEST_ARTIFACTS_BUCKET") or bucket
     ).strip()
+    container_env = [
+        k8s_client.V1EnvVar(name="NOTEBOOK_S3_BUCKET", value=bucket),
+        # Generated notebooks must read artifacts from the test artifact bucket,
+        # not the input/training bucket stored in the S3 Secret.
+        k8s_client.V1EnvVar(name="AWS_S3_BUCKET", value=artifact_bucket),
+        k8s_client.V1EnvVar(name="NOTEBOOK_S3_KEYS", value=json.dumps(notebook_keys)),
+        k8s_client.V1EnvVar(name="NOTEBOOK_RUNNER_IMAGE", value=image),
+        k8s_client.V1EnvVar(
+            name="S3_SSL_VERIFY",
+            value=os.environ.get("S3_SSL_VERIFY", "true"),
+        ),
+        k8s_client.V1EnvVar(
+            name="NOTEBOOK_INJECT_MOCK_INPUT",
+            value="true" if inject_mock_input else "false",
+        ),
+        k8s_client.V1EnvVar(
+            name="NOTEBOOK_KERNEL_NAME",
+            value=os.environ.get("RHOAI_NOTEBOOK_KERNEL_NAME", "python3"),
+        ),
+    ]
+    pip_index_url = (os.environ.get(NOTEBOOK_PIP_INDEX_URL_ENV) or "").strip()
+    if pip_index_url:
+        container_env.append(
+            k8s_client.V1EnvVar(name=NOTEBOOK_PIP_INDEX_URL_ENV, value=pip_index_url)
+        )
+
     container = k8s_client.V1Container(
         name="notebook-runner",
         image=image,
@@ -279,26 +355,7 @@ def run_notebooks_as_k8s_job(
             limits={"cpu": cpu, "memory": memory},
         ),
         command=["python", "-c", _NOTEBOOK_JOB_PROGRAM],
-        env=[
-            k8s_client.V1EnvVar(name="NOTEBOOK_S3_BUCKET", value=bucket),
-            # Generated notebooks must read artifacts from the test artifact bucket,
-            # not the input/training bucket stored in the S3 Secret.
-            k8s_client.V1EnvVar(name="AWS_S3_BUCKET", value=artifact_bucket),
-            k8s_client.V1EnvVar(name="NOTEBOOK_S3_KEYS", value=json.dumps(notebook_keys)),
-            k8s_client.V1EnvVar(name="NOTEBOOK_RUNNER_IMAGE", value=image),
-            k8s_client.V1EnvVar(
-                name="S3_SSL_VERIFY",
-                value=os.environ.get("S3_SSL_VERIFY", "true"),
-            ),
-            k8s_client.V1EnvVar(
-                name="NOTEBOOK_INJECT_MOCK_INPUT",
-                value="true" if inject_mock_input else "false",
-            ),
-            k8s_client.V1EnvVar(
-                name="NOTEBOOK_KERNEL_NAME",
-                value=os.environ.get("RHOAI_NOTEBOOK_KERNEL_NAME", "python3"),
-            ),
-        ],
+        env=container_env,
         env_from=env_from or None,
     )
     job = k8s_client.V1Job(
