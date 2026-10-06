@@ -66,6 +66,16 @@ Scenarios live in `configs/test_configs.json`. Each entry specifies:
 
 Pass tags via `--tags` / `-t` on the CLI or set `AUTORAG_FUNCTIONAL_TESTS_TAGS` in the environment. Only scenarios matching **all** specified tags are selected.
 
+### OCR scenario (`ocr` tag)
+
+`TC-P-5` covers OCR text extraction ([pipelines-components#243](https://github.com/opendatahub-io/pipelines-components/pull/243)). Its input is the SlideVQA corpus: 200 slide images (10 decks, ~89 MB of PNGs) with no text layer at all. Without OCR every document extracts to empty output and the run fails the "every uploaded document has extracted text" check (RHOAIENG-91789); with OCR enabled the same corpus produces text and the scenario passes. That check is what gives the scenario its teeth — a pipeline that silently ingests 200 blank documents still reports `SUCCEEDED` on its own.
+
+```bash
+./run_tests.sh --env-file autox_tests/.env.rag -t ocr "autorag and positive"
+```
+
+Only the benchmark JSON is kept in `data/slidevqa/val/png/10/`; the PNGs live in S3 (`datasets/rag/slidevqa/val/png/10/knowledge_base`) and are never uploaded from the repo. Ground truth uses `correct_answer_document_keys` holding **full S3 object keys** — ai4rag ≥ 0.16.0 validates the record key set with exact equality and matches ingested documents on their object key, so bare filenames silently zero out every retrieval metric. Budget extra runtime: OCR over 200 images is considerably slower than the text-format scenarios.
+
 ## Pass / fail criteria
 
 **Expected-pass scenarios:**
