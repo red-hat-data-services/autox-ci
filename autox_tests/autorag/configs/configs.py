@@ -57,6 +57,24 @@ def _resolve_model_list(value: str | list[str] | None, env_name: str) -> list[st
     return value
 
 
+def _resolve_db_secret_name(
+    base_config: dict,
+    db_secret_name: str | None,
+    db_secret_name_env: str | None,
+) -> str:
+    """Resolve a scenario's database secret, falling back to the suite default."""
+    if db_secret_name is not None:
+        return db_secret_name
+    if db_secret_name_env is not None:
+        value = os.getenv(db_secret_name_env)
+        if not value or not value.strip():
+            raise EnvironmentError(
+                f"{db_secret_name_env} env variable must be set for this scenario's database secret."
+            )
+        return value.strip()
+    return base_config["vector_db_secret_name"]
+
+
 @dataclass
 class AutoRAGTestConfig:
     """Single test configuration for one pipeline run.
@@ -80,9 +98,10 @@ class AutoRAGTestConfig:
         optimization_metric: Metric to optimize (e.g. "faithfulness").
         run_notebook: Whether to execute the generated notebooks in Kubernetes Jobs.
 
-    The vector-store backend is no longer a pipeline parameter: the pipeline
-    auto-detects it from the secret named by ``db_secret_name`` (MILVUS_* vs
-    PGVECTOR_* keys), which the harness sources from the VECTOR_DB_SECRET_NAME env var.
+    The vector-store backend is auto-detected from the secret named by
+    ``db_secret_name`` (MILVUS_*, PGVECTOR_*, or NEO4J_* keys). Scenarios use
+    ``VECTOR_DB_SECRET_NAME`` by default, and may override it directly with
+    ``db_secret_name`` or indirectly with ``db_secret_name_env``.
     """
 
     __test__ = False  # prevent pytest collection
@@ -98,6 +117,8 @@ class AutoRAGTestConfig:
     test_data_key: str | None = None
     optimization_metric: str | None = None
     run_notebook: bool = False
+    db_secret_name: str | None = None
+    db_secret_name_env: str | None = None
 
     def get_pipeline_arguments(self, base_config: dict) -> dict[str, Any]:
         """Build pipeline arguments dict by merging base config with overrides.
@@ -119,7 +140,9 @@ class AutoRAGTestConfig:
             "input_data_secret_name": base_config["input_data_secret_name"],
             "input_data_bucket_name": base_config["input_data_bucket_name"],
             "maas_secret_name": base_config["maas_secret_name"],
-            "db_secret_name": base_config["vector_db_secret_name"],
+            "db_secret_name": _resolve_db_secret_name(
+                base_config, self.db_secret_name, self.db_secret_name_env
+            ),
             "test_data_key": self.test_data_key or "",
             "input_data_keys": list(self.input_data_keys or []),
             "optimization_metric": self.optimization_metric or "",
@@ -218,7 +241,9 @@ class IndexingTestConfig:
         expected_failing_task: For negative scenarios, KFP task display names expected to fail.
 
     The vector-store backend is auto-detected by the pipeline from the secret named by
-    ``db_secret_name`` (MILVUS_* vs PGVECTOR_* keys), sourced from VECTOR_DB_SECRET_NAME.
+    ``db_secret_name`` (MILVUS_*, PGVECTOR_*, or NEO4J_* keys), sourced from
+    ``VECTOR_DB_SECRET_NAME`` unless the scenario overrides it with
+    ``db_secret_name`` or ``db_secret_name_env``.
     """
 
     __test__ = False
@@ -235,6 +260,8 @@ class IndexingTestConfig:
     chunk_overlap: int | None = None
     batch_size: int | None = None
     expected_failing_task: list[str] | None = None
+    db_secret_name: str | None = None
+    db_secret_name_env: str | None = None
 
     def get_pipeline_arguments(self, base_config: dict) -> dict[str, Any]:
         """Build pipeline arguments dict by merging base config with per-scenario overrides.
@@ -260,7 +287,9 @@ class IndexingTestConfig:
 
         arguments: dict[str, Any] = {
             "maas_secret_name": base_config["maas_secret_name"],
-            "db_secret_name": base_config["vector_db_secret_name"],
+            "db_secret_name": _resolve_db_secret_name(
+                base_config, self.db_secret_name, self.db_secret_name_env
+            ),
             "embedding_model_id": embedding_model_id,
             "input_data_secret_name": base_config["input_data_secret_name"],
             "input_data_bucket_name": base_config["input_data_bucket_name"],

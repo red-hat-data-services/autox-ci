@@ -58,9 +58,11 @@ Scenarios live in `configs/test_configs.json`. Each entry specifies:
 | `embedding_models` / `generation_models` | MaaS model IDs (JSON list, or `"env"` to read from `AUTORAG_EMBEDDING_MODELS` / `AUTORAG_GENERATION_MODELS`); required by the pipeline |
 | `optimization_metric`, `optimization_max_rag_patterns`, `test_data_key` | Per-scenario parameter overrides |
 | `input_data_keys` | JSON list of document-folder paths within the input bucket; the pipeline discovers their union. An empty list scans the whole bucket. |
+| `db_secret_name` / `db_secret_name_env` | Optional dedicated Kubernetes database-secret name, or the environment variable that supplies it. Defaults to `VECTOR_DB_SECRET_NAME`. |
 
-> The vector-store backend (Milvus / PGVector) is auto-detected by the pipeline from the
-> `VECTOR_DB_SECRET_NAME` secret's key prefixes; it is no longer a per-scenario parameter.
+> The vector-store backend (Milvus / PGVector / Neo4j) is auto-detected by the pipeline from
+> the selected database secret's key prefixes. Most scenarios use `VECTOR_DB_SECRET_NAME`;
+> `TC-P-7` uses the dedicated secret supplied by `NEO4J_DB_SECRET_NAME`.
 
 ### Tag filtering
 
