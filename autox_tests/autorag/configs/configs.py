@@ -230,6 +230,9 @@ class IndexingTestConfig:
         expected_result: "pass" or "fail" — whether the pipeline run should succeed.
         embedding_model_id: Embedding model ID served by MaaS. Use "env" to read from
             the ``AUTORAG_INDEXING_EMBEDDING_MODEL_ID`` env var.
+        foundation_model_id: Generation model ID used by Neo4j graph extraction. Use
+            "env" to read ``AUTORAG_INDEXING_FOUNDATION_MODEL_ID``.
+        kg_extraction_config: Neo4j graph-extraction settings. Ignored by other stores.
         input_data_keys: Paths to folders with input documents within the bucket.
             The pipeline discovers the union of all entries; an empty or unset
             list makes document discovery scan the whole bucket.
@@ -239,6 +242,7 @@ class IndexingTestConfig:
         chunk_overlap: Token overlap between consecutive chunks (default: 0).
         batch_size: Number of documents per batch (default: 20).
         expected_failing_task: For negative scenarios, KFP task display names expected to fail.
+        expected_vector_provider: Expected provider recorded in ``indexing_report.json``.
 
     The vector-store backend is auto-detected by the pipeline from the secret named by
     ``db_secret_name`` (MILVUS_*, PGVECTOR_*, or NEO4J_* keys), sourced from
@@ -253,6 +257,8 @@ class IndexingTestConfig:
     tags: list[str]
     expected_result: str
     embedding_model_id: str
+    foundation_model_id: str | None = None
+    kg_extraction_config: dict[str, Any] | None = None
     input_data_keys: list[str] | None = None
     collection_name: str | None = None
     chunking_method: str | None = None
@@ -260,6 +266,7 @@ class IndexingTestConfig:
     chunk_overlap: int | None = None
     batch_size: int | None = None
     expected_failing_task: list[str] | None = None
+    expected_vector_provider: str | None = None
     db_secret_name: str | None = None
     db_secret_name_env: str | None = None
 
@@ -285,6 +292,15 @@ class IndexingTestConfig:
                     "for indexing pipeline tests that use embedding_model_id: \"env\"."
                 )
 
+        foundation_model_id = self.foundation_model_id
+        if foundation_model_id == "env":
+            foundation_model_id = os.getenv("AUTORAG_INDEXING_FOUNDATION_MODEL_ID")
+            if foundation_model_id is None:
+                raise EnvironmentError(
+                    "AUTORAG_INDEXING_FOUNDATION_MODEL_ID env variable must be set "
+                    'for indexing pipeline tests that use foundation_model_id: "env".'
+                )
+
         arguments: dict[str, Any] = {
             "maas_secret_name": base_config["maas_secret_name"],
             "db_secret_name": _resolve_db_secret_name(
@@ -297,6 +313,10 @@ class IndexingTestConfig:
         }
         if self.collection_name is not None:
             arguments["collection_name"] = self.collection_name
+        if foundation_model_id is not None:
+            arguments["foundation_model_id"] = foundation_model_id
+        if self.kg_extraction_config is not None:
+            arguments["kg_extraction_config"] = self.kg_extraction_config
         if self.chunking_method is not None:
             arguments["chunking_method"] = self.chunking_method
         if self.chunk_size is not None:

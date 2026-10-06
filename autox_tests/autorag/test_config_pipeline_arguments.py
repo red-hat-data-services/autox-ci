@@ -2,7 +2,10 @@
 
 import pytest
 
-from autox_tests.autorag.configs.configs import get_test_configs_for_run
+from autox_tests.autorag.configs.configs import (
+    get_indexing_configs_for_run,
+    get_test_configs_for_run,
+)
 
 
 pytestmark = pytest.mark.config
@@ -23,6 +26,8 @@ def _clear_scenario_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("NEO4J_DB_SECRET_NAME", raising=False)
     monkeypatch.setenv("AUTORAG_EMBEDDING_MODELS", '["embedding-model"]')
     monkeypatch.setenv("AUTORAG_GENERATION_MODELS", '["generation-model"]')
+    monkeypatch.setenv("AUTORAG_INDEXING_EMBEDDING_MODEL_ID", "embedding-model")
+    monkeypatch.setenv("AUTORAG_INDEXING_FOUNDATION_MODEL_ID", "generation-model")
 
 
 def test_standard_scenario_uses_default_database_secret() -> None:
@@ -40,8 +45,31 @@ def test_neo4j_scenario_uses_its_dedicated_database_secret(
     assert scenario.get_pipeline_arguments(_BASE)["db_secret_name"] == "neo4j-vector-db"
 
 
+def test_neo4j_scenario_uses_the_lightweight_dataset() -> None:
+    scenario = next(c for c in get_test_configs_for_run("positive") if c.id == "TC-P-7")
+
+    assert scenario.input_data_keys == ["datasets/rag/neo4j_light/documents"]
+    assert scenario.test_data_key == "datasets/rag/neo4j_light/benchmark_data.json"
+    assert scenario.run_notebook is False
+
+
 def test_dedicated_database_secret_env_is_required() -> None:
     scenario = next(c for c in get_test_configs_for_run("positive") if c.id == "TC-P-7")
 
     with pytest.raises(EnvironmentError, match="NEO4J_DB_SECRET_NAME"):
         scenario.get_pipeline_arguments(_BASE)
+
+
+def test_neo4j_indexing_scenario_uses_its_dedicated_database_secret(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("NEO4J_DB_SECRET_NAME", "neo4j-vector-db")
+    scenario = next(c for c in get_indexing_configs_for_run("positive") if c.id == "IDX-P-3")
+
+    arguments = scenario.get_pipeline_arguments(_BASE)
+
+    assert arguments["db_secret_name"] == "neo4j-vector-db"
+    assert arguments["input_data_keys"] == ["datasets/rag/neo4j_light/documents"]
+    assert arguments["foundation_model_id"] == "generation-model"
+    assert arguments["kg_extraction_config"] == {"mode": "constrained"}
+    assert scenario.expected_vector_provider == "neo4j"
