@@ -390,7 +390,7 @@ uv sync
 pip install -e .
 ```
 
-You also need a running RHOAI cluster with Data Science Pipelines, a MaaS (Model-as-a-Service) inference endpoint, and a vector database (Milvus or PGVector).
+You also need a running RHOAI cluster with Data Science Pipelines, a MaaS (Model-as-a-Service) inference endpoint, and a vector database (Milvus, PGVector, or Neo4j).
 
 ### Environment setup
 
@@ -411,7 +411,8 @@ cp autox_tests/.env.rag.example autox_tests/.env.rag
 | `INPUT_DATA_BUCKET_NAME` | S3 bucket for input documents |
 | `INPUT_DATA_SECRET_NAME` | Kubernetes secret for input data bucket |
 | `MAAS_SECRET_NAME` | Kubernetes secret with MaaS inference settings (`MAAS_BASE_URL`, `MAAS_API_KEY`) |
-| `VECTOR_DB_SECRET_NAME` | Kubernetes secret with vector DB connection (`MILVUS_*` or `PGVECTOR_*` keys) |
+| `VECTOR_DB_SECRET_NAME` | Kubernetes secret with the standard scenarios' vector DB connection (`MILVUS_*` or `PGVECTOR_*` keys) |
+| `NEO4J_DB_SECRET_NAME` | Kubernetes secret with `NEO4J_URI`, `NEO4J_USERNAME`, and `NEO4J_PASSWORD`; required for the `neo4j` scenario |
 
 #### S3 artifact validation (optional)
 
@@ -437,7 +438,7 @@ Managed AutoRAG pipelines are used by default. `AUTORAG_PIPELINE_PATH` is requir
 | `RHOAI_NOTEBOOK_MEMORY` | `4Gi` | Memory request and limit for the notebook Job container. |
 | `RHOAI_NOTEBOOK_KERNEL_NAME` | `python3` | Jupyter kernel registered in the runner image. |
 | `S3_SSL_VERIFY` | `true` | Verify S3 TLS in the notebook Job; use `false` only for a trusted development endpoint with a self-signed certificate. |
-| `MAAS_SECRET_NAME`, `VECTOR_DB_SECRET_NAME` | — | Existing secrets injected into AutoRAG notebook Jobs. |
+| `MAAS_SECRET_NAME`, scenario database secret | — | Existing secrets injected into AutoRAG notebook Jobs. `TC-P-7` injects `NEO4J_DB_SECRET_NAME`; the other scenarios inject `VECTOR_DB_SECRET_NAME`. |
 | `RHOAI_TEST_S3_SECRET_NAME` | — | Existing S3 secret injected into notebook Jobs. |
 
 #### Model lists (required by the MaaS pipeline)
@@ -447,6 +448,7 @@ Managed AutoRAG pipelines are used by default. `AUTORAG_PIPELINE_PATH` is requir
 | `AUTORAG_EMBEDDING_MODELS` | Embedding model IDs (JSON array / comma-separated) for optimization configs using `"env"` |
 | `AUTORAG_GENERATION_MODELS` | Generation model IDs (JSON array / comma-separated) for optimization configs using `"env"` |
 | `AUTORAG_INDEXING_EMBEDDING_MODEL_ID` | Single embedding model ID for indexing positive tests using `"env"` |
+| `AUTORAG_INDEXING_FOUNDATION_MODEL_ID` | Generation model ID used for Neo4j graph extraction in `IDX-P-3` |
 
 #### Test filtering and timeouts
 
@@ -481,7 +483,7 @@ pytest autox_tests/autorag/ -k "TC-P-1" -v
 
 ### Test scenarios
 
-Scenarios are defined in `configs/optimisation_test_configs.json` (optimization) and `configs/indexing_test_configs.json` (indexing). Each entry specifies `id`, `description`, `tags`, `expected_result` (`"pass"` or `"fail"`), the required model lists (`embedding_models` / `generation_models`, or `"env"`), and per-scenario parameter overrides. The vector-store backend is auto-detected from `VECTOR_DB_SECRET_NAME`; it is no longer a scenario field.
+Scenarios are defined in `configs/optimisation_test_configs.json` (optimization) and `configs/indexing_test_configs.json` (indexing). Each entry specifies `id`, `description`, `tags`, `expected_result` (`"pass"` or `"fail"`), the required model lists (`embedding_models` / `generation_models`, or `"env"`), and per-scenario parameter overrides. The vector-store backend is auto-detected from the selected database secret. Scenarios use `VECTOR_DB_SECRET_NAME` by default and can select a dedicated secret by setting `db_secret_name` or `db_secret_name_env`; `TC-P-7` uses `NEO4J_DB_SECRET_NAME`.
 
 Only positive optimization scenarios accept `"run_notebook": true`; it defaults to `false`. This runs the best pattern's indexing and inference notebooks sequentially in one Kubernetes Job pod. AutoRAG has no `deploy` field, and indexing scenarios do not run notebook Jobs.
 
