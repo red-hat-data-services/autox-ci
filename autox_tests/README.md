@@ -430,16 +430,16 @@ Managed AutoRAG pipelines are used by default. `AUTORAG_PIPELINE_PATH` is requir
 
 #### Notebook execution (optimization only)
 
-| Variable | Default | Purpose |
-|---|---|---|
-| `RHOAI_NOTEBOOK_RUNNER_IMAGE` | — | Image containing Python, `boto3`, `papermill`, and notebook dependencies. Required when an optimization scenario enables `run_notebook`. |
-| `RHOAI_NOTEBOOK_JOB_TIMEOUT` | `900` | Maximum seconds to wait for each notebook Job. |
-| `RHOAI_NOTEBOOK_CPU` | `2` | CPU request and limit for the notebook Job container. |
-| `RHOAI_NOTEBOOK_MEMORY` | `4Gi` | Memory request and limit for the notebook Job container. |
-| `RHOAI_NOTEBOOK_KERNEL_NAME` | `python3` | Jupyter kernel registered in the runner image. |
-| `S3_SSL_VERIFY` | `true` | Verify S3 TLS in the notebook Job; use `false` only for a trusted development endpoint with a self-signed certificate. |
-| `MAAS_SECRET_NAME`, scenario database secret | — | Existing secrets injected into AutoRAG notebook Jobs. `TC-P-7` injects `NEO4J_DB_SECRET_NAME`; the other scenarios inject `VECTOR_DB_SECRET_NAME`. |
-| `RHOAI_TEST_S3_SECRET_NAME` | — | Existing S3 secret injected into notebook Jobs. |
+| Variable | Default | Purpose                                                                                                                                            |
+|---|---|----------------------------------------------------------------------------------------------------------------------------------------------------|
+| `RHOAI_NOTEBOOK_RUNNER_IMAGE` | — | Image containing Python, `boto3`, `papermill`, and notebook dependencies. Required when an optimization scenario enables `run_notebook`.           |
+| `RHOAI_NOTEBOOK_JOB_TIMEOUT` | `900` | Maximum seconds to wait for each notebook Job.                                                                                                     |
+| `RHOAI_NOTEBOOK_CPU` | `2` | CPU request and limit for the notebook Job container.                                                                                              |
+| `RHOAI_NOTEBOOK_MEMORY` | `4Gi` | Memory request and limit for the notebook Job container.                                                                                           |
+| `RHOAI_NOTEBOOK_KERNEL_NAME` | `python3` | Jupyter kernel registered in the runner image.                                                                                                     |
+| `S3_SSL_VERIFY` | `true` | Verify S3 TLS in the notebook Job; use `false` only for a trusted development endpoint with a self-signed certificate.                             |
+| `MAAS_SECRET_NAME`, scenario database secret | — | Existing secrets injected into AutoRAG notebook Jobs. `TC-P-9` injects `NEO4J_DB_SECRET_NAME`; the other scenarios inject `VECTOR_DB_SECRET_NAME`. |
+| `RHOAI_TEST_S3_SECRET_NAME` | — | Existing S3 secret injected into notebook Jobs.                                                                                                    |
 
 #### Model lists (required by the MaaS pipeline)
 
