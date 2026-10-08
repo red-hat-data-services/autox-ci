@@ -139,9 +139,9 @@
         "optimization_max_rag_patterns": 4,
         "optimization_metric": "answer_correctness",
         "input_data_keys": [
-            "datasets/rag/pdf_notebook_smoke/documents"
+            "datasets/rag/ocr/documents"
         ],
-        "test_data_key": "datasets/rag/pdf_notebook_smoke/benchmark_data.json"
+        "test_data_key": "datasets/rag/ocr/benchmark_data.json"
     },
     {
         "id": "TC-P-8",
