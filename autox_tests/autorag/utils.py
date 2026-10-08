@@ -342,13 +342,17 @@ def _pick_best_pattern_notebooks(s3_client, bucket, artifacts):
     return indexing_keys[0], inference_keys[0]
 
 
-def _download_and_execute_notebooks(s3_client, bucket, notebook_keys, *, config):
+def _download_and_execute_notebooks(
+    s3_client, bucket, notebook_keys, *, config, db_secret_name: str
+):
     """Execute generated notebooks sequentially in one Kubernetes Job pod.
 
     Args:
         s3_client: Boto3 S3 client.
         bucket: S3 bucket name.
         notebook_keys: List of S3 keys pointing to .ipynb files.
+        config: Functional-test configuration used to inject S3 and MaaS secrets.
+        db_secret_name: Scenario-selected database secret injected into the Job.
 
     Raises:
         AssertionError: If any notebook fails execution.
@@ -361,7 +365,7 @@ def _download_and_execute_notebooks(s3_client, bucket, notebook_keys, *, config)
         secret_names=[
             str(config.get("s3_secret_name") or config.get("input_data_secret_name") or ""),
             str(config.get("maas_secret_name") or ""),
-            str(config.get("vector_db_secret_name") or ""),
+            db_secret_name,
         ],
         inject_mock_input=True,
     )

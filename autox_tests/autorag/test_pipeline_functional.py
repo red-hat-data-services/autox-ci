@@ -213,4 +213,5 @@ class TestAutoRAGFunctional:
                 config=add_kubeconfig_to_config(
                     functional_env_config, rhoai_cluster_kubeconfig
                 ),
+                db_secret_name=arguments["db_secret_name"],
             )

@@ -1,0 +1,16 @@
+[
+  {
+    "question": "Which team owns the Aster support platform?",
+    "correct_answers": ["The operations team owns the Aster support platform."],
+    "correct_answer_document_keys": [
+      "datasets/rag/neo4j_light/documents/aster_platform.md"
+    ]
+  },
+  {
+    "question": "What should be checked before restarting workloads for a Billing API incident?",
+    "correct_answers": ["Check the payment-provider connection before restarting workloads."],
+    "correct_answer_document_keys": [
+      "datasets/rag/neo4j_light/documents/aster_runbook.md"
+    ]
+  }
+]

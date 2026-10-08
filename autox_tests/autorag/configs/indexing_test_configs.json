@@ -34,5 +34,19 @@
         "input_data_keys": ["datasets/rag/rh_summit_2026/documents"],
         "chunk_size": 512,
         "chunk_overlap": 50
+    },
+    {
+        "id": "IDX-P-3",
+        "description": "Index the lightweight corpus into Neo4j using its dedicated database secret.",
+        "tags": ["positive", "indexing", "neo4j", "light"],
+        "expected_result": "pass",
+        "embedding_model_id": "env",
+        "foundation_model_id": "env",
+        "kg_extraction_config": {
+            "mode": "constrained"
+        },
+        "input_data_keys": ["datasets/rag/neo4j_light/documents"],
+        "db_secret_name_env": "NEO4J_DB_SECRET_NAME",
+        "expected_vector_provider": "neo4j"
     }
 ]

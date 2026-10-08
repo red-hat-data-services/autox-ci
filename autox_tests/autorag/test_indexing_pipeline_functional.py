@@ -42,8 +42,8 @@ INDEXING_NEGATIVE_CONFIGS = get_indexing_configs_for_run(pass_type="negative")
 
 _EXPECTED_FAIL_TIMEOUT_CAP = 600
 
-# Vector backends the pipeline can auto-detect from the vector-DB secret (MILVUS_*/PGVECTOR_*).
-_SUPPORTED_VECTOR_PROVIDERS = frozenset({"milvus", "pgvector", "chroma"})
+# Vector backends the pipeline can auto-detect from the vector-DB secret.
+_SUPPORTED_VECTOR_PROVIDERS = frozenset({"milvus", "neo4j", "pgvector", "chroma"})
 
 
 def _fetch_indexing_report(
@@ -133,11 +133,13 @@ def _assert_indexing_report(report: dict, test_config: "IndexingTestConfig") -> 
         f"{sorted(_SUPPORTED_VECTOR_PROVIDERS)} — vector backend was not auto-detected "
         "from the vector-DB secret"
     )
-    expected_provider = (os.getenv("AUTORAG_EXPECTED_VECTOR_PROVIDER") or "").strip().lower()
+    expected_provider = test_config.expected_vector_provider or (
+        os.getenv("AUTORAG_EXPECTED_VECTOR_PROVIDER") or ""
+    ).strip().lower()
     if expected_provider:
         assert provider_type == expected_provider, (
             f"[{tid}] provider_type mismatch: got {provider_type!r}, "
-            f"expected {expected_provider!r} (AUTORAG_EXPECTED_VECTOR_PROVIDER)"
+            f"expected {expected_provider!r}"
         )
 
     expected_model_id = test_config.embedding_model_id
