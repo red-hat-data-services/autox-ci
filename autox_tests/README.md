@@ -438,7 +438,7 @@ Managed AutoRAG pipelines are used by default. `AUTORAG_PIPELINE_PATH` is requir
 | `RHOAI_NOTEBOOK_MEMORY` | `4Gi` | Memory request and limit for the notebook Job container.                                                                                           |
 | `RHOAI_NOTEBOOK_KERNEL_NAME` | `python3` | Jupyter kernel registered in the runner image.                                                                                                     |
 | `S3_SSL_VERIFY` | `true` | Verify S3 TLS in the notebook Job; use `false` only for a trusted development endpoint with a self-signed certificate.                             |
-| `MAAS_SECRET_NAME`, scenario database secret | — | Existing secrets injected into AutoRAG notebook Jobs. `TC-P-8` injects `NEO4J_DB_SECRET_NAME`; the other scenarios inject `VECTOR_DB_SECRET_NAME`. |
+| `MAAS_SECRET_NAME`, scenario database secret | — | Existing secrets injected into AutoRAG notebook Jobs. `TC-P-9` injects `NEO4J_DB_SECRET_NAME`; the other scenarios inject `VECTOR_DB_SECRET_NAME`. |
 | `RHOAI_TEST_S3_SECRET_NAME` | — | Existing S3 secret injected into notebook Jobs.                                                                                                    |
 
 #### Model lists (required by the MaaS pipeline)
@@ -483,7 +483,7 @@ pytest autox_tests/autorag/ -k "TC-P-1" -v
 
 ### Test scenarios
 
-Scenarios are defined in `configs/optimisation_test_configs.json` (optimization) and `configs/indexing_test_configs.json` (indexing). Each entry specifies `id`, `description`, `tags`, `expected_result` (`"pass"` or `"fail"`), the required model lists (`embedding_models` / `generation_models`, or `"env"`), and per-scenario parameter overrides. The vector-store backend is auto-detected from the selected database secret. Scenarios use `VECTOR_DB_SECRET_NAME` by default and can select a dedicated secret by setting `db_secret_name` or `db_secret_name_env`; `TC-P-7` uses `NEO4J_DB_SECRET_NAME`.
+Scenarios are defined in `configs/optimisation_test_configs.json` (optimization) and `configs/indexing_test_configs.json` (indexing). Each entry specifies `id`, `description`, `tags`, `expected_result` (`"pass"` or `"fail"`), the required model lists (`embedding_models` / `generation_models`, or `"env"`), and per-scenario parameter overrides. The vector-store backend is auto-detected from the selected database secret. Scenarios use `VECTOR_DB_SECRET_NAME` by default and can select a dedicated secret by setting `db_secret_name` or `db_secret_name_env`; `TC-P-9` uses `NEO4J_DB_SECRET_NAME`.
 
 Only positive optimization scenarios accept `"run_notebook": true`; it defaults to `false`. This runs the best pattern's indexing and inference notebooks sequentially in one Kubernetes Job pod. AutoRAG has no `deploy` field, and indexing scenarios do not run notebook Jobs.
 
