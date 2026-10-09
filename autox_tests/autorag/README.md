@@ -62,11 +62,19 @@ Scenarios live in `configs/test_configs.json`. Each entry specifies:
 
 > The vector-store backend (Milvus / PGVector / Neo4j) is auto-detected by the pipeline from
 > the selected database secret's key prefixes. Most scenarios use `VECTOR_DB_SECRET_NAME`;
-> `TC-P-7` uses the dedicated secret supplied by `NEO4J_DB_SECRET_NAME`.
+> `TC-P-9` uses the dedicated secret supplied by `NEO4J_DB_SECRET_NAME`.
 
 ### Tag filtering
 
 Pass tags via `--tags` / `-t` on the CLI or set `AUTORAG_FUNCTIONAL_TESTS_TAGS` in the environment. Only scenarios matching **all** specified tags are selected.
+
+### OCR scenario (`ocr` tag)
+
+`TC-P-8` covers OCR text extraction ([pipelines-components#243](https://github.com/opendatahub-io/pipelines-components/pull/243)) using image-only SlideVQA input. Without OCR the pipeline extracts no text; the scenario verifies that OCR produces extracted text for every uploaded document (RHOAIENG-91789).
+
+```bash
+./run_tests.sh --env-file autox_tests/.env.rag -t ocr "autorag and positive"
+```
 
 ## Pass / fail criteria
 

@@ -129,7 +129,6 @@ def _exclude_code_cells_before_next_markdown_after_sections(notebook, section_ti
 
 
 _DISCONNECTED_ONLY_NOTEBOOK_SECTIONS = (
-    "Configure Models for Disconnected Environments",
     "Validate Offline Configuration",
 )
 

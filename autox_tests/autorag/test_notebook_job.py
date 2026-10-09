@@ -70,7 +70,7 @@ def test_notebook_job_only_injects_docling_for_disconnected_autorag(
 def test_notebook_job_uses_docling_path_for_offline_cell_execution(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The runner only skips disconnected setup cells without Docling artifacts."""
+    """The runner only skips disconnected validation cells without Docling artifacts."""
     batch_api = _BatchApi()
     monkeypatch.setenv("RHOAI_NOTEBOOK_RUNNER_IMAGE", "example.invalid/notebook:latest")
     monkeypatch.setattr(
@@ -99,6 +99,10 @@ def test_notebook_job_uses_docling_path_for_offline_cell_execution(
         notebooks._NOTEBOOK_JOB_PROGRAM
     )
     assert "if not docling_path:" in notebooks._NOTEBOOK_JOB_PROGRAM
+    assert '"Validate Offline Configuration"' in notebooks._NOTEBOOK_JOB_PROGRAM
+    assert '"Configure Models for Disconnected Environments"' not in (
+        notebooks._NOTEBOOK_JOB_PROGRAM
+    )
     compile(notebooks._NOTEBOOK_JOB_PROGRAM, "notebook-runner", "exec")
 
 

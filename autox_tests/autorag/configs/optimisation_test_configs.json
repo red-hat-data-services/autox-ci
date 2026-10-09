@@ -130,6 +130,34 @@
     },
     {
         "id": "TC-P-7",
+        "description": "Run scenario with PDF to check OCR.",
+        "tags": ["positive", "pdf", "answer_correctness", "optimisation"],
+        "expected_result": "pass",
+        "run_notebook": true,
+        "embedding_models": "env",
+        "generation_models": "env",
+        "optimization_max_rag_patterns": 4,
+        "optimization_metric": "answer_correctness",
+        "input_data_keys": [
+            "datasets/rag/ocr/documents"
+        ],
+        "test_data_key": "datasets/rag/ocr/benchmark_data.json"
+    },
+    {
+        "id": "TC-P-8",
+        "description": "Run scenario over image-only slide decks (SlideVQA PNGs), which yield text only when OCR runs.",
+        "tags": ["positive", "ocr", "answer_correctness", "optimisation"],
+        "expected_result": "pass",
+        "run_notebook": false,
+        "embedding_models": "env",
+        "generation_models": "env",
+        "optimization_max_rag_patterns": 4,
+        "optimization_metric": "answer_correctness",
+        "input_data_keys": ["datasets/rag/slidevqa/documents"],
+        "test_data_key": "datasets/rag/slidevqa/benchmark_data.json"
+    },
+    {
+        "id": "TC-P-9",
         "description": "Run graph RAG optimization against Neo4j with a lightweight dedicated corpus.",
         "tags": ["positive", "neo4j", "light", "optimisation"],
         "expected_result": "pass",

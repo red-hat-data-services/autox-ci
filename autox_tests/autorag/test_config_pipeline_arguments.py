@@ -40,13 +40,13 @@ def test_neo4j_scenario_uses_its_dedicated_database_secret(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("NEO4J_DB_SECRET_NAME", "neo4j-vector-db")
-    scenario = next(c for c in get_test_configs_for_run("positive") if c.id == "TC-P-7")
+    scenario = next(c for c in get_test_configs_for_run("positive") if c.id == "TC-P-9")
 
     assert scenario.get_pipeline_arguments(_BASE)["db_secret_name"] == "neo4j-vector-db"
 
 
 def test_neo4j_scenario_uses_the_lightweight_dataset() -> None:
-    scenario = next(c for c in get_test_configs_for_run("positive") if c.id == "TC-P-7")
+    scenario = next(c for c in get_test_configs_for_run("positive") if c.id == "TC-P-9")
 
     assert scenario.input_data_keys == ["datasets/rag/neo4j_light/documents"]
     assert scenario.test_data_key == "datasets/rag/neo4j_light/benchmark_data.json"
@@ -54,7 +54,7 @@ def test_neo4j_scenario_uses_the_lightweight_dataset() -> None:
 
 
 def test_dedicated_database_secret_env_is_required() -> None:
-    scenario = next(c for c in get_test_configs_for_run("positive") if c.id == "TC-P-7")
+    scenario = next(c for c in get_test_configs_for_run("positive") if c.id == "TC-P-9")
 
     with pytest.raises(EnvironmentError, match="NEO4J_DB_SECRET_NAME"):
         scenario.get_pipeline_arguments(_BASE)

@@ -1,0 +1,110 @@
+[
+  {
+    "question": "Which bank issued the bank statement for TRADE LINKS INDIA?",
+    "correct_answers": [
+      "Progressive National Bank issued the bank statement for TRADE LINKS INDIA."
+    ],
+    "correct_answer_document_keys": [
+      "datasets/rag/ocr/documents/bank_statement_00001.pdf"
+    ]
+  },
+  {
+    "question": "Who is the account holder named in the Progressive National Bank statement?",
+    "correct_answers": [
+      "The account holder is TRADE LINKS INDIA."
+    ],
+    "correct_answer_document_keys": [
+      "datasets/rag/ocr/documents/bank_statement_00001.pdf"
+    ]
+  },
+  {
+    "question": "What date range does the TRADE LINKS INDIA bank statement cover?",
+    "correct_answers": [
+      "The statement covers 1 January 2024 through 31 March 2024."
+    ],
+    "correct_answer_document_keys": [
+      "datasets/rag/ocr/documents/bank_statement_00001.pdf"
+    ]
+  },
+  {
+    "question": "What account number is listed for TRADE LINKS INDIA?",
+    "correct_answers": [
+      "The account number for TRADE LINKS INDIA is 78439336112."
+    ],
+    "correct_answer_document_keys": [
+      "datasets/rag/ocr/documents/bank_statement_00001.pdf"
+    ]
+  },
+  {
+    "question": "Which branch is named in the TRADE LINKS INDIA bank statement?",
+    "correct_answers": [
+      "The branch name is KOLKATA HOWRAH."
+    ],
+    "correct_answer_document_keys": [
+      "datasets/rag/ocr/documents/bank_statement_00001.pdf"
+    ]
+  },
+  {
+    "question": "What IFSC code is listed in the TRADE LINKS INDIA bank statement?",
+    "correct_answers": [
+      "The IFSC code is PROG0920445."
+    ],
+    "correct_answer_document_keys": [
+      "datasets/rag/ocr/documents/bank_statement_00001.pdf"
+    ]
+  },
+  {
+    "question": "What annual interest rate is listed for the TRADE LINKS INDIA account?",
+    "correct_answers": [
+      "The annual interest rate is 3.18% per annum."
+    ],
+    "correct_answer_document_keys": [
+      "datasets/rag/ocr/documents/bank_statement_00001.pdf"
+    ]
+  },
+  {
+    "question": "What is the opening balance in the TRADE LINKS INDIA bank statement?",
+    "correct_answers": [
+      "The opening balance is Rs. 59,131.72."
+    ],
+    "correct_answer_document_keys": [
+      "datasets/rag/ocr/documents/bank_statement_00001.pdf"
+    ]
+  },
+  {
+    "question": "What is the closing balance in the TRADE LINKS INDIA bank statement?",
+    "correct_answers": [
+      "The closing balance is Rs. 21,661.82."
+    ],
+    "correct_answer_document_keys": [
+      "datasets/rag/ocr/documents/bank_statement_00001.pdf"
+    ]
+  },
+  {
+    "question": "How much was credited by the NEFT transaction from CLOTHING INDUSTRIES LTD on 1 January 2024?",
+    "correct_answers": [
+      "The NEFT transaction from CLOTHING INDUSTRIES LTD credited Rs. 6,086.63 on 1 January 2024."
+    ],
+    "correct_answer_document_keys": [
+      "datasets/rag/ocr/documents/bank_statement_00001.pdf"
+    ]
+  },
+  {
+    "question": "What NEFT/RTGS service charge was debited from the TRADE LINKS INDIA account on 28 March 2024?",
+    "correct_answers": [
+      "A NEFT/RTGS service charge of Rs. 11.97 was debited on 28 March 2024."
+    ],
+    "correct_answer_document_keys": [
+      "datasets/rag/ocr/documents/bank_statement_00001.pdf"
+    ]
+  },
+  {
+    "question": "How much was credited in the final UPI transaction from ARIJIT CHOWDHURY on 30 March 2024?",
+    "correct_answers": [
+      "The final UPI transaction from ARIJIT CHOWDHURY credited Rs. 748.95 on 30 March 2024."
+    ],
+    "correct_answer_document_keys": [
+      "datasets/rag/ocr/documents/bank_statement_00001.pdf"
+    ]
+  }
+]
