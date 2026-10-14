@@ -28,8 +28,9 @@ datasets = [
     "Pillow>=10.0.0",
     "requests>=2.31.0",
 ]
+mlflow = ["mlflow>=2.10.0"]
 all = [
-    "automl-benchmarks[compare,datasets]",
+    "automl-benchmarks[compare,datasets,mlflow]",
 ]
 
 [tool.pytest.ini_options]
