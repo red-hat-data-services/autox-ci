@@ -151,6 +151,9 @@ def credentials_dict_from_env() -> dict[str, Any]:
     vector_db_secret = _get_env("BENCHMARK_VECTOR_DB_SECRET_NAME", "VECTOR_DB_SECRET_NAME")
     if vector_db_secret:
         pipeline["vector_db_secret_name"] = vector_db_secret
+    ogx_secret = _get_env("BENCHMARK_OGX_SECRET_NAME", "OGX_SECRET_NAME")
+    if ogx_secret:
+        pipeline["ogx_secret_name"] = ogx_secret
     package_path = _get_env(
         "BENCHMARK_TABULAR_PACKAGE_PATH",
         "TABULAR_PACKAGE_PATH",

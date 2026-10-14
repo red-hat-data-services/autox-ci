@@ -5,7 +5,7 @@ pipeline:
 
 run:
   optimization_metric: "faithfulness"
-  optimization_max_rag_patterns: 8
+  optimization_max_rag_patterns: 4
   poll_interval_seconds: 30
   timeout_seconds: 86400
   enable_caching: false
