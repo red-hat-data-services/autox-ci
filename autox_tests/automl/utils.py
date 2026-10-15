@@ -86,8 +86,12 @@ def _make_run_name(prefix: str) -> str:
     return f"{prefix}-{hex_part}-{time_part}"
 
 
-def _run_pipeline_and_wait(client, pipeline_target, arguments, timeout):
-    """Submit a pipeline run and block until completion; return ``(run_id, detail)``."""
+def _run_pipeline_and_wait(client, pipeline_target, arguments, timeout, config=None):
+    """Submit a pipeline run and block until completion; return ``(run_id, detail)``.
+
+    ``config`` enables failure-class classification of run timeouts
+    (RHAI-10079): pod inspection for resource-shortage signals.
+    """
     from autox_tests.lib.managed_pipelines import submit_pipeline_run_and_wait
 
     run_name = _make_run_name("automl-func")
@@ -97,6 +101,8 @@ def _run_pipeline_and_wait(client, pipeline_target, arguments, timeout):
         arguments,
         run_name=run_name,
         timeout=timeout,
+        config=config,
+        kind="automl",
     )
 
 
@@ -1402,15 +1408,42 @@ def run_deployment_test(
         result["isvc_ready"] = isvc_ready
 
         if blocking_reason or not isvc_ready:
+            from autox_tests.lib.failure_classes import (
+                ResourceShortageTimeout,
+                resource_shortage_signals_from_pods,
+            )
             from autox_tests.lib.k8s_utils import fetch_logs_by_selector, pod_log_tail_lines
 
+            isvc_selector = f"serving.kserve.io/inferenceservice={isvc_name}"
+            try:
+                predictor_pods = v1.list_namespaced_pod(
+                    namespace=namespace,
+                    label_selector=isvc_selector,
+                    _request_timeout=30,
+                ).items
+            except Exception as exc:
+                logger.debug("Could not list predictor pods for %s: %s", isvc_name, exc)
+                predictor_pods = []
             pod_logs = fetch_logs_by_selector(
                 v1,
                 namespace,
-                f"serving.kserve.io/inferenceservice={isvc_name}",
+                isvc_selector,
                 tail_lines=pod_log_tail_lines(),
             )
             logger.error("Predictor pod logs for %r:\n%s", isvc_name, pod_logs)
+
+            # RHAI-10079: an unschedulable/OOMKilled predictor is a resource
+            # shortage — fail fast with the classified exception, never rerun.
+            shortage_signals = resource_shortage_signals_from_pods(predictor_pods)
+            if shortage_signals:
+                detail = "\n".join(f"  - {signal}" for signal in shortage_signals)
+                raise ResourceShortageTimeout(
+                    f"InferenceService {isvc_name!r} could not become Ready within "
+                    f"{inference_timeout}s due to lack of cluster resources:\n{detail}\n"
+                    "A rerun cannot fix this; the failure is not masked as flaky.\n"
+                    f"--- predictor pod logs ---\n{pod_logs}"
+                )
+
             if blocking_reason:
                 result["score_error"] = (
                     f"ISVC {isvc_name!r} blocking condition: {blocking_reason}"

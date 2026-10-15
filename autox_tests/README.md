@@ -58,6 +58,53 @@ For AutoML, package mode requires `AUTOML_TABULAR_PIPELINE_PATH` and/or `AUTOML_
 
 ---
 
+## Rerun policy (failure-class-aware retries)
+
+The suites use [pytest-rerunfailures](https://github.com/pytest-dev/pytest-rerunfailures) so that only failures a rerun can plausibly fix are retried. Failures are classified at the point where they are observed (`autox_tests/lib/failure_classes.py`) into three classes:
+
+| Failure class | Exception | Detected as | Rerun |
+|---|---|---|---|
+| Early flaky | `EarlyFlakyFailure` | Transient setup/API errors that escaped the in-request retry layers (`KFP_API_RETRY_ATTEMPTS`, run-submission retry, KServe predict retry), transient S3 network errors | Yes — immediate rerun usually succeeds |
+| MaaS slowness | `MaasSlownessTimeout` | An AutoRAG wait exceeded its budget while the run/Job was still progressing (MaaS-bound embedding/generation) | Yes — rerun with backoff delay |
+| Lack of resources | `ResourceShortageTimeout` | Pods unschedulable, OOMKilled, or Evicted (node pressure/quota) on pipeline runs, notebook Jobs, or KServe predictors | **No** — fails fast with a diagnostic; rerunning cannot fix it and must not mask the problem |
+
+Plain `AssertionError`s (real regressions, negative-test assertions) match no rerun class and are never retried. AutoML run timeouts (run still `RUNNING` past `RHOAI_PIPELINE_RUN_TIMEOUT` without resource signals) are also not rerun: slow AutoGluon training is not fixed by rerunning.
+
+`run_tests.sh` applies these defaults, overridable per suite:
+
+| Suite | `--reruns` | `--reruns-delay` | Rerunnable classes |
+|---|---|---|---|
+| `automl` | 1 | 60 s | `EarlyFlakyFailure` |
+| `autorag`, `all` | 2 | 180 s | `EarlyFlakyFailure`, `MaasSlownessTimeout` |
+
+Both suites always pass `--rerun-except ResourceShortageTimeout` as an explicit fail-fast guard.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `RHOAI_TEST_RERUNS` | `1` (automl) / `2` (autorag, all) | Rerun attempts for classified failures |
+| `RHOAI_TEST_RERUNS_DELAY` | `60` (automl) / `180` (autorag, all) | Delay in seconds between attempts |
+
+For a specific known-flaky scenario, opt in per test with the plugin marker:
+
+```python
+from autox_tests.lib.failure_classes import rerun_transient_failures
+
+@pytest.mark.flaky(reruns=2, reruns_delay=60, condition=rerun_transient_failures)
+def test_something_flaky(...):
+    ...
+```
+
+### Rerun observability
+
+Reruns stay visible in reports so flakiness trends remain trackable:
+
+- Terminal output shows `RERUN` lines and an `N rerun` summary line.
+- JUnit XML (`--junitxml=...`) contains one testcase element per attempt; every failed test carries `failure_class` and `rerun_count` properties identifying the failure class and how many reruns it consumed. A rerun that eventually passes drops the stale `failure_class` on the final (passing) testcase.
+
+The classification complements — never duplicates — `KFP_API_RETRY_ATTEMPTS`, which still handles transient read-only KFP API calls invisibly within a single test attempt.
+
+---
+
 ## Custom test configurations
 
 When `autox-ci` is used as a submodule, downstream repos can supply their own test config JSON files to define different datasets, models, or scenario definitions. Override the built-in configs via environment variables or CLI flags:
@@ -148,6 +195,8 @@ cp autox_tests/.env.ml.example autox_tests/.env.ml
 | `AUTOML_TABULAR_TEST_CONFIGS_PATH` | — | Path to custom tabular test configs JSON. Overrides built-in `tabular_test_configs.json`. |
 | `AUTOML_TIMESERIES_TEST_CONFIGS_PATH` | — | Path to custom timeseries test configs JSON. Overrides built-in `timeseries_test_configs.json`. |
 | `RHOAI_PIPELINE_RUN_TIMEOUT` | `3600` | Max seconds to wait for a pipeline run |
+| `RHOAI_TEST_RERUNS` | `1` | Rerun attempts for classified failures (see [Rerun policy](#rerun-policy-failure-class-aware-retries)) |
+| `RHOAI_TEST_RERUNS_DELAY` | `60` | Seconds between rerun attempts |
 | `KFP_DISABLE_EXECUTION_CACHING_BY_DEFAULT` | `true` | Disable KFP step caching |
 | `AUTOML_FUNCTIONAL_TEST_KEEP_ARTIFACTS` | `false` | Skip S3 artifact cleanup after the session |
 | `KFP_API_RETRY_ATTEMPTS` | `5` | Total attempts for transient read-only KFP API requests |

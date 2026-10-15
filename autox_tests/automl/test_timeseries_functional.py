@@ -97,6 +97,7 @@ class TestAutoMLTimeseriesFunctional:
             timeseries_pipeline_run_target,
             arguments,
             pipeline_run_timeout,
+            config=automl_functional_config,
         )
         elapsed = time.monotonic() - start
 
@@ -358,6 +359,7 @@ class TestAutoMLTimeseriesFunctionalNegative:
             timeseries_pipeline_run_target,
             arguments,
             timeout,
+            config=automl_functional_config,
         )
         elapsed = time.monotonic() - start
 

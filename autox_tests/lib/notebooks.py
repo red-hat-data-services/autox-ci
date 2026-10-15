@@ -218,16 +218,22 @@ def _notebook_job_timeout_seconds() -> int:
     return value
 
 
-def _job_pod_logs(core_api: Any, namespace: str, job_name: str) -> str:
-    """Return concise logs from pods owned by a notebook Job."""
+def _list_job_pods(core_api: Any, namespace: str, job_name: str) -> list:
+    """Return pods owned by a notebook Job (empty list on API failure)."""
     try:
-        pods = core_api.list_namespaced_pod(
+        return core_api.list_namespaced_pod(
             namespace=namespace,
             label_selector=f"job-name={job_name}",
             _request_timeout=30,
         ).items
     except Exception as exc:
-        return f"Unable to list Job pods: {exc}"
+        logger.debug("Could not list pods for Job %s: %s", job_name, exc)
+        return []
+
+
+def _job_pod_logs(core_api: Any, namespace: str, job_name: str) -> str:
+    """Return concise logs from pods owned by a notebook Job."""
+    pods = _list_job_pods(core_api, namespace, job_name)
 
     logs: list[str] = []
     for pod in pods:
@@ -263,6 +269,51 @@ def _job_pod_logs(core_api: Any, namespace: str, job_name: str) -> str:
     return "\n".join(logs) or "No pod logs were available."
 
 
+def _classify_notebook_job_failure(
+    core_api: Any,
+    namespace: str,
+    job_name: str,
+    timeout: int,
+    *,
+    maas_bound: bool,
+    timed_out: bool = False,
+) -> Exception:
+    """Classify a notebook Job failure/timeout for the rerun policy (RHAI-10079).
+
+    Pod status is inspected for lack-of-resources signals (unschedulable,
+    OOMKilled, Evicted) → ``ResourceShortageTimeout`` (never rerun). A timeout
+    on a MaaS-bound Job (AutoRAG indexing/inference notebooks) with no resource
+    signals → ``MaasSlownessTimeout`` (rerun with backoff). Everything else
+    keeps the original AssertionError, which matches no rerun class.
+    """
+    from autox_tests.lib.failure_classes import (
+        MaasSlownessTimeout,
+        ResourceShortageTimeout,
+        resource_shortage_signals_from_pods,
+    )
+
+    pods = _list_job_pods(core_api, namespace, job_name)
+    logs = _job_pod_logs(core_api, namespace, job_name)
+    outcome = (
+        f"timed out after {timeout}s" if timed_out else "failed"
+    )
+
+    signals = resource_shortage_signals_from_pods(pods)
+    if signals:
+        detail = "\n".join(f"  - {signal}" for signal in signals)
+        return ResourceShortageTimeout(
+            f"Notebook Job {job_name} {outcome} due to lack "
+            f"of cluster resources:\n{detail}\nA rerun cannot fix this.\n{logs}"
+        )
+    if timed_out and maas_bound:
+        return MaasSlownessTimeout(
+            f"Notebook Job {job_name} timed out after {timeout}s; these notebooks "
+            "are MaaS-bound (embedding/generation), so this is treated as MaaS "
+            f"slowness and is rerun with a backoff delay.\n{logs}"
+        )
+    return AssertionError(f"Notebook Job {job_name} {outcome}:\n{logs}")
+
+
 def run_notebooks_as_k8s_job(
     *,
     bucket: str,
@@ -270,12 +321,20 @@ def run_notebooks_as_k8s_job(
     config: dict[str, Any],
     secret_names: list[str],
     inject_mock_input: bool = False,
+    maas_bound: bool = False,
 ) -> None:
     """Execute S3-hosted notebooks sequentially in one ephemeral Job pod.
 
     The Job is enabled only when ``RHOAI_NOTEBOOK_RUNNER_IMAGE`` is set. The
     configured secrets are imported as environment variables, keeping S3, MaaS,
     and vector-store credentials out of the test process and Job command line.
+
+    Timeouts and resource-killed failures are classified for the rerun policy
+    (RHAI-10079): unschedulable/OOMKilled/Evicted pods raise
+    ``ResourceShortageTimeout`` (never rerun); a timeout on a ``maas_bound``
+    Job (AutoRAG indexing/inference notebooks call MaaS endpoints) raises
+    ``MaasSlownessTimeout`` (rerun with backoff); everything else keeps the
+    original AssertionError.
     """
     if not notebook_keys:
         raise ValueError("Notebook Job execution requires at least one notebook key")
@@ -396,11 +455,13 @@ def run_notebooks_as_k8s_job(
                 logger.info("Notebook Job %s completed", job_name)
                 return
             if (status.failed or 0) >= 1:
-                logs = _job_pod_logs(core_api, namespace, job_name)
-                raise AssertionError(f"Notebook Job {job_name} failed:\n{logs}")
+                raise _classify_notebook_job_failure(
+                    core_api, namespace, job_name, timeout, maas_bound=maas_bound
+                )
             time.sleep(_NOTEBOOK_JOB_POLL_SECONDS)
-        logs = _job_pod_logs(core_api, namespace, job_name)
-        raise AssertionError(f"Notebook Job {job_name} timed out after {timeout}s:\n{logs}")
+        raise _classify_notebook_job_failure(
+            core_api, namespace, job_name, timeout, maas_bound=maas_bound, timed_out=True
+        )
     finally:
         try:
             batch_api.delete_namespaced_job(
