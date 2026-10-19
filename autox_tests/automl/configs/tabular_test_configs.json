@@ -264,8 +264,8 @@
     "injected_fault": "task_type='multiclass' on a regression dataset (continuous price target)",
     "expected_failing_stage": "pipeline",
     "expected_failing_task": ["automl-data-loader"],
-    "expected_error_pattern": "least populated class in y has only",
-    "expected_outcome": "Stratified split fails: continuous price column has unique values each with 1 member when task_type='multiclass'"
+    "expected_error_pattern": "Stratified holdout split is not viable: .*Add data or increase rare-class counts, or set split_config\\.stratify=false explicitly\\.",
+    "expected_outcome": "Data loader rejects stratified holdout: task_type='multiclass' treats price values as classes, including single-member classes."
   },
   {
     "id": "TC-NA-6_bad_credentials",
