@@ -194,7 +194,11 @@ def s3_cleanup_tracker():
 
 
 @pytest.fixture(scope="session", autouse=True)
-def upload_datasets_if_requested(automl_functional_config, s3_client_automl_functional):
+def upload_datasets_if_requested(
+    request: pytest.FixtureRequest,
+    automl_functional_config,
+    s3_client_automl_functional,
+):
     """Upload test datasets to S3 at session start when ``AUTOML_UPLOAD_TEST_DATASETS`` is set.
 
     When set to ``1``, ``true``, or ``yes``, train and user-test CSVs referenced in
@@ -206,16 +210,32 @@ def upload_datasets_if_requested(automl_functional_config, s3_client_automl_func
     selected scenarios reference present, and every object behind a missing-object fault
     absent. Checking this here keeps a fixture problem from masquerading as a pipeline
     failure twenty minutes into a run. Both the upload and the check follow
-    ``AUTOML_FUNCTIONAL_TESTS_TAGS``, so a filtered run neither uploads nor requires
-    datasets it will not touch.
+    the final pytest selection (tags, ``-k``, ``-m``, and test paths), so a filtered run
+    neither uploads nor requires datasets it will not touch.
     """
     uploaded_keys: list[str] = []
     bucket: str | None = None
 
-    from .configs.configs import get_dataset_key_expectations
+    from .configs.configs import (
+        AutoMLTabularFunctionalConfig,
+        AutoMLTimeseriesFunctionalConfig,
+        get_dataset_key_expectations,
+    )
     from .utils import upload_test_datasets, verify_dataset_objects
 
-    required_keys, absent_keys = get_dataset_key_expectations()
+    configs = []
+    for item in request.session.items:
+        callspec = getattr(item, "callspec", None)
+        test_config = callspec.params.get("test_config") if callspec else None
+        if isinstance(
+            test_config, (AutoMLTabularFunctionalConfig, AutoMLTimeseriesFunctionalConfig)
+        ):
+            configs.append(test_config)
+
+    required_keys, absent_keys = get_dataset_key_expectations(configs)
+    if not required_keys and not absent_keys:
+        yield
+        return
 
     raw = os.environ.get(AUTOML_UPLOAD_TEST_DATASETS_ENV, "").strip().lower()
     if raw in ("1", "true", "yes"):
@@ -230,9 +250,8 @@ def upload_datasets_if_requested(automl_functional_config, s3_client_automl_func
             uploaded_keys = upload_test_datasets(
                 s3_client_automl_functional,
                 bucket,
-                required_keys + absent_keys,
+                required_keys,
                 local_data_dir,
-                optional_keys=absent_keys,
             )
 
     if automl_functional_config is not None and s3_client_automl_functional is not None:

@@ -329,7 +329,7 @@ The field is optional. The two `bad_credentials` scenarios leave it unset on pur
 
 #### `missing_object_keys` (negative scenarios)
 
-S3 keys whose *absence* is the injected fault. Everything else referenced by any scenario is treated as a required fixture: before the first run is submitted, the session fixture uploads it (when `AUTOML_UPLOAD_TEST_DATASETS=true`) and then verifies with `head_object` that every required key exists and every `missing_object_keys` entry does not. A fixture that never reached the bucket fails at setup with a clear message instead of surfacing twenty minutes later as a `NoSuchKey` that reads like a product bug. Uploads no longer skip an unmatched key silently — only keys listed here may be absent locally.
+S3 keys whose *absence* is the injected fault. Dataset setup uses only scenarios selected for execution after tag filters, pytest `-k`, `-m`, and test paths are applied. Before the first run is submitted, the session fixture uploads their required training and user-test files once per S3 key (when `AUTOML_UPLOAD_TEST_DATASETS=true`) and then verifies with `head_object` that every required key exists and every `missing_object_keys` entry does not. Intentionally absent keys are never uploaded. For example, `-k "TC-A-2"` uploads only `titanic.csv` with the default configs. A fixture that never reached the bucket fails at setup with a clear message instead of surfacing twenty minutes later as a `NoSuchKey` that reads like a product bug. Uploads fail when a required key has no matching local CSV.
 
 ### Pass criteria
 

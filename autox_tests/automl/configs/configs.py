@@ -246,11 +246,13 @@ def get_all_train_data_file_keys() -> list[str]:
     return keys
 
 
-def get_dataset_key_expectations() -> tuple[list[str], list[str]]:
+def get_dataset_key_expectations(
+    configs: list[AutoMLTabularFunctionalConfig | AutoMLTimeseriesFunctionalConfig] | None = None,
+) -> tuple[list[str], list[str]]:
     """Return ``(keys_that_must_exist, keys_that_must_be_absent)`` in the train-data bucket.
 
-    Scoped to the scenarios selected by ``AUTOML_FUNCTIONAL_TESTS_TAGS``, so a filtered run
-    is never blocked by a dataset it does not touch. Absent keys come from
+    Uses the supplied scenarios, or those selected by ``AUTOML_FUNCTIONAL_TESTS_TAGS``
+    when configs is None. An empty list requires no datasets. Absent keys come from
     ``missing_object_keys`` on the missing-object negative scenarios; every other key those
     scenarios reference must be present, so a fixture that never made it to S3 fails at
     session setup instead of surfacing as an opaque pipeline error.
@@ -259,7 +261,8 @@ def get_dataset_key_expectations() -> tuple[list[str], list[str]]:
         ValueError: If a key is declared missing by one scenario and used as real data by
             another — the two expectations cannot both hold.
     """
-    configs = [*get_tabular_configs_for_run(), *get_timeseries_configs_for_run()]
+    if configs is None:
+        configs = [*get_tabular_configs_for_run(), *get_timeseries_configs_for_run()]
 
     all_keys: set[str] = set()
     absent: set[str] = set()
