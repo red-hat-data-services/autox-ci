@@ -23,6 +23,37 @@ _CASES_TEST = _TIMESERIES + "poland_daily_cases_03_04-28_2021.csv"
 @pytest.mark.parametrize(
     ("args", "tags", "upload", "required", "absent", "passed"),
     [
+        (
+            [], "", True,
+            [
+                _TITANIC, _HOUSING, _CREDIT_TRAIN, _CREDIT_TEST,
+                _TABULAR + "classification_binary/credit_default_binary_light.csv",
+                _TABULAR + "classification_binary/german_credit_data_biased_test_missing_features.csv",
+                _TABULAR + "classification_multiclass/car_rental_training_data_light.csv",
+                _TABULAR + "classification_multiclass/wine_quality_multiclass_limited_classes_light.csv",
+                _TABULAR + "regression/energy_efficiency_regression.csv",
+                _TIMESERIES + "fruits_daily_price.csv",
+                _TIMESERIES + "m4_hourly_subset_train_ultra_light.csv",
+                _CASES_TRAIN, _CASES_TEST,
+                _TIMESERIES + "demand_single_item.csv",
+            ],
+            [
+                "functional-test/neg/tc-na-4/does-not-exist-00000000.csv",
+                "functional-test/neg/tc-na-7/does-not-exist-user-test.csv",
+                "functional-test/neg/tc-nb-3/does-not-exist-00000000.csv",
+                "functional-test/neg/tc-nb-6/does-not-exist-user-test.csv",
+            ],
+            27,
+        ),
+        (
+            [], "smoke", True,
+            [
+                _TITANIC, _HOUSING,
+                _TIMESERIES + "fruits_daily_price.csv",
+                _TIMESERIES + "demand_single_item.csv",
+            ],
+            [], 5,
+        ),
         (["-k", "TC-A-2"], "", True, [_TITANIC], [], 1),
         (["-k", "TC-A-2"], "smoke", True, [_TITANIC], [], 1),
         (["-k", "TC-A-2"], "", False, [_TITANIC], [], 1),
@@ -50,13 +81,24 @@ _CASES_TEST = _TIMESERIES + "poland_daily_cases_03_04-28_2021.csv"
             ],
             [], 4,
         ),
+        (
+            ["-k", "TC-A-2 or TC-B-3", "-m", "timeseries and positive"],
+            "", True, [_CASES_TRAIN, _CASES_TEST], [], 1,
+        ),
+        (["-k", "TC-A-2", "-m", "timeseries"], "", True, [], [], 0),
+        (
+            ["-k", "TC-A-2 or TC-B-1", "-m", "timeseries"],
+            "smoke", True, [_TIMESERIES + "fruits_daily_price.csv"], [], 1,
+        ),
         (["test_tabular.py", "-k", "TC-A-2"], "", True, [_TITANIC], [], 1),
         (["test_local_config.py"], "", True, [], [], 1),
         (["-k", "nonexistent_scenario"], "", True, [], [], 0),
     ],
     ids=[
+        "no-filters", "tags-without-keyword",
         "keyword", "tags-and-keyword", "verify-without-upload", "user-test-data",
-        "shared-dataset", "missing-objects", "markers", "test-path",
+        "shared-dataset", "missing-objects", "markers", "keyword-and-markers",
+        "keyword-and-markers-empty", "tags-keyword-and-markers", "test-path",
         "no-scenarios", "empty-selection",
     ],
 )
@@ -138,7 +180,9 @@ def test_dataset_setup_follows_pytest_selection(
 
     result = pytester.runpytest_subprocess(*args, "-q")
     if passed:
-        result.assert_outcomes(passed=passed)
+        # Smoke tags leave both negative parametrizations empty; pytest skips each one.
+        skipped = 2 if tags == "smoke" and not args else 0
+        result.assert_outcomes(passed=passed, skipped=skipped)
     else:
         assert result.ret == pytest.ExitCode.NO_TESTS_COLLECTED
     calls = json.loads((pytester.path / "s3_calls.json").read_text())
