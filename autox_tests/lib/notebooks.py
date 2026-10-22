@@ -15,6 +15,7 @@ RHOAI_NOTEBOOK_CPU_ENV = "RHOAI_NOTEBOOK_CPU"
 RHOAI_NOTEBOOK_MEMORY_ENV = "RHOAI_NOTEBOOK_MEMORY"
 RHOAI_NOTEBOOK_PIP_SECRET_ENV = "RHOAI_NOTEBOOK_PIP_SECRET_NAME"
 RHOAI_NOTEBOOK_DOCLING_SECRET_ENV = "RHOAI_NOTEBOOK_DOCLING_SECRET_NAME"
+RHOAI_NOTEBOOK_CLUSTER_MODE_ENV = "RHOAI_NOTEBOOK_CLUSTER_MODE"
 NOTEBOOK_PIP_INDEX_URL_ENV = "NOTEBOOK_PIP_INDEX_URL"
 _DEFAULT_NOTEBOOK_JOB_TIMEOUT_SECONDS = 900
 _DEFAULT_NOTEBOOK_CPU = "2"
@@ -31,6 +32,11 @@ from pathlib import Path
 import boto3
 import nbformat
 import papermill as pm
+
+cluster_mode = os.environ.get("NOTEBOOK_CLUSTER_MODE", "connected").strip().lower()
+if cluster_mode not in ("connected", "disconnected"):
+    raise ValueError("NOTEBOOK_CLUSTER_MODE must be connected or disconnected")
+print(f"Notebook cluster mode: {cluster_mode}", flush=True)
 
 s3 = boto3.client(
     "s3",
@@ -100,43 +106,33 @@ def _print_notebook_failure_diagnostics(notebook_key, output_path, error):
     print("===== END NOTEBOOK EXECUTION DIAGNOSTICS =====", flush=True)
 
 
-def _exclude_code_cells_before_next_markdown_after_sections(notebook, section_titles):
-    # Replace code cells in each named Markdown section with no-ops.
-    titles = {title.strip().lower() for title in section_titles}
-    active_title = None
-
-    for cell in notebook.cells:
-        if cell.get("cell_type") == "markdown":
-            active_title = None
-            for line in cell.get("source", "").splitlines():
-                heading = line.strip()
-                if not heading.startswith("#"):
-                    continue
-                title = heading.lstrip("#").strip().lower()
-                if title in titles:
-                    active_title = title
-                break
+def _exclude_code_cells_for_environment(notebook, *, disconnected):
+    # Untagged cells are shared; environment tags apply only to their own cell.
+    environment = "disconnected" if disconnected else "connected"
+    for index, cell in enumerate(notebook.cells):
+        if cell.get("cell_type") != "code":
             continue
-
-        if cell.get("cell_type") != "code" or active_title is None:
+        tags = {tag.strip().lower() for tag in cell.get("metadata", {}).get("tags", [])}
+        environment_tags = tags & {"connected", "disconnected"}
+        if len(environment_tags) > 1:
+            raise ValueError(f"Code cell {index} has both connected and disconnected tags")
+        if not environment_tags or environment in environment_tags:
             continue
 
         cell["source"] = "# Skipped by the AutoX notebook runner.\npass\n"
+        cell["execution_count"] = None
+        cell["outputs"] = []
         print(
-            "Skipping code cell under section: " + active_title,
+            f"Skipping code cell {index} tagged {next(iter(environment_tags))!r} "
+            f"in {environment} environment",
             flush=True,
         )
-
-
-_DISCONNECTED_ONLY_NOTEBOOK_SECTIONS = (
-    "Validate Offline Configuration",
-)
 
 
 docling_prefix = os.environ.get("DOCLING_ARTIFACTS_S3_PREFIX", "").strip().lstrip("/")
 docling_bucket = os.environ.get("DOCLING_ARTIFACTS_S3_BUCKET", "").strip()
 docling_path = os.environ.get("DOCLING_ARTIFACTS_PATH", "").strip()
-if docling_prefix or docling_bucket or docling_path:
+if docling_prefix or docling_bucket:
     if not (docling_prefix and docling_bucket and docling_path):
         raise RuntimeError(
             "Docling artifact configuration requires DOCLING_ARTIFACTS_S3_BUCKET, "
@@ -156,7 +152,6 @@ if docling_prefix or docling_bucket or docling_path:
             downloaded += 1
     if not downloaded:
         raise RuntimeError(f"No Docling artifacts found at s3://{docling_bucket}/{docling_prefix}")
-    os.environ.setdefault("HF_HUB_OFFLINE", "1")
     print(f"Downloaded {downloaded} Docling artifacts to {destination}", flush=True)
 
 for index, notebook_key in enumerate(json.loads(os.environ["NOTEBOOK_S3_KEYS"])):
@@ -166,24 +161,15 @@ for index, notebook_key in enumerate(json.loads(os.environ["NOTEBOOK_S3_KEYS"]))
     output_path = workdir / "output.ipynb"
     s3.download_file(os.environ["NOTEBOOK_S3_BUCKET"], notebook_key, str(input_path))
 
+    with input_path.open(encoding="utf-8") as f:
+        notebook = nbformat.read(f, as_version=4)
     if os.environ.get("NOTEBOOK_INJECT_MOCK_INPUT", "false").lower() == "true":
-        with input_path.open(encoding="utf-8") as f:
-            notebook = nbformat.read(f, as_version=4)
         notebook.cells.insert(0, nbformat.v4.new_code_cell('def input(prompt=""):\n    return "Sample query?"'))
-        with input_path.open("w", encoding="utf-8") as f:
-            nbformat.write(notebook, f)
 
-    # DOCLING_ARTIFACTS_PATH is required by the generated notebook for
-    # disconnected clusters. Preserve the offline setup and validation cells
-    # whenever that disconnected-cluster signal is present.
-    if not docling_path:
-        with input_path.open(encoding="utf-8") as f:
-            notebook = nbformat.read(f, as_version=4)
-        _exclude_code_cells_before_next_markdown_after_sections(
-            notebook, _DISCONNECTED_ONLY_NOTEBOOK_SECTIONS
-        )
-        with input_path.open("w", encoding="utf-8") as f:
-            nbformat.write(notebook, f)
+    # Artifact availability is independent of the cluster's network connectivity.
+    _exclude_code_cells_for_environment(notebook, disconnected=cluster_mode == "disconnected")
+    with input_path.open("w", encoding="utf-8") as f:
+        nbformat.write(notebook, f)
 
     try:
         pm.execute_notebook(
@@ -287,6 +273,9 @@ def run_notebooks_as_k8s_job(
         )
 
     timeout = _notebook_job_timeout_seconds()
+    cluster_mode = os.environ.get(RHOAI_NOTEBOOK_CLUSTER_MODE_ENV, "connected").strip().lower()
+    if cluster_mode not in ("connected", "disconnected"):
+        raise ValueError(f"{RHOAI_NOTEBOOK_CLUSTER_MODE_ENV} must be connected or disconnected")
     namespace = str(config.get("rhoai_project") or "").strip()
     if not namespace:
         raise AssertionError("Notebook Job execution requires config.rhoai_project")
@@ -326,6 +315,7 @@ def run_notebooks_as_k8s_job(
         k8s_client.V1EnvVar(name="AWS_S3_BUCKET", value=artifact_bucket),
         k8s_client.V1EnvVar(name="NOTEBOOK_S3_KEYS", value=json.dumps(notebook_keys)),
         k8s_client.V1EnvVar(name="NOTEBOOK_RUNNER_IMAGE", value=image),
+        k8s_client.V1EnvVar(name="NOTEBOOK_CLUSTER_MODE", value=cluster_mode),
         k8s_client.V1EnvVar(
             name="S3_SSL_VERIFY",
             value=os.environ.get("S3_SSL_VERIFY", "true"),

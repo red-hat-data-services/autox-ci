@@ -170,11 +170,30 @@ Set `run_notebook` to `true` to execute the selected model notebook in a Kuberne
 | Variable | Default | Purpose |
 |---|---|---|
 | `RHOAI_NOTEBOOK_RUNNER_IMAGE` | — | Image used for notebook Jobs. Required when `run_notebook: true`. |
+| `RHOAI_NOTEBOOK_CLUSTER_MODE` | `connected` | Explicit notebook environment: `connected` or `disconnected`. Independent of Docling artifacts. |
 | `RHOAI_NOTEBOOK_JOB_TIMEOUT` | `900` | Maximum seconds to wait for a notebook Job. |
 | `RHOAI_NOTEBOOK_CPU` | `2` | CPU request and limit for the notebook Job container. |
 | `RHOAI_NOTEBOOK_MEMORY` | `4Gi` | Memory request and limit for the notebook Job container. |
 | `RHOAI_NOTEBOOK_KERNEL_NAME` | `python3` | Registered kernel used when a notebook has no kernelspec. |
 | `S3_SSL_VERIFY` | `true` | Verify S3 TLS in the test process and notebook Job. Set to `false` only for a trusted development endpoint with a self-signed certificate. |
+
+Notebook code cells can declare an environment in standard Jupyter metadata:
+`"metadata": {"tags": ["disconnected"]}` or `"metadata": {"tags": ["connected"]}`.
+Set `RHOAI_NOTEBOOK_CLUSTER_MODE=disconnected` for disconnected runs; connected mode
+is the default. The runner passes this as `NOTEBOOK_CLUSTER_MODE` to the Job.
+Artifact paths and Secrets do not select the mode. It replaces cells tagged for the other environment
+with no-ops before Papermill execution. Untagged cells and cells with unrelated tags
+run in either mode. Environment tags are case-insensitive; a code cell carrying both
+tags is an error. Markdown headings do not control execution.
+
+OCR notebook cells validate and pin the pipeline-compatible PP-OCRv4 bundle in both
+environments. Provide it through the runner image or a mounted volume with
+`DOCLING_ARTIFACTS_PATH`. If the Docling Secret also supplies
+`DOCLING_ARTIFACTS_S3_BUCKET` and `DOCLING_ARTIFACTS_S3_PREFIX`, the runner downloads
+the bundle to that path first. An image-baked path alone does not trigger an S3 download.
+
+Use freshly generated notebooks from an ai4rag version that includes these tags.
+Older untagged offline setup and validation cells will execute in either mode.
 
 The test service account needs namespace-scoped permissions to create, read, list, and delete `batch/jobs`; read/list Pods; read `pods/log`; and read the referenced Secrets. Cluster-admin access is not required; the standard namespace `edit` role is normally sufficient.
 
