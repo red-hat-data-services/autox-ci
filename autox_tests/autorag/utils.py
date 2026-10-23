@@ -20,8 +20,14 @@ def _make_docrag_run_name():
     return f"autorag-func-test-{hex_part}-{time_part}"
 
 
-def _run_pipeline_and_wait(client, pipeline_target, arguments, timeout):
-    """Submit pipeline run and wait for completion; return run_id and run detail."""
+def _run_pipeline_and_wait(client, pipeline_target, arguments, timeout, config=None):
+    """Submit pipeline run and wait for completion; return run_id and run detail.
+
+    ``config`` enables failure-class classification of run timeouts
+    (RHAI-10079): AutoRAG runs that are still progressing past their budget
+    are classified as MaaS slowness (rerun with backoff); pod-level resource
+    signals are classified as resource shortage (never rerun).
+    """
     from autox_tests.lib.managed_pipelines import submit_pipeline_run_and_wait
 
     run_name = _make_docrag_run_name()
@@ -31,6 +37,8 @@ def _run_pipeline_and_wait(client, pipeline_target, arguments, timeout):
         arguments,
         run_name=run_name,
         timeout=timeout,
+        config=config,
+        kind="autorag",
     )
 
 
@@ -156,6 +164,13 @@ def _validate_artifacts_in_s3(s3_client, bucket, prefix):
                 if "v1_responses_body.json" in key:
                     result["responses_body_keys"].append(key)
     except Exception as e:
+        from autox_tests.lib.failure_classes import EarlyFlakyFailure, is_transient_s3_error
+
+        if is_transient_s3_error(e):
+            raise EarlyFlakyFailure(
+                f"Transient S3 error while listing artifacts under "
+                f"s3://{bucket}/{prefix}: {e}"
+            ) from e
         raise AssertionError(f"Failed to list S3 artifacts under s3://{bucket}/{prefix}: {e}") from e
     return result
 
@@ -356,6 +371,9 @@ def _download_and_execute_notebooks(
 
     Raises:
         AssertionError: If any notebook fails execution.
+        MaasSlownessTimeout: If the Job times out while still progressing
+            (MaaS-bound notebooks; RHAI-10079).
+        ResourceShortageTimeout: If the Job's pods are unschedulable/OOMKilled.
     """
     del s3_client  # The Job downloads notebooks with its injected S3 secret.
     run_notebooks_as_k8s_job(
@@ -368,6 +386,7 @@ def _download_and_execute_notebooks(
             db_secret_name,
         ],
         inject_mock_input=True,
+        maas_bound=True,
     )
 
 

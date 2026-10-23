@@ -17,6 +17,7 @@ from autox_tests.lib.dspa_support import (
     verify_kfp_api_health,
     wait_for_dspa_ready,
 )
+from autox_tests.lib.failure_classes import failure_class_name
 from autox_tests.lib.kfp_retry import install_kfp_api_retries
 from autox_tests.lib.rhoai_support import (
     build_temp_kubeconfig,
@@ -278,3 +279,53 @@ def make_kfp_client_for_session(
 
     _disable_gcp_token_refresh(client)
     return client
+
+
+_FAILED_CALL_ATTEMPTS: dict[str, int] = {}
+
+
+def _set_item_property(item: pytest.Item, name: str, value: object) -> None:
+    """Set a user property on an item, replacing any previous attempt's value.
+
+    Properties are appended to ``item`` (not the report): the JUnit XML
+    reporter snapshots ``item.user_properties`` when it builds the report of
+    each phase, and the final (teardown) snapshot is what lands in the XML.
+    """
+    item.user_properties[:] = [
+        (key, val) for key, val in item.user_properties if key != name
+    ]
+    item.user_properties.append((name, value))
+
+
+def _drop_item_properties(item: pytest.Item, *names: str) -> None:
+    item.user_properties[:] = [
+        (key, val) for key, val in item.user_properties if key not in names
+    ]
+
+
+@pytest.hookimpl(wrapper=True)
+def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo):
+    """Tag failed tests with their failure class and rerun count (RHAI-10079).
+
+    pytest-rerunfailures decides reruns from the exception type; this hook
+    surfaces the same classification as ``failure_class`` and the number of
+    reruns so far as ``rerun_count`` user properties, which land in JUnit XML
+    and other CI reports. Properties from an earlier attempt are replaced, so
+    a rerun that eventually passes drops the stale failure classification.
+    """
+    report = yield
+    if report.when == "call":
+        if report.failed and call.excinfo:
+            _FAILED_CALL_ATTEMPTS[item.nodeid] = (
+                _FAILED_CALL_ATTEMPTS.get(item.nodeid, 0) + 1
+            )
+            label = failure_class_name(call.excinfo.value)
+            if label:
+                _set_item_property(item, "failure_class", label)
+            _set_item_property(
+                item, "rerun_count", _FAILED_CALL_ATTEMPTS[item.nodeid] - 1
+            )
+        elif report.passed:
+            _FAILED_CALL_ATTEMPTS.pop(item.nodeid, None)
+            _drop_item_properties(item, "failure_class", "rerun_count")
+    return report

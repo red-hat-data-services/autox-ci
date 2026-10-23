@@ -43,6 +43,13 @@ Options:
   --dry-run                Print the pytest command without executing it.
   -h, --help               Show this message and exit.
 
+Rerun policy (pytest-rerunfailures):
+  Failures are rerun by class: transient setup/API errors always; MaaS-slowness
+  timeouts for --suite autorag/all (with backoff); resource-shortage failures
+  (unschedulable/OOMKilled/quota) never rerun. Defaults: automl 1 rerun / 60s
+  delay, autorag & all 2 reruns / 180s delay. Override with RHOAI_TEST_RERUNS
+  and RHOAI_TEST_RERUNS_DELAY.
+
 Everything after "--" is forwarded to pytest verbatim.
 
 Examples:
@@ -281,6 +288,33 @@ case "$SUITE" in
     autorag) PYTEST_CMD+=(autox_tests/autorag/) ;;
     all)     PYTEST_CMD+=(autox_tests/automl/ autox_tests/autorag/) ;;
 esac
+
+# ── Rerun policy (pytest-rerunfailures, RHAI-10079) ──────────────────────────
+# Failure-class-aware reruns:
+#   EarlyFlakyFailure        — transient setup/API errors      → rerun
+#   MaasSlownessTimeout      — AutoRAG MaaS-bound waits        → rerun with backoff
+#   ResourceShortageTimeout  — unschedulable/OOMKilled/quota   → never rerun (fail fast)
+# Plain assertion failures never match --only-rerun, so real regressions are
+# never retried. Override counts/delay with RHOAI_TEST_RERUNS / RHOAI_TEST_RERUNS_DELAY.
+case "$SUITE" in
+    automl)
+        RHOAI_TEST_RERUNS="${RHOAI_TEST_RERUNS:-1}"
+        RHOAI_TEST_RERUNS_DELAY="${RHOAI_TEST_RERUNS_DELAY:-60}"
+        RERUN_ONLY_ARGS=(--only-rerun EarlyFlakyFailure)
+        ;;
+    *)
+        # autorag / all: includes the MaaS-slowness class with a backoff delay
+        RHOAI_TEST_RERUNS="${RHOAI_TEST_RERUNS:-2}"
+        RHOAI_TEST_RERUNS_DELAY="${RHOAI_TEST_RERUNS_DELAY:-180}"
+        RERUN_ONLY_ARGS=(--only-rerun EarlyFlakyFailure --only-rerun MaasSlownessTimeout)
+        ;;
+esac
+PYTEST_CMD+=(
+    --reruns "$RHOAI_TEST_RERUNS"
+    --reruns-delay "$RHOAI_TEST_RERUNS_DELAY"
+    "${RERUN_ONLY_ARGS[@]}"
+    --rerun-except ResourceShortageTimeout
+)
 
 if [[ ${#PYTEST_EXTRA_ARGS[@]} -gt 0 ]]; then
     PYTEST_CMD+=("${PYTEST_EXTRA_ARGS[@]}")

@@ -94,6 +94,7 @@ class TestAutoMLTabularFunctional:
             tabular_pipeline_run_target,
             arguments,
             pipeline_run_timeout,
+            config=automl_functional_config,
         )
         elapsed = time.monotonic() - start
 
@@ -378,6 +379,7 @@ class TestAutoMLTabularFunctionalNegative:
             tabular_pipeline_run_target,
             arguments,
             timeout,
+            config=automl_functional_config,
         )
         elapsed = time.monotonic() - start
 

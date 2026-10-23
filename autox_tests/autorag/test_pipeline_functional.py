@@ -86,6 +86,7 @@ class TestAutoRAGFunctional:
             autorag_pipeline_run_target,
             arguments,
             timeout,
+            config=functional_env_config,
         )
 
         state = _get_run_state(detail)
@@ -144,6 +145,7 @@ class TestAutoRAGFunctional:
             autorag_pipeline_run_target,
             arguments,
             timeout,
+            config=functional_env_config,
         )
 
         prefix = f"{autorag_pipeline_run_target.artifact_prefix}/{run_id}"

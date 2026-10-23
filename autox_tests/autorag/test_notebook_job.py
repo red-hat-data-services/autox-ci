@@ -133,3 +133,98 @@ def test_notebook_job_passes_pip_index_url(monkeypatch: pytest.MonkeyPatch) -> N
     assert "not os.environ.get(\"PIP_INDEX_URL\", \"\").strip()" in (
         notebooks._NOTEBOOK_JOB_PROGRAM
     )
+
+
+def _classify(monkeypatch: pytest.MonkeyPatch, *, pods, maas_bound, timed_out):
+    monkeypatch.setattr(notebooks, "_list_job_pods", lambda *args, **kwargs: pods)
+    monkeypatch.setattr(notebooks, "_job_pod_logs", lambda *args, **kwargs: "(logs)")
+    return notebooks._classify_notebook_job_failure(
+        None, "test-project", "job-1", 300, maas_bound=maas_bound, timed_out=timed_out
+    )
+
+
+def _unschedulable_pod() -> SimpleNamespace:
+    return SimpleNamespace(
+        metadata=SimpleNamespace(name="job-1-abc"),
+        status=SimpleNamespace(
+            phase="Pending",
+            reason=None,
+            conditions=[
+                SimpleNamespace(
+                    type="PodScheduled",
+                    status="False",
+                    reason="Unschedulable",
+                    message="0/3 nodes are available: 3 Insufficient memory.",
+                )
+            ],
+            container_statuses=[],
+        ),
+    )
+
+
+def test_notebook_job_timeout_maas_bound_is_maas_slowness(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A MaaS-bound Job (AutoRAG notebooks) timing out while running is rerunnable."""
+    from autox_tests.lib.failure_classes import MaasSlownessTimeout
+
+    exc = _classify(
+        monkeypatch, pods=[SimpleNamespace()], maas_bound=True, timed_out=True
+    )
+    assert isinstance(exc, MaasSlownessTimeout)
+
+
+def test_notebook_job_timeout_resource_signals_fail_fast(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An unschedulable Job pod is a resource shortage and must not be rerun."""
+    from autox_tests.lib.failure_classes import ResourceShortageTimeout
+
+    exc = _classify(
+        monkeypatch,
+        pods=[_unschedulable_pod()],
+        maas_bound=True,
+        timed_out=True,
+    )
+    assert isinstance(exc, ResourceShortageTimeout)
+    assert "Unschedulable" in str(exc)
+
+
+def test_notebook_job_timeout_not_maas_bound_keeps_assertion(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """AutoML Jobs (not MaaS-bound) keep the original, non-rerun failure."""
+    exc = _classify(
+        monkeypatch, pods=[SimpleNamespace()], maas_bound=False, timed_out=True
+    )
+    assert type(exc) is AssertionError
+
+
+def test_notebook_job_failure_oomkilled_is_resource_shortage(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A killed Job (OOMKilled) is classified as resource shortage."""
+    from autox_tests.lib.failure_classes import ResourceShortageTimeout
+
+    oom_pod = SimpleNamespace(
+        metadata=SimpleNamespace(name="job-1-abc"),
+        status=SimpleNamespace(
+            phase="Running",
+            reason=None,
+            conditions=[],
+            container_statuses=[
+                SimpleNamespace(
+                    name="notebook-runner",
+                    state=SimpleNamespace(
+                        terminated=SimpleNamespace(reason="OOMKilled", exit_code=137),
+                        waiting=None,
+                    ),
+                )
+            ],
+        ),
+    )
+    exc = _classify(
+        monkeypatch, pods=[oom_pod], maas_bound=True, timed_out=False
+    )
+    assert isinstance(exc, ResourceShortageTimeout)
+    assert "OOMKilled" in str(exc)

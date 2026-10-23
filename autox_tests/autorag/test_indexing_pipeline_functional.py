@@ -209,6 +209,7 @@ class TestAutoRAGIndexingFunctional:
             indexing_pipeline_run_target,
             arguments,
             timeout,
+            config=indexing_functional_env_config,
         )
         elapsed = time.monotonic() - start
         bucket = (indexing_functional_env_config or {}).get("s3_bucket_artifacts")
@@ -291,6 +292,7 @@ class TestAutoRAGIndexingFunctional:
             indexing_pipeline_run_target,
             arguments,
             pipeline_run_timeout,
+            config=indexing_functional_env_config,
         )
         elapsed = time.monotonic() - start
         bucket = (indexing_functional_env_config or {}).get("s3_bucket_artifacts")

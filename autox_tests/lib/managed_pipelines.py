@@ -405,7 +405,14 @@ def _submit_run_with_retry(fn: Any, label: str, **kwargs: Any) -> Any:
                 )
                 time.sleep(_RUN_PIPELINE_RETRY_DELAY)
             else:
-                raise
+                from autox_tests.lib.failure_classes import EarlyFlakyFailure
+
+                raise EarlyFlakyFailure(
+                    f"{label} failed with a transient connection error after "
+                    f"{_RUN_PIPELINE_RETRIES} attempts: {e}. Note: if the server "
+                    "processed the request before dropping the connection, a "
+                    "duplicate run may have been created."
+                ) from e
     raise last_exc  # type: ignore[misc]  # unreachable when _RUN_PIPELINE_RETRIES > 0
 
 
@@ -418,8 +425,17 @@ def submit_pipeline_run_and_wait(
     timeout: int,
     experiment_name: str | None = None,
     namespace: str | None = None,
+    config: dict[str, Any] | None = None,
+    kind: str = "automl",
 ) -> tuple[str, Any]:
-    """Start a run and block until completion; return ``(run_id, run_detail)``."""
+    """Start a run and block until completion; return ``(run_id, run_detail)``.
+
+    When the run does not finish within ``timeout``, the resulting
+    ``TimeoutError`` is classified for the rerun policy (RHAI-10079):
+    ``config`` enables pod inspection for resource-shortage signals and
+    ``kind="autorag"`` maps a still-running timeout to MaaS slowness. Without
+    ``config`` the classification falls back to the KFP run state alone.
+    """
     if target.mode == "package":
         if not target.package_path:
             raise ValueError("package mode requires package_path on PipelineRunTarget")
@@ -474,9 +490,21 @@ def submit_pipeline_run_and_wait(
     else:
         raise ValueError(f"Unknown pipeline run mode: {target.mode!r}")
 
-    detail = client.wait_for_run_completion(
-        run_id,
-        timeout=timeout,
-        sleep_duration=10,
-    )
+    try:
+        detail = client.wait_for_run_completion(
+            run_id,
+            timeout=timeout,
+            sleep_duration=10,
+        )
+    except TimeoutError as exc:
+        from autox_tests.lib.failure_classes import classify_pipeline_run_timeout
+
+        raise classify_pipeline_run_timeout(
+            exc,
+            client=client,
+            run_id=run_id,
+            timeout=timeout,
+            kind=kind,
+            config=config,
+        ) from exc
     return run_id, detail

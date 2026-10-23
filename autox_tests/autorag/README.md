@@ -99,3 +99,15 @@ When a pipeline run fails, `utils._collect_failure_details()`:
 4. Returns a formatted report appended to the test failure message
 
 Kubernetes API URL is derived from the KFP route URL (OCP and ROSA patterns). Override with `K8S_API_URL` or `K8S_API_PORT` env vars.
+
+## Rerun policy (failure classes)
+
+AutoRAG failures are rerun by class (details: [autox_tests README](../README.md#rerun-policy-failure-class-aware-retries)):
+
+- **Early flaky** — transient setup/API errors → rerun immediately.
+- **MaaS slowness** — a pipeline run or notebook Job that exceeded its wait budget while still progressing (MaaS-bound embedding/generation) → rerun after a backoff delay. This is the default interpretation of a still-`RUNNING` AutoRAG run timing out.
+- **Lack of resources** — pods unschedulable/OOMKilled/Evicted → never rerun; the failure surfaces immediately with the pod-level evidence.
+
+Defaults for `--suite autorag`: 2 reruns with a 180 s delay. Override with `RHOAI_TEST_RERUNS` and `RHOAI_TEST_RERUNS_DELAY`.
+
+Rerun outcomes are visible in reports: `RERUN` lines and an `N rerun` summary in the terminal, plus `failure_class` and `rerun_count` properties per test in JUnit XML.

@@ -205,6 +205,20 @@ def _list_pods_for_selector(v1, namespace: str, selector: str, logger=None):
         return []
 
 
+def list_run_pods(v1, namespace: str, run_id: str, logger=None) -> list:
+    """Return all pods belonging to a pipeline run (any phase), by run-ID labels.
+
+    Unlike :func:`_list_run_pods` this does not filter to failed pods, so
+    Pending/unschedulable pods — the resource-shortage signature — are
+    included. Used by the failure-class classification (RHAI-10079).
+    """
+    for run_label_key in _RUN_ID_LABEL_KEYS:
+        pods = _list_pods_for_selector(v1, namespace, f"{run_label_key}={run_id}", logger)
+        if pods:
+            return pods
+    return []
+
+
 def _pod_phase_failed(pod) -> bool:
     """Return True if pod has failed or has containers with non-zero exit codes.
 
