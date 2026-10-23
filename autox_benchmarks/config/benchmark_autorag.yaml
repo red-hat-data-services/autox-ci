@@ -5,6 +5,10 @@ pipeline:
 
 run:
   optimization_metric: "faithfulness"
+  embedding_models:
+    - "publishers/ai-eng-cracow/models/bge-m3"
+  generation_models:
+    - "publishers/ai-eng-cracow/models/qwen3-8b-fp8-dynamic"
   optimization_max_rag_patterns: 8
   poll_interval_seconds: 30
   timeout_seconds: 86400

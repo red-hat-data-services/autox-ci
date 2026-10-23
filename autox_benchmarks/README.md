@@ -372,8 +372,11 @@ s3://bucket/benchmarks/ml/{batch_id}/
 s3://bucket/benchmarks/rag/{batch_id}/
 ├── datasets/
 │   ├── {dataset_id_1}/
-│   │   ├── metadata.json         # Run details, arguments, timing
-│   │   └── results.csv           # Single-row CSV for this run
+│   │   ├── metadata.json         # Uploaded after HPO
+│   │   ├── results.csv           # HPO result
+│   │   └── full_index/
+│   │       ├── metadata.json     # Uploaded after full-corpus indexing and QA
+│   │       └── results.csv       # Indexing, QA, and scale-drift metrics
 │   └── {dataset_id_2}/
 │       ├── metadata.json
 │       └── results.csv
@@ -381,6 +384,8 @@ s3://bucket/benchmarks/rag/{batch_id}/
     ├── batch_metadata.json       # Batch summary (all datasets, settings)
     └── benchmark_runs.csv        # Full multi-row CSV
 ```
+
+The `full_index/` folder is written only when the dataset has a `full_input_data_key` and an indexing run was started. A failed indexing or QA stage is recorded in the batch CSV and returns a nonzero CLI exit code.
 
 **Batch ID format:** `YYYYMMDDTHHMMSSZ` (e.g., `20260514T143527Z`)
 

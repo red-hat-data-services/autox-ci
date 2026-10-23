@@ -11,7 +11,6 @@ from typing import Any
 
 from benchmark_common.s3_client import s3_cfg_usable
 from benchmark_common.s3_upload import (
-    build_batch_id,
     join_s3_key,
     put_s3_bytes,
     row_to_csv_bytes,
@@ -51,6 +50,7 @@ def _build_run_metadata(
     fail_fast: bool,
     repo_root: Path | None,
     kfp_pipeline_name: str | None = None,
+    stage: str = "hpo",
 ) -> dict[str, Any]:
     """Build metadata dict for a single dataset run."""
     return {
@@ -58,13 +58,16 @@ def _build_run_metadata(
         "rhoai_version": settings.rhoai_version,
         "dataset_id": dataset.get("id"),
         "dataset_name": dataset.get("name"),
-        "run_id": row.get("run_id"),
-        "run_name": row.get("run_name"),
-        "state": row.get("state"),
-        "started_at": row.get("started_at"),
-        "finished_at": row.get("finished_at"),
-        "duration_seconds": row.get("duration_seconds"),
-        "error": row.get("error"),
+        "stage": stage,
+        "run_id": row.get("indexing_run_id") if stage == "full_index" else row.get("run_id"),
+        "hpo_run_id": row.get("hpo_run_id") or row.get("run_id"),
+        "indexing_run_id": row.get("indexing_run_id"),
+        "run_name": row.get("indexing_run_name") if stage == "full_index" else row.get("run_name"),
+        "state": row.get("indexing_state") if stage == "full_index" else row.get("state"),
+        "started_at": row.get("indexing_started_at") if stage == "full_index" else row.get("started_at"),
+        "finished_at": row.get("indexing_finished_at") if stage == "full_index" else row.get("finished_at"),
+        "duration_seconds": row.get("indexing_duration_seconds") if stage == "full_index" else row.get("duration_seconds"),
+        "error": (row.get("indexing_error") or row.get("e2e_error")) if stage == "full_index" else row.get("error"),
         "optimization_metric": row.get("optimization_metric"),
         "pipeline_yaml": str(pipeline_yaml_path) if pipeline_yaml_path else kfp_pipeline_name or "managed",
         "pipeline_arguments": arguments or {},
@@ -137,13 +140,18 @@ def upload_single_dataset_results(
     fail_fast: bool,
     repo_root: Path | None,
     kfp_pipeline_name: str | None = None,
+    stage: str = "hpo",
 ) -> None:
-    """Upload results and metadata for a single dataset run to S3."""
+    """Upload HPO results at the legacy path or full-index results below it."""
     if not settings.upload_benchmark_results or not s3_cfg_usable(s3_cfg):
         return
 
     sub = _dataset_results_subpath(dataset)
     prefix = join_s3_key(settings.benchmark_s3_prefix, batch_id, "datasets", sub)
+    if stage == "full_index":
+        prefix = join_s3_key(prefix, stage)
+    elif stage != "hpo":
+        raise ValueError(f"Unknown benchmark upload stage: {stage}")
 
     meta = _build_run_metadata(
         row=row,
@@ -158,6 +166,7 @@ def upload_single_dataset_results(
         fail_fast=fail_fast,
         repo_root=repo_root,
         kfp_pipeline_name=kfp_pipeline_name,
+        stage=stage,
     )
 
     meta_body = json.dumps(meta, indent=2, default=str).encode("utf-8")
