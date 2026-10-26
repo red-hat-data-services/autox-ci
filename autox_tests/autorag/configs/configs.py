@@ -232,7 +232,7 @@ class IndexingTestConfig:
             the ``AUTORAG_INDEXING_EMBEDDING_MODEL_ID`` env var.
         foundation_model_id: Generation model ID used by Neo4j graph extraction. Use
             "env" to read ``AUTORAG_INDEXING_FOUNDATION_MODEL_ID``.
-        kg_extraction_config: Neo4j graph-extraction settings. Ignored by other stores.
+        graph_extraction_config: Neo4j graph-extraction settings. Ignored by other stores.
         input_data_keys: Paths to folders with input documents within the bucket.
             The pipeline discovers the union of all entries; an empty or unset
             list makes document discovery scan the whole bucket.
@@ -258,7 +258,7 @@ class IndexingTestConfig:
     expected_result: str
     embedding_model_id: str
     foundation_model_id: str | None = None
-    kg_extraction_config: dict[str, Any] | None = None
+    graph_extraction_config: dict[str, Any] | None = None
     input_data_keys: list[str] | None = None
     collection_name: str | None = None
     chunking_method: str | None = None
@@ -315,8 +315,8 @@ class IndexingTestConfig:
             arguments["collection_name"] = self.collection_name
         if foundation_model_id is not None:
             arguments["foundation_model_id"] = foundation_model_id
-        if self.kg_extraction_config is not None:
-            arguments["kg_extraction_config"] = self.kg_extraction_config
+        if self.graph_extraction_config is not None:
+            arguments["graph_extraction_config"] = self.graph_extraction_config
         if self.chunking_method is not None:
             arguments["chunking_method"] = self.chunking_method
         if self.chunk_size is not None:
