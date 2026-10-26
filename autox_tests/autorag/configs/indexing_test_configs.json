@@ -42,7 +42,7 @@
         "expected_result": "pass",
         "embedding_model_id": "env",
         "foundation_model_id": "env",
-        "kg_extraction_config": {
+        "graph_extraction_config": {
             "mode": "constrained"
         },
         "input_data_keys": ["datasets/rag/neo4j_light/documents"],
