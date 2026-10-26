@@ -71,5 +71,6 @@ def test_neo4j_indexing_scenario_uses_its_dedicated_database_secret(
     assert arguments["db_secret_name"] == "neo4j-vector-db"
     assert arguments["input_data_keys"] == ["datasets/rag/neo4j_light/documents"]
     assert arguments["foundation_model_id"] == "generation-model"
-    assert arguments["kg_extraction_config"] == {"mode": "constrained"}
+    assert arguments["graph_extraction_config"] == {"mode": "constrained"}
+    assert "kg_extraction_config" not in arguments
     assert scenario.expected_vector_provider == "neo4j"
