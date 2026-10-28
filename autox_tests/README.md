@@ -174,6 +174,8 @@ Set `run_notebook` to `true` to execute the selected model notebook in a Kuberne
 | `RHOAI_NOTEBOOK_CPU` | `2` | CPU request and limit for the notebook Job container. |
 | `RHOAI_NOTEBOOK_MEMORY` | `4Gi` | Memory request and limit for the notebook Job container. |
 | `RHOAI_NOTEBOOK_KERNEL_NAME` | `python3` | Registered kernel used when a notebook has no kernelspec. |
+| `RHOAI_NOTEBOOK_CA_BUNDLE_CONFIGMAP` | — | Optional ConfigMap with a CA bundle (default key `ca-bundle.crt`) trusted by the notebook Job; mounted at the RHOAI workbench trust-store path. Needed when notebook-reached endpoints use a private CA instead of disabling `S3_SSL_VERIFY`. |
+| `RHOAI_NOTEBOOK_CA_BUNDLE_CONFIGMAP_KEY` | `ca-bundle.crt` | ConfigMap key holding the PEM bundle when it is not `ca-bundle.crt`. |
 | `S3_SSL_VERIFY` | `true` | Verify S3 TLS in the test process and notebook Job. Set to `false` only for a trusted development endpoint with a self-signed certificate. |
 
 The test service account needs namespace-scoped permissions to create, read, list, and delete `batch/jobs`; read/list Pods; read `pods/log`; and read the referenced Secrets. Cluster-admin access is not required; the standard namespace `edit` role is normally sufficient.
@@ -355,6 +357,7 @@ S3 keys whose *absence* is the injected fault. Everything else referenced by any
 - **InferenceService OOMKilled** — increase `RHOAI_PREDICTOR_MEMORY` (default `4Gi`; AutoGluon models can be large).
 - **Scoring HTTP 500** — check pod logs; the test captures and prints them automatically on failure.
 - **Notebook Job fails** — confirm `RHOAI_NOTEBOOK_RUNNER_IMAGE` contains `boto3`, `papermill`, and the generated notebook's runtime dependencies; the failed Job pod log is included in the test failure.
+- **Notebook Job fails with `SSL: CERTIFICATE_VERIFY_FAILED ... self-signed certificate in certificate chain`** — the notebook's MaaS (or S3) endpoint is signed by a private CA. Do not disable verification; publish the CA instead. For the cluster's default ingress certificate (routes under `*.apps`): `oc -n openshift-config-managed get configmap default-ingress-cert -o jsonpath='{.data.ca-bundle\.crt}' > ingress-ca.pem`, then `oc -n "$RHOAI_PROJECT_NAME" create configmap notebook-ca-bundle --from-file=ca-bundle.crt=ingress-ca.pem` and set `RHOAI_NOTEBOOK_CA_BUNDLE_CONFIGMAP=notebook-ca-bundle`. Alternatively, add the PEM data as a `MAAS_CA_BUNDLE` key to the MaaS secret.
 - **ISVC creation HTTP 500 (`no endpoints available for service "kserve-webhook-server-service"`)** — the KServe webhook pod is down. Run `oc rollout restart deployment/kserve-controller-manager -n redhat-ods-applications` and wait for it to become ready before re-running the test.
 - **ISVC creation HTTP 500 (`no endpoints available for service "rhods-operator-service"`)** — the RHODS operator webhook pod is down. Run `oc rollout restart deployment/rhods-operator -n redhat-ods-operator` and wait for it to become ready before re-running the test.
 - **Every remaining test fails with `KFP API returned 401 Unauthorized`** — `RHOAI_TOKEN` expired part-way through the run. A full AutoML suite takes well over an hour; refresh the token (`oc whoami -t`) in `.env.ml` before starting, or run a tag-filtered subset. (Without the guard in `make_kfp_client`, the KFP SDK reacts to the 401 by trying a GCP token refresh, gets `None`, and every later call dies inside urllib3 with `TypeError: expected string or bytes-like object, got 'NoneType'`.)
@@ -437,8 +440,10 @@ Managed AutoRAG pipelines are used by default. `AUTORAG_PIPELINE_PATH` is requir
 | `RHOAI_NOTEBOOK_CPU` | `2` | CPU request and limit for the notebook Job container.                                                                                              |
 | `RHOAI_NOTEBOOK_MEMORY` | `4Gi` | Memory request and limit for the notebook Job container.                                                                                           |
 | `RHOAI_NOTEBOOK_KERNEL_NAME` | `python3` | Jupyter kernel registered in the runner image.                                                                                                     |
+| `RHOAI_NOTEBOOK_CA_BUNDLE_CONFIGMAP` | — | Optional ConfigMap with a CA bundle (default key `ca-bundle.crt`) trusted by the notebook Job. Set it when the MaaS (or S3) route is signed by a private CA — for example the cluster's default ingress certificate — instead of disabling TLS verification. The runner points `MAAS_CA_BUNDLE` (ai4rag's hook) at the file and exports a merged system+private bundle via `SSL_CERT_FILE`/`REQUESTS_CA_BUNDLE`. |
+| `RHOAI_NOTEBOOK_CA_BUNDLE_CONFIGMAP_KEY` | `ca-bundle.crt` | ConfigMap key holding the PEM bundle when it is not `ca-bundle.crt` (for example `tls.crt` from `router-certs-default`).                            |
 | `S3_SSL_VERIFY` | `true` | Verify S3 TLS in the notebook Job; use `false` only for a trusted development endpoint with a self-signed certificate.                             |
-| `MAAS_SECRET_NAME`, scenario database secret | — | Existing secrets injected into AutoRAG notebook Jobs. `TC-P-9` injects `NEO4J_DB_SECRET_NAME`; the other scenarios inject `VECTOR_DB_SECRET_NAME`. |
+| `MAAS_SECRET_NAME`, scenario database secret | — | Existing secrets injected into AutoRAG notebook Jobs. `TC-P-9` injects `NEO4J_DB_SECRET_NAME`; the other scenarios inject `VECTOR_DB_SECRET_NAME`. A `MAAS_CA_BUNDLE` key with PEM data in the MaaS secret is an alternative to the ConfigMap. |
 | `RHOAI_TEST_S3_SECRET_NAME` | — | Existing S3 secret injected into notebook Jobs.                                                                                                    |
 
 #### Model lists (required by the MaaS pipeline)

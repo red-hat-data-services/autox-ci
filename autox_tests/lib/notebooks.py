@@ -15,22 +15,76 @@ RHOAI_NOTEBOOK_CPU_ENV = "RHOAI_NOTEBOOK_CPU"
 RHOAI_NOTEBOOK_MEMORY_ENV = "RHOAI_NOTEBOOK_MEMORY"
 RHOAI_NOTEBOOK_PIP_SECRET_ENV = "RHOAI_NOTEBOOK_PIP_SECRET_NAME"
 RHOAI_NOTEBOOK_DOCLING_SECRET_ENV = "RHOAI_NOTEBOOK_DOCLING_SECRET_NAME"
+RHOAI_NOTEBOOK_CA_BUNDLE_CONFIGMAP_ENV = "RHOAI_NOTEBOOK_CA_BUNDLE_CONFIGMAP"
+RHOAI_NOTEBOOK_CA_BUNDLE_CONFIGMAP_KEY_ENV = "RHOAI_NOTEBOOK_CA_BUNDLE_CONFIGMAP_KEY"
 NOTEBOOK_PIP_INDEX_URL_ENV = "NOTEBOOK_PIP_INDEX_URL"
 _DEFAULT_NOTEBOOK_JOB_TIMEOUT_SECONDS = 900
 _DEFAULT_NOTEBOOK_CPU = "2"
 _DEFAULT_NOTEBOOK_MEMORY = "4Gi"
 _NOTEBOOK_JOB_POLL_SECONDS = 15
+_DEFAULT_CA_BUNDLE_CONFIGMAP_KEY = "ca-bundle.crt"
+# RHOAI workbench trust-store location; the generated notebooks read the file
+# at {dir}/ca-bundle.crt themselves for AWS_CA_BUNDLE, so notebook Jobs must
+# mount the configured CA-bundle ConfigMap at exactly this directory.
+_WORKBENCH_CA_BUNDLE_DIR = "/etc/pki/tls/custom-certs"
 
 logger = logging.getLogger(__name__)
 
 
 _NOTEBOOK_JOB_PROGRAM = r"""import json
 import os
+import ssl
 from pathlib import Path
 
 import boto3
 import nbformat
 import papermill as pm
+
+
+def _apply_ca_bundle_trust():
+    # Make a private CA trusted by the notebook clients without disabling TLS.
+    # ai4rag's create_maas_client reads MAAS_CA_BUNDLE as a PEM *file path*, but
+    # a Kubernetes secret injected with env_from delivers PEM *data* — write the
+    # data to a file in that case. Otherwise the RHOAI workbench trust bundle
+    # mounted at /etc/pki/tls/custom-certs/ca-bundle.crt (see
+    # RHOAI_NOTEBOOK_CA_BUNDLE_CONFIGMAP) is used, matching the workbench
+    # location the generated notebooks read for AWS_CA_BUNDLE. A merged
+    # system+private bundle is exported through SSL_CERT_FILE and
+    # REQUESTS_CA_BUNDLE so generic clients (pip, requests, ...) also trust the
+    # private CA without losing the system's public CAs.
+    ca_paths = []
+    ca_data = os.environ.get("MAAS_CA_BUNDLE", "").strip()
+    if ca_data.startswith("-----BEGIN"):
+        materialized = Path("/tmp/maas-ca-bundle.pem")
+        materialized.write_text(ca_data + "\n", encoding="utf-8")
+        os.environ["MAAS_CA_BUNDLE"] = str(materialized)
+        ca_paths.append(materialized)
+    else:
+        workbench_ca = Path("/etc/pki/tls/custom-certs/ca-bundle.crt")
+        if workbench_ca.is_file():
+            os.environ.setdefault("MAAS_CA_BUNDLE", str(workbench_ca))
+            os.environ.setdefault("AWS_CA_BUNDLE", str(workbench_ca))
+            ca_paths.append(workbench_ca)
+        elif ca_data:
+            ca_paths.append(Path(ca_data))
+        else:
+            return
+    merged_parts = []
+    system_cafile = ssl.get_default_verify_paths().cafile
+    if system_cafile and Path(system_cafile).is_file():
+        merged_parts.append(Path(system_cafile).read_text(encoding="utf-8"))
+    for ca_path in ca_paths:
+        merged_parts.append(ca_path.read_text(encoding="utf-8"))
+    merged = Path("/tmp/notebook-ca-bundle.pem")
+    merged.write_text(
+        "".join(part if part.endswith("\n") else part + "\n" for part in merged_parts),
+        encoding="utf-8",
+    )
+    os.environ.setdefault("SSL_CERT_FILE", str(merged))
+    os.environ.setdefault("REQUESTS_CA_BUNDLE", str(merged))
+
+
+_apply_ca_bundle_trust()
 
 s3 = boto3.client(
     "s3",
@@ -276,6 +330,16 @@ def run_notebooks_as_k8s_job(
     The Job is enabled only when ``RHOAI_NOTEBOOK_RUNNER_IMAGE`` is set. The
     configured secrets are imported as environment variables, keeping S3, MaaS,
     and vector-store credentials out of the test process and Job command line.
+
+    Private CAs are supported without disabling TLS verification: set
+    ``RHOAI_NOTEBOOK_CA_BUNDLE_CONFIGMAP`` to a ConfigMap whose ``ca-bundle.crt``
+    key holds the PEM bundle — it is mounted at the RHOAI workbench trust-store
+    path (``/etc/pki/tls/custom-certs``) that the generated notebooks read for
+    ``AWS_CA_BUNDLE``; the runner additionally points ``MAAS_CA_BUNDLE`` (the
+    hook ai4rag's ``create_maas_client`` uses) at the file and exports a merged
+    system+private bundle via ``SSL_CERT_FILE``/``REQUESTS_CA_BUNDLE``.
+    Alternatively, PEM data in a ``MAAS_CA_BUNDLE`` key of an injected secret
+    (e.g. the MaaS secret) is materialized to a file by the runner.
     """
     if not notebook_keys:
         raise ValueError("Notebook Job execution requires at least one notebook key")
@@ -345,6 +409,38 @@ def run_notebooks_as_k8s_job(
             k8s_client.V1EnvVar(name=NOTEBOOK_PIP_INDEX_URL_ENV, value=pip_index_url)
         )
 
+    # The CA bundle is mounted at the RHOAI workbench trust-store path so the
+    # generated notebooks pick it up (AWS_CA_BUNDLE) exactly as they would in a
+    # workbench, while the runner program points MAAS_CA_BUNDLE at the file.
+    ca_configmap = (os.environ.get(RHOAI_NOTEBOOK_CA_BUNDLE_CONFIGMAP_ENV) or "").strip()
+    volumes = None
+    volume_mounts = None
+    if ca_configmap:
+        ca_configmap_key = (
+            (os.environ.get(RHOAI_NOTEBOOK_CA_BUNDLE_CONFIGMAP_KEY_ENV) or "").strip()
+            or _DEFAULT_CA_BUNDLE_CONFIGMAP_KEY
+        )
+        volumes = [
+            k8s_client.V1Volume(
+                name="notebook-ca-bundle",
+                config_map=k8s_client.V1ConfigMapVolumeSource(
+                    name=ca_configmap,
+                    items=[
+                        k8s_client.V1KeyToPath(
+                            key=ca_configmap_key, path=_DEFAULT_CA_BUNDLE_CONFIGMAP_KEY
+                        )
+                    ],
+                ),
+            )
+        ]
+        volume_mounts = [
+            k8s_client.V1VolumeMount(
+                name="notebook-ca-bundle",
+                mount_path=_WORKBENCH_CA_BUNDLE_DIR,
+                read_only=True,
+            )
+        ]
+
     container = k8s_client.V1Container(
         name="notebook-runner",
         image=image,
@@ -356,6 +452,7 @@ def run_notebooks_as_k8s_job(
         command=["python", "-c", _NOTEBOOK_JOB_PROGRAM],
         env=container_env,
         env_from=env_from or None,
+        volume_mounts=volume_mounts,
     )
     job = k8s_client.V1Job(
         metadata=k8s_client.V1ObjectMeta(
@@ -369,7 +466,11 @@ def run_notebooks_as_k8s_job(
                 metadata=k8s_client.V1ObjectMeta(
                     labels={"app.kubernetes.io/component": "autox-notebook-test"}
                 ),
-                spec=k8s_client.V1PodSpec(restart_policy="Never", containers=[container]),
+                spec=k8s_client.V1PodSpec(
+                    restart_policy="Never",
+                    containers=[container],
+                    volumes=volumes,
+                ),
             ),
         ),
     )
