@@ -133,3 +133,111 @@ def test_notebook_job_passes_pip_index_url(monkeypatch: pytest.MonkeyPatch) -> N
     assert "not os.environ.get(\"PIP_INDEX_URL\", \"\").strip()" in (
         notebooks._NOTEBOOK_JOB_PROGRAM
     )
+
+
+def test_notebook_job_mounts_ca_bundle_configmap_at_workbench_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A configured CA-bundle ConfigMap is mounted at the workbench trust path."""
+    batch_api = _BatchApi()
+    monkeypatch.setenv("RHOAI_NOTEBOOK_RUNNER_IMAGE", "example.invalid/notebook:latest")
+    monkeypatch.setenv("RHOAI_NOTEBOOK_CA_BUNDLE_CONFIGMAP", "trusted-ca")
+    monkeypatch.setattr(
+        notebooks,
+        "make_k8s_core_api_from_config",
+        lambda config: SimpleNamespace(api_client=object()),
+    )
+    monkeypatch.setattr(k8s_client, "BatchV1Api", lambda *args, **kwargs: batch_api)
+
+    notebooks.run_notebooks_as_k8s_job(
+        bucket="artifacts",
+        notebook_keys=["indexing.ipynb"],
+        config={"rhoai_project": "test-project"},
+        secret_names=[],
+    )
+
+    pod_spec = batch_api.job.spec.template.spec
+    volume = pod_spec.volumes[0]
+    assert volume.name == "notebook-ca-bundle"
+    assert volume.config_map.name == "trusted-ca"
+    assert volume.config_map.items[0].key == "ca-bundle.crt"
+    assert volume.config_map.items[0].path == "ca-bundle.crt"
+    mount = pod_spec.containers[0].volume_mounts[0]
+    assert mount.name == "notebook-ca-bundle"
+    assert mount.mount_path == notebooks._WORKBENCH_CA_BUNDLE_DIR
+    assert mount.read_only is True
+
+
+def test_notebook_job_mounts_ca_bundle_configmap_with_custom_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A non-default ConfigMap key is remapped to ca-bundle.crt in the mount."""
+    batch_api = _BatchApi()
+    monkeypatch.setenv("RHOAI_NOTEBOOK_RUNNER_IMAGE", "example.invalid/notebook:latest")
+    monkeypatch.setenv("RHOAI_NOTEBOOK_CA_BUNDLE_CONFIGMAP", "router-certs")
+    monkeypatch.setenv("RHOAI_NOTEBOOK_CA_BUNDLE_CONFIGMAP_KEY", "tls.crt")
+    monkeypatch.setattr(
+        notebooks,
+        "make_k8s_core_api_from_config",
+        lambda config: SimpleNamespace(api_client=object()),
+    )
+    monkeypatch.setattr(k8s_client, "BatchV1Api", lambda *args, **kwargs: batch_api)
+
+    notebooks.run_notebooks_as_k8s_job(
+        bucket="artifacts",
+        notebook_keys=["indexing.ipynb"],
+        config={"rhoai_project": "test-project"},
+        secret_names=[],
+    )
+
+    volume = batch_api.job.spec.template.spec.volumes[0]
+    assert volume.config_map.items[0].key == "tls.crt"
+    assert volume.config_map.items[0].path == "ca-bundle.crt"
+
+
+def test_notebook_job_without_ca_bundle_configmap_mounts_no_volumes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Without the optional CA-bundle ConfigMap the pod keeps its default spec."""
+    batch_api = _BatchApi()
+    monkeypatch.setenv("RHOAI_NOTEBOOK_RUNNER_IMAGE", "example.invalid/notebook:latest")
+    monkeypatch.delenv("RHOAI_NOTEBOOK_CA_BUNDLE_CONFIGMAP", raising=False)
+    monkeypatch.delenv("RHOAI_NOTEBOOK_CA_BUNDLE_CONFIGMAP_KEY", raising=False)
+    monkeypatch.setattr(
+        notebooks,
+        "make_k8s_core_api_from_config",
+        lambda config: SimpleNamespace(api_client=object()),
+    )
+    monkeypatch.setattr(k8s_client, "BatchV1Api", lambda *args, **kwargs: batch_api)
+
+    notebooks.run_notebooks_as_k8s_job(
+        bucket="artifacts",
+        notebook_keys=["indexing.ipynb"],
+        config={"rhoai_project": "test-project"},
+        secret_names=[],
+    )
+
+    pod_spec = batch_api.job.spec.template.spec
+    assert pod_spec.volumes is None
+    assert pod_spec.containers[0].volume_mounts is None
+
+
+def test_notebook_runner_program_materializes_ca_bundle() -> None:
+    """The runner trusts a private CA without disabling TLS verification."""
+    program = notebooks._NOTEBOOK_JOB_PROGRAM
+    # ai4rag's create_maas_client reads MAAS_CA_BUNDLE as a PEM file path.
+    assert 'os.environ.get("MAAS_CA_BUNDLE", "")' in program
+    # PEM data delivered by an env_from secret becomes a file on disk.
+    assert "ca_data.startswith(\"-----BEGIN\")" in program
+    assert 'os.environ["MAAS_CA_BUNDLE"] = str(materialized)' in program
+    # The mounted workbench trust bundle is used when no secret data is set,
+    # at the exact path the generated notebooks read for AWS_CA_BUNDLE.
+    assert (
+        f"Path(\"{notebooks._WORKBENCH_CA_BUNDLE_DIR}/ca-bundle.crt\")" in program
+    )
+    assert 'os.environ.setdefault("AWS_CA_BUNDLE", str(workbench_ca))' in program
+    # Generic clients get a merged bundle that keeps the system CAs.
+    assert 'os.environ.setdefault("SSL_CERT_FILE", str(merged))' in program
+    assert 'os.environ.setdefault("REQUESTS_CA_BUNDLE", str(merged))' in program
+    compile(program, "notebook-runner", "exec")
+
