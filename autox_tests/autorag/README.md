@@ -55,7 +55,7 @@ Scenarios live in `configs/test_configs.json`. Each entry specifies:
 | `description` | Human-readable summary |
 | `tags` | List of tags for runtime filtering via `-t` / `AUTORAG_FUNCTIONAL_TESTS_TAGS` |
 | `expected_result` | `"pass"` or `"fail"` |
-| `embedding_models` / `generation_models` | MaaS model IDs (JSON list, or `"env"` to read from `AUTORAG_EMBEDDING_MODELS` / `AUTORAG_GENERATION_MODELS`); required by the pipeline |
+| `embedding_models` / `generation_models` | MaaS model IDs (JSON list, or `"env"` to read from `BENCHMARK_EMBEDDING_MODELS` / `BENCHMARK_GENERATION_MODELS`); required by the pipeline |
 | `optimization_metric`, `optimization_max_rag_patterns`, `test_data_key` | Per-scenario parameter overrides |
 | `input_data_keys` | JSON list of document-folder paths within the input bucket; the pipeline discovers their union. An empty list scans the whole bucket. |
 | `db_secret_name` / `db_secret_name_env` | Optional dedicated Kubernetes database-secret name, or the environment variable that supplies it. Defaults to `VECTOR_DB_SECRET_NAME`. |
@@ -99,3 +99,33 @@ When a pipeline run fails, `utils._collect_failure_details()`:
 4. Returns a formatted report appended to the test failure message
 
 Kubernetes API URL is derived from the KFP route URL (OCP and ROSA patterns). Override with `K8S_API_URL` or `K8S_API_PORT` env vars.
+
+## FanOutQA benchmark run
+
+`test_fanoutqa_benchmark.py` runs one full AutoRAG optimization through the benchmark
+orchestrator from `autox_benchmarks/` against the dataset kept in external S3
+(`s3://ai-eng-rag/datasets/rag/fanoutqa/txt/10_gold/`). With four patterns and the
+`balanced` preset it takes roughly an hour, so it is marked as `integration`.
+
+```bash
+# full benchmark run (session setup validates KFP/S3/manifest first)
+./run_tests.sh --suite autorag --env-file autox_tests/.env.rag "integration"
+
+# skip it when you only want the parametrized pipeline scenarios
+./run_tests.sh --suite autorag --env-file autox_tests/.env.rag "not integration"
+```
+
+Benchmark and manifest settings live inline in the test module and are written to a
+temporary directory at session start. Credentials come from the same test environment as
+the rest of the suite (`RHOAI_*`, `INPUT_DATA_*`, `TEST_DATA_*`, `MAAS_SECRET_NAME`,
+`VECTOR_DB_SECRET_NAME`, `AWS_*`).
+
+Additional requirements specific to the benchmark run:
+
+- model lists: the test maps the suite's `AUTORAG_EMBEDDING_MODELS` /
+  `AUTORAG_GENERATION_MODELS` (or `FUNC_TEST_*`) to the `BENCHMARK_*` names read by
+  the benchmark loader, so no extra variables are needed
+- `RHOAI_PIPELINE_RUN_TIMEOUT` (otherwise the config default of `7200` s applies)
+
+Tests skip when the AutoRAG connection variables are missing, and fail fast when the
+environment is configured but the S3 objects or pipeline secrets are not usable.
