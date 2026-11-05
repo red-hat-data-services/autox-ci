@@ -1,6 +1,6 @@
-"""OpenShift AI / RHOAI Kubeflow Pipelines integration tests (repository root).
+"""OpenShift AI / RHOAI Kubeflow Pipelines functional tests.
 
-Layout: ``config/`` JSON configs, ``data/`` fixtures, ``lib/`` helpers, ``scenarios/`` test modules
-and ``scenarios/conftest.py``. Suite templates are ``autox_tests/.env.ml.example``
-and ``autox_tests/.env.rag.example``.
+AutoML and AutoRAG suites live in ``automl/`` and ``autorag/``, each with
+``configs/``, ``data/``, and suite fixtures. Shared helpers live in ``lib/``.
+Suite templates are ``autox_tests/.env.ml.example`` and ``autox_tests/.env.rag.example``.
 """

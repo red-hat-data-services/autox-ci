@@ -14,7 +14,6 @@ from datetime import date, datetime, timezone
 from io import BytesIO, StringIO
 from pathlib import Path
 
-from autox_tests.lib.clients import make_kfp_client, make_s3_client  # noqa: F401
 from autox_tests.lib.k8s_utils import load_k8s_config
 from autox_tests.lib.settings import AUTOML_UPLOAD_TEST_DATASETS_ENV
 from autox_tests.lib.kfp_run_state import _get_failed_task_names, _normalize_state  # noqa: F401

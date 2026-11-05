@@ -9,35 +9,10 @@ from pathlib import Path
 
 from autox_tests.lib.env import load_tests_env
 
-# Precompiled IR paths under ``pipelines/training/`` in pipelines-components. The ref is
-# selected via ``RHOAI_PIPELINES_COMPONENTS_REF`` (or the managed-pipelines image); point it
-# at the branch carrying the MaaS pipeline until that change merges into the default ref.
-PIPELINE_TRAINING_TABULAR_REL = "automl/autogluon_tabular_training_pipeline/pipeline.yaml"
-PIPELINE_TRAINING_TIMESERIES_REL = "automl/autogluon_timeseries_training_pipeline/pipeline.yaml"
-PIPELINE_TRAINING_AUTORAG_REL = "autorag/documents_rag_optimization_pipeline/pipeline.yaml"
-
 PIPELINE_YAML_TABULAR_ENV = "AUTOML_TABULAR_PIPELINE_PATH"
 PIPELINE_YAML_TIMESERIES_ENV = "AUTOML_TIMESERIES_PIPELINE_PATH"
 PIPELINE_YAML_AUTORAG_ENV = "AUTORAG_PIPELINE_PATH"
 PIPELINE_YAML_AUTORAG_INDEXING_ENV = "AUTORAG_INDEXING_PIPELINE_PATH"
-
-# Default: https://github.com/red-hat-data-services/pipelines-components/tree/rhoai-3.4/pipelines/training
-# Override RHOAI_PIPELINES_COMPONENTS_REF to target the MaaS pipeline branch.
-PIPELINES_COMPONENTS_REPO_ENV = "RHOAI_PIPELINES_COMPONENTS_REPO"
-PIPELINES_COMPONENTS_REF_ENV = "RHOAI_PIPELINES_COMPONENTS_REF"
-
-_DEFAULT_REPO = "red-hat-data-services/pipelines-components"
-_DEFAULT_REF = "rhoai-3.4"
-_RAW_GITHUB = "https://raw.githubusercontent.com"
-
-
-def _default_raw_url(repo_relative_under_training: str) -> str:
-    """Build a raw GitHub URL for a pipeline YAML under ``pipelines/training/``."""
-    load_tests_env()
-    repo = (os.environ.get(PIPELINES_COMPONENTS_REPO_ENV) or "").strip() or _DEFAULT_REPO
-    ref = (os.environ.get(PIPELINES_COMPONENTS_REF_ENV) or "").strip() or _DEFAULT_REF
-    rel = repo_relative_under_training.lstrip("/")
-    return f"{_RAW_GITHUB}/{repo}/{ref}/pipelines/training/{rel}"
 
 
 def _download(url: str, dest: Path, timeout_seconds: float = 120.0) -> None:

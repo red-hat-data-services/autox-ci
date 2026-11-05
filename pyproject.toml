@@ -52,8 +52,7 @@ packages = ["autox_tests", "autox_tests.lib"]
 
 [tool.pytest.ini_options]
 testpaths = [
-  "autox_tests/automl/scenarios",
-  "autox_tests/automl/functional",
+  "autox_tests/automl",
   "autox_tests/autorag",
 ]
 markers = [
