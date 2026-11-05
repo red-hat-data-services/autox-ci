@@ -1,34 +1,9 @@
-"""Shared KFP and S3 client factories for functional test suites."""
+"""Shared S3 client factory and KFP token handling for functional test suites."""
 
 import logging
 import os
 
-from autox_tests.lib.kfp_retry import install_kfp_api_retries
-
 logger = logging.getLogger(__name__)
-
-
-def make_kfp_client(config):
-    """Create a KFP client from a config dict; returns None if config is None."""
-    if config is None:
-        logger.info("Skipping KFP client creation due to missing config.")
-        return None
-    import kfp
-
-    host = config["rhoai_kfp_url"]
-    if not host.endswith("/"):
-        host = host + "/"
-    verify_ssl = os.environ.get("KFP_VERIFY_SSL", "true").strip().lower()
-    verify_ssl = verify_ssl not in ("0", "false", "no")
-    client = kfp.Client(
-        host=host,
-        namespace=config["rhoai_project"],
-        existing_token=config.get("rhoai_token"),
-        verify_ssl=verify_ssl,
-    )
-    install_kfp_api_retries(client)
-    _disable_gcp_token_refresh(client)
-    return client
 
 
 def _disable_gcp_token_refresh(client) -> None:

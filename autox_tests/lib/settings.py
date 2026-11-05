@@ -1,8 +1,4 @@
-"""Environment-driven settings for root OpenShift AI KFP tests.
-
-Call :func:`load_tests_env` from ``autox_tests/lib/env.py`` before reading configuration
-(``autox_tests/scenarios/conftest.py`` does this at session start via ``pytest_configure``).
-"""
+"""Shared environment-driven cluster and storage settings for AutoML and AutoRAG tests."""
 
 from __future__ import annotations
 
@@ -16,10 +12,11 @@ from autox_tests.lib.env import load_tests_env
 
 logger = logging.getLogger(__name__)
 
-# --- AutoML (tabular + timeseries) shared storage / cluster ---
+# Shared cluster and storage settings.
 
 RHOAI_URL_ENV = "RHOAI_URL"
 RHOAI_KFP_URL_ENV = "RHOAI_KFP_URL"
+RHOAI_KFP_URL_ENV_ALT = "KFP_HOST"
 RHOAI_TOKEN_ENV = "RHOAI_TOKEN"
 RHOAI_PROJECT_ENV = "RHOAI_PROJECT_NAME"
 S3_ENDPOINT_ENV = "AWS_S3_ENDPOINT"
@@ -34,7 +31,6 @@ RHOAI_TRAIN_DATA_BUCKET_ENV = "RHOAI_TRAIN_DATA_BUCKET"
 RHOAI_TRAIN_S3_SECRET_NAME_ENV = "RHOAI_TRAIN_S3_SECRET_NAME"
 S3_SKIP_SECRET_SETUP_ENV = "RHOAI_SKIP_S3_SECRET_SETUP"
 S3_SECRET_OVERWRITE_KEYS_ENV = "RHOAI_S3_SECRET_OVERWRITE_KEYS"
-S3_CREATE_BUCKET_IF_MISSING_ENV = "RHOAI_TEST_S3_CREATE_BUCKET_IF_MISSING"
 AUTOML_UPLOAD_TEST_DATASETS_ENV = "AUTOML_UPLOAD_TEST_DATASETS"
 AUTORAG_UPLOAD_TEST_DATASETS_ENV = "AUTORAG_UPLOAD_TEST_DATASETS"
 
@@ -61,49 +57,6 @@ RHOAI_DSPA_MANAGED_PIPELINES_IMAGE_ENV = "RHOAI_DSPA_MANAGED_PIPELINES_IMAGE"
 RHOAI_DSPA_MANAGED_PIPELINE_NAMES_ENV = "RHOAI_DSPA_MANAGED_PIPELINE_NAMES"
 # Optional DSPA object-storage endpoint override (e.g. in-cluster URL vs public ``AWS_S3_ENDPOINT``).
 INCLUSTER_AWS_S3_ENDPOINT_ENV = "INCLUSTER_AWS_S3_ENDPOINT"
-
-# Optional defaults for ``data_mode=existing_s3`` in JSON (AutoML + AutoRAG)
-TEST_DATA_SOURCE_BUCKET_ENV = "TEST_DATA_SOURCE_BUCKET"
-TEST_DATA_SOURCE_PREFIX_ENV = "TEST_DATA_SOURCE_PREFIX"
-
-# --- Documents RAG optimization ---
-
-RHOAI_KFP_URL_ENV_ALT = "KFP_HOST"
-RHOAI_TOKEN_ENV_ALT = "KFP_TOKEN"
-RHOAI_PROJECT_ENV_ALT = "KFP_NAMESPACE"
-TEST_DATA_BUCKET_ENV = "TEST_DATA_BUCKET_NAME"
-TEST_DATA_KEY_ENV = "TEST_DATA_KEY"
-INPUT_DATA_BUCKET_ENV = "INPUT_DATA_BUCKET_NAME"
-INPUT_DATA_KEY_ENV = "INPUT_DATA_KEY"
-MAAS_SECRET_ENV = "MAAS_SECRET_NAME"
-VECTOR_DB_SECRET_ENV = "VECTOR_DB_SECRET_NAME"
-
-# Tag filter (shared with per-pipeline integration tests)
-TEST_CONFIG_TAGS_ENV = "RHOAI_TEST_CONFIG_TAGS"
-
-
-def get_rhoai_test_config_tag_filter() -> frozenset[str] | None:
-    """Return lowercase tags from ``RHOAI_TEST_CONFIG_TAGS``, or ``None`` if unset/empty (no filter)."""
-    load_tests_env()
-    raw = os.environ.get(TEST_CONFIG_TAGS_ENV)
-    if not raw or not str(raw).strip():
-        return None
-    allowed = {t.strip().lower() for t in str(raw).split(",") if t.strip()}
-    return frozenset(allowed) if allowed else None
-
-
-def rhoai_negative_pipeline_family_allowed(family: str) -> bool:
-    """Return whether negative pipeline tests should run for this family given tag filter.
-
-    ``family`` must be one of ``tabular``, ``timeseries``, ``autorag`` (same strings as in JSON
-    scenario ``tags``). When ``RHOAI_TEST_CONFIG_TAGS`` is unset or empty, all families are allowed.
-    When set, a family runs only if that tag appears in the comma-separated list (case-insensitive),
-    consistent with JSON scenario tag filtering in ``tests.lib.config_loaders``.
-    """
-    filt = get_rhoai_test_config_tag_filter()
-    if filt is None:
-        return True
-    return family.strip().lower() in filt
 
 
 def get_rhoai_integration_https_verify() -> bool:
@@ -291,8 +244,8 @@ def get_dspa_config_from_env() -> dict[str, Any] | None:
 def get_rhoai_namespace_setup_config() -> dict[str, Any] | None:
     """Return OpenShift API URL, token, project, and S3 fields needed to create the namespace and S3 secret.
 
-    Shared by AutoML and AutoRAG. Does **not** require ``RHOAI_KFP_URL`` or ``RHOAI_TEST_DATA_BUCKET``;
-    use :func:`get_rhoai_automl_config` when submitting AutoGluon pipelines (those need KFP + data bucket).
+    Shared by AutoML and AutoRAG. Does not require ``RHOAI_KFP_URL`` or a data bucket;
+    each suite adds its pipeline and dataset settings.
 
     ``RHOAI_URL`` is optional when ``RHOAI_KFP_URL`` is set — namespace and secret setup is skipped
     and the KFP client connects directly to the existing pipeline server.
@@ -331,42 +284,6 @@ def get_rhoai_namespace_setup_config() -> dict[str, Any] | None:
     }
 
 
-def get_rhoai_automl_config() -> dict[str, Any] | None:
-    """Return config for AutoML pipelines (namespace setup + KFP + data bucket); None if incomplete.
-
-    ``RHOAI_KFP_URL`` may be omitted when ``RHOAI_CREATE_DSPA=true``; the session fixture then
-    discovers the API URL from the OpenShift Route created for the pipeline server.
-    """
-    base = get_rhoai_namespace_setup_config()
-    if base is None:
-        return None
-    load_tests_env()
-    kfp_url = os.environ.get(RHOAI_KFP_URL_ENV)
-    bucket_data = os.environ.get(S3_BUCKET_DATA_ENV)
-    bucket_artifacts = os.environ.get(S3_BUCKET_ARTIFACTS_ENV)
-    if not bucket_data:
-        return None
-    if not kfp_url and not should_create_dspa_from_env():
-        return None
-    return {
-        **base,
-        "rhoai_kfp_url": kfp_url.strip().rstrip("/") if kfp_url else None,
-        "s3_bucket_data": bucket_data,
-        "s3_bucket_artifacts": bucket_artifacts or bucket_data,
-    }
-
-
-def get_test_data_source_defaults() -> dict[str, str | None]:
-    """Return optional ``TEST_DATA_SOURCE_BUCKET`` and prefix for JSON ``existing_s3`` modes."""
-    load_tests_env()
-    b = os.environ.get(TEST_DATA_SOURCE_BUCKET_ENV)
-    p = os.environ.get(TEST_DATA_SOURCE_PREFIX_ENV)
-    return {
-        "bucket": b.strip() if b else None,
-        "prefix": p.strip().strip("/") if p else None,
-    }
-
-
 def should_skip_s3_secret_setup() -> bool:
     """Return whether pytest must not create or modify the S3 connection secret."""
     load_tests_env()
@@ -379,292 +296,3 @@ def should_overwrite_s3_secret_keys() -> bool:
     load_tests_env()
     raw = (os.environ.get(S3_SECRET_OVERWRITE_KEYS_ENV) or "").strip().lower()
     return raw in ("1", "true", "yes", "on")
-
-
-def get_s3_create_bucket_if_missing() -> bool:
-    """Return whether uploads may call :func:`tests.lib.s3_data.ensure_s3_bucket_exists` (default: True)."""
-    load_tests_env()
-    raw = (os.environ.get(S3_CREATE_BUCKET_IF_MISSING_ENV) or "").strip().lower()
-    if raw in ("0", "false", "no", "off"):
-        return False
-    return True
-
-
-def get_s3_boto_config_from_env() -> dict[str, Any] | None:
-    """Return S3 client settings from ``AWS_*`` env vars (independent of AutoML block)."""
-    load_tests_env()
-    endpoint = os.environ.get(S3_ENDPOINT_ENV)
-    access = os.environ.get(S3_ACCESS_KEY_ENV)
-    secret = os.environ.get(S3_SECRET_KEY_ENV)
-    region = os.environ.get(S3_REGION_ENV, "us-east-1")
-    if not all([endpoint, access, secret]):
-        return None
-    return {
-        "s3_endpoint": endpoint,
-        "s3_access_key": access,
-        "s3_secret_key": secret,
-        "s3_region": region,
-    }
-
-
-def get_default_upload_bucket_name() -> str | None:
-    """Default bucket for uploading test fixtures (AutoRAG / shared uploads)."""
-    load_tests_env()
-    raw = (
-        os.environ.get(S3_BUCKET_DATA_ENV)
-        or os.environ.get(TEST_DATA_SOURCE_BUCKET_ENV)
-        or ""
-    ).strip()
-    return raw or None
-
-
-def get_autorag_connection_config() -> dict[str, Any] | None:
-    """Return KFP + MaaS + vector-DB + k8s S3 secret names + optional S3 creds.
-
-    ``test_data_secret_name`` and ``input_data_secret_name`` both use ``RHOAI_TEST_S3_SECRET_NAME``
-    (same as AutoML). Per-run bucket/object paths come from JSON (``upload`` or ``existing_s3``).
-    Optional ``TEST_DATA_*`` / ``INPUT_DATA_*`` bucket env values are fallbacks for ``existing_s3``.
-    """
-    load_tests_env()
-    kfp_url = os.environ.get(RHOAI_KFP_URL_ENV) or os.environ.get(RHOAI_KFP_URL_ENV_ALT)
-    token = os.environ.get(RHOAI_TOKEN_ENV) or os.environ.get(RHOAI_TOKEN_ENV_ALT)
-    project = os.environ.get(RHOAI_PROJECT_ENV) or os.environ.get(RHOAI_PROJECT_ENV_ALT)
-    # Same k8s secret as AutoML (``RHOAI_TEST_S3_SECRET_NAME``): used for both pipeline S3 secret params.
-    s3_secret = (os.environ.get(S3_SECRET_NAME_ENV) or "s3-connection").strip()
-    maas_secret = os.environ.get(MAAS_SECRET_ENV)
-    vector_db_secret = os.environ.get(VECTOR_DB_SECRET_ENV)
-
-    if not all([token, s3_secret, maas_secret, vector_db_secret]):
-        return None
-    if not kfp_url and not should_create_dspa_from_env():
-        return None
-
-    t_bucket = (os.environ.get(TEST_DATA_BUCKET_ENV) or "").strip()
-    t_key = (os.environ.get(TEST_DATA_KEY_ENV) or "").strip()
-    i_bucket = (os.environ.get(INPUT_DATA_BUCKET_ENV) or "").strip()
-    i_key = (os.environ.get(INPUT_DATA_KEY_ENV) or "").strip()
-
-    endpoint = os.environ.get(S3_ENDPOINT_ENV)
-    access = os.environ.get(S3_ACCESS_KEY_ENV)
-    secret = os.environ.get(S3_SECRET_KEY_ENV)
-    region = os.environ.get(S3_REGION_ENV, "us-east-1")
-    bucket_artifacts = os.environ.get(S3_BUCKET_ARTIFACTS_ENV)
-
-    return {
-        "rhoai_kfp_url": kfp_url.strip().rstrip("/") if kfp_url else None,
-        "rhoai_token": token.strip(),
-        "rhoai_project": (project or "kfp-integration-test").strip(),
-        "test_data_secret_name": s3_secret,
-        "test_data_bucket_name": t_bucket,
-        "test_data_key": t_key,
-        "input_data_secret_name": s3_secret,
-        "input_data_bucket_name": i_bucket,
-        "input_data_key": i_key,
-        "maas_secret_name": maas_secret.strip(),
-        "vector_db_secret_name": vector_db_secret.strip(),
-        "s3_endpoint": endpoint.strip() if endpoint else None,
-        "s3_access_key": access.strip() if access else None,
-        "s3_secret_key": secret.strip() if secret else None,
-        "s3_region": region.strip(),
-        "s3_bucket_artifacts": bucket_artifacts.strip() if bucket_artifacts else None,
-    }
-
-
-def get_autorag_config() -> dict[str, Any] | None:
-    """Return connection config only when **all** of ``TEST_DATA_*`` and ``INPUT_DATA_*`` bucket keys are set in env.
-
-    Prefer :func:`get_autorag_connection_config` for the root ``tests/`` suite (JSON-driven data).
-    """
-    c = get_autorag_connection_config()
-    if c is None:
-        return None
-    if not (
-        c["test_data_bucket_name"]
-        and c["test_data_key"]
-        and c["input_data_bucket_name"]
-        and c["input_data_key"]
-    ):
-        return None
-    return c
-
-
-def describe_rhoai_automl_config_failure() -> str | None:
-    """Return ``None`` if :func:`get_rhoai_automl_config` is usable; else a detailed message."""
-    load_tests_env()
-    kfp_set = bool((os.environ.get(RHOAI_KFP_URL_ENV) or "").strip())
-    required_ns: list[tuple[str, str]] = []
-    if not kfp_set:
-        required_ns.append(
-            (RHOAI_URL_ENV, "OpenShift/Kubernetes API URL (for namespace + secrets)")
-        )
-    required_ns.extend([
-        (RHOAI_TOKEN_ENV, "API bearer token"),
-        (S3_ENDPOINT_ENV, "S3 endpoint URL"),
-        (S3_ACCESS_KEY_ENV, "S3 access key"),
-        (S3_SECRET_KEY_ENV, "S3 secret key"),
-    ])
-    missing_ns = [
-        f"  - {name} ({why})"
-        for name, why in required_ns
-        if not (os.environ.get(name) or "").strip()
-    ]
-    if missing_ns:
-        return (
-            "Missing environment variables for cluster namespace and S3 secret setup:\n"
-            + "\n".join(missing_ns)
-        )
-
-    try:
-        ns_probe = get_rhoai_namespace_setup_config()
-    except ValueError as e:
-        return (
-            "Invalid OpenShift API TLS settings "
-            f"({RHOAI_OPENSHIFT_CA_BUNDLE_PATH_ENV} / {RHOAI_OPENSHIFT_CA_DATA_ENV} / "
-            f"{RHOAI_OPENSHIFT_API_INSECURE_TLS_ENV}):\n{e}"
-        )
-
-    if ns_probe is None:
-        return "Could not build namespace configuration (unexpected); verify RHOAI_* and AWS_* variables."
-
-    if not (os.environ.get(S3_BUCKET_DATA_ENV) or "").strip():
-        return (
-            f"Missing {S3_BUCKET_DATA_ENV} (bucket for training data uploads and pipeline inputs).\n"
-            "Configure autox_tests/.env or export the variables."
-        )
-
-    dspa = get_dspa_config_from_env()
-    if not kfp_set and not (dspa and dspa.get("create")):
-        return (
-            "Kubeflow Pipelines API URL is not configured:\n"
-            f"  - Set {RHOAI_KFP_URL_ENV} to the Data Science Pipelines route, **or**\n"
-            f"  - Set {RHOAI_CREATE_DSPA_ENV}=true so the suite can create a DSPA and use the ds-pipeline route.\n"
-            "Configure autox_tests/.env or export the variables."
-        )
-
-    if get_rhoai_automl_config() is None:
-        return "AutoML configuration is still incomplete after validation (internal check); check autox_tests/.env and exported variables."
-    return None
-
-
-def describe_autorag_connection_config_failure() -> str | None:
-    """Return ``None`` if :func:`get_autorag_connection_config` works; else explain gaps."""
-    load_tests_env()
-    kfp_url = (
-        os.environ.get(RHOAI_KFP_URL_ENV) or os.environ.get(RHOAI_KFP_URL_ENV_ALT) or ""
-    ).strip()
-    token = (
-        os.environ.get(RHOAI_TOKEN_ENV) or os.environ.get(RHOAI_TOKEN_ENV_ALT) or ""
-    ).strip()
-    maas_secret = (os.environ.get(MAAS_SECRET_ENV) or "").strip()
-    vector_db_secret = (os.environ.get(VECTOR_DB_SECRET_ENV) or "").strip()
-    dspa = get_dspa_config_from_env()
-
-    lines: list[str] = []
-    if not token:
-        lines.append(
-            f"  - {RHOAI_TOKEN_ENV} or {RHOAI_TOKEN_ENV_ALT} (KFP / cluster token)"
-        )
-    if not maas_secret:
-        lines.append(
-            f"  - {MAAS_SECRET_ENV} (Kubernetes secret with MaaS inference settings: "
-            "MAAS_BASE_URL, MAAS_API_KEY)"
-        )
-    if not vector_db_secret:
-        lines.append(
-            f"  - {VECTOR_DB_SECRET_ENV} (Kubernetes secret with vector database "
-            "connection: MILVUS_* or PGVECTOR_* keys)"
-        )
-    if not kfp_url and not (dspa and dspa.get("create")):
-        lines.append(
-            f"  - {RHOAI_KFP_URL_ENV} or {RHOAI_KFP_URL_ENV_ALT} (pipeline API URL), "
-            f"or {RHOAI_CREATE_DSPA_ENV}=true"
-        )
-    if lines:
-        return "AutoRAG integration requires:\n" + "\n".join(lines)
-
-    if get_autorag_connection_config() is None:
-        return "AutoRAG connection config is incomplete (unexpected); check autox_tests/.env and exported variables."
-    return None
-
-
-def describe_autorag_integration_failure() -> str | None:
-    """Return ``None`` if the full AutoRAG test preconditions hold; else a detailed message."""
-    conn_err = describe_autorag_connection_config_failure()
-    if conn_err is not None:
-        return conn_err
-
-    from autox_tests.lib.config_loaders import get_autorag_configs_for_run
-
-    conn = get_autorag_connection_config()
-    assert conn is not None  # follows describe_autorag_connection_config_failure
-
-    configs = get_autorag_configs_for_run()
-    needs_upload = any(c.data_mode == "upload" for c in configs)
-    needs_existing = any(c.data_mode == "existing_s3" for c in configs)
-
-    s3cfg = get_s3_boto_config_from_env()
-    if needs_upload or needs_existing:
-        if not s3cfg:
-            return (
-                "Selected JSON configs use upload or existing_s3 data modes; set all of:\n"
-                f"  - {S3_ENDPOINT_ENV}\n"
-                f"  - {S3_ACCESS_KEY_ENV}\n"
-                f"  - {S3_SECRET_KEY_ENV}"
-            )
-
-    if needs_upload:
-        if not get_default_upload_bucket_name():
-            return (
-                "upload data mode requires a default bucket:\n"
-                f"  - {S3_BUCKET_DATA_ENV} or {TEST_DATA_SOURCE_BUCKET_ENV}"
-            )
-
-    tds = get_test_data_source_defaults()
-    if needs_existing:
-        for c in configs:
-            if c.data_mode != "existing_s3":
-                continue
-            tb = (
-                c.test_data_bucket
-                or tds.get("bucket")
-                or conn.get("test_data_bucket_name")
-            )
-            ib = (
-                c.input_data_bucket
-                or tds.get("bucket")
-                or conn.get("input_data_bucket_name")
-            )
-            if not c.test_data_key or not c.input_data_key:
-                return (
-                    f"Config {c.id!r} (existing_s3): set test_data_key and input_data_key in "
-                    "tests/config/autorag_test_configs.json"
-                )
-            if not tb or not ib:
-                return (
-                    f"Config {c.id!r} (existing_s3): set test_data_bucket and input_data_bucket in JSON, "
-                    f"or set {TEST_DATA_SOURCE_BUCKET_ENV} / {S3_BUCKET_DATA_ENV} for defaults."
-                )
-
-    return None
-
-
-def autorag_integration_ready() -> tuple[bool, str]:
-    """Return whether root AutoRAG tests can run, and a short reason string if not."""
-    msg = describe_autorag_integration_failure()
-    if msg is None:
-        return True, ""
-    return False, msg
-
-
-def autorag_pipeline_arguments(cfg: dict[str, Any]) -> dict[str, Any]:
-    """Build KFP pipeline arguments for AutoRAG from integration config."""
-    return {
-        "test_data_secret_name": cfg["test_data_secret_name"],
-        "test_data_bucket_name": cfg["test_data_bucket_name"],
-        "test_data_key": cfg["test_data_key"],
-        "input_data_secret_name": cfg["input_data_secret_name"],
-        "input_data_bucket_name": cfg["input_data_bucket_name"],
-        "input_data_keys": [cfg["input_data_key"]] if cfg["input_data_key"] else [],
-        "maas_secret_name": cfg["maas_secret_name"],
-        "db_secret_name": cfg["vector_db_secret_name"],
-    }

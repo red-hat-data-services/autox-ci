@@ -358,11 +358,3 @@ def ensure_rhoai_project_and_s3_secret(
             raise
 
     return project_name
-
-
-def ensure_automl_project_and_s3_secret(
-    rhoai_automl_config: dict,
-    temp_kubeconfig_path: str | None,
-) -> str:
-    """Backward-compatible name for :func:`ensure_rhoai_project_and_s3_secret`."""
-    return ensure_rhoai_project_and_s3_secret(rhoai_automl_config, temp_kubeconfig_path)
