@@ -1,7 +1,7 @@
 """Parametrized functional tests for Documents Indexing pipeline on RHOAI.
 
-Test scenarios are defined in configs/indexing_test_configs.json. Data is pre-loaded
-in S3; tests reference existing S3 keys without uploading local files. Filter by tags
+Test scenarios are defined in configs/indexing_test_configs.json. Local datasets are uploaded
+to S3 before the session and deleted afterward. Filter by tags
 with AUTORAG_FUNCTIONAL_TESTS_TAGS (e.g. smoke, remote::milvus, negative).
 
 Passing criteria for positive scenarios:

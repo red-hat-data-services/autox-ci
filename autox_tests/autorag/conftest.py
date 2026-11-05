@@ -4,6 +4,7 @@ import json
 import logging
 import os
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -20,7 +21,6 @@ from autox_tests.lib.pipeline_yaml_sources import (
 )
 from autox_tests.lib.s3_data import S3CleanupTracker
 from autox_tests.lib.settings import (
-    AUTORAG_UPLOAD_TEST_DATASETS_ENV,
     get_rhoai_namespace_setup_config,
     should_create_dspa_from_env,
 )
@@ -369,77 +369,76 @@ def s3_teardown_indexing(s3_client_indexing_functional, s3_cleanup_tracker):
 
 
 @pytest.fixture(scope="session", autouse=True)
-def upload_datasets_if_requested(functional_env_config, s3_client_functional):
-    """Upload test datasets to S3 at session start when ``AUTORAG_UPLOAD_TEST_DATASETS`` is set.
+def upload_datasets(request: pytest.FixtureRequest):
+    """Upload selected optimization/indexing datasets and clean up after the session.
 
-    When set to ``1``, ``true``, or ``yes``, input and test datasets referenced in
-    optimisation_test_configs.json are uploaded from the local ``data/`` directory to S3 before any
-    tests run. When unset, datasets are assumed to already be present in S3.
-
-    Input data keys are uploaded to ``INPUT_DATA_BUCKET_NAME``; test data keys to
-    ``TEST_DATA_BUCKET_NAME``. All uploaded objects are deleted from S3 after the session.
+    Documents go to INPUT_DATA_BUCKET_NAME; optimization benchmarks go to
+    TEST_DATA_BUCKET_NAME. Shared keys are uploaded once per bucket. Local config
+    tests require no datasets. Cleanup also runs when setup or a test fails.
     """
-    uploaded: list[tuple[str, str]] = []  # (bucket, s3_key)
+    from .configs.configs import AutoRAGTestConfig, IndexingTestConfig
+    from .utils import upload_test_datasets
 
-    raw = os.environ.get(AUTORAG_UPLOAD_TEST_DATASETS_ENV, "").strip().lower()
-    if raw in ("1", "true", "yes"):
-        if functional_env_config is None or s3_client_functional is None:
-            pytest.skip(
-                f"{AUTORAG_UPLOAD_TEST_DATASETS_ENV} is set but S3 client is not configured — "
-                "set AWS_* and INPUT_DATA_BUCKET_NAME / TEST_DATA_BUCKET_NAME env vars"
+    configs = []
+    for item in request.session.items:
+        callspec = getattr(item, "callspec", None)
+        if callspec:
+            configs.extend(callspec.params.values())
+
+    datasets: dict[str, tuple[Any, set[str]]] = {}
+    for config_type, env_fixture, client_fixture in (
+        (AutoRAGTestConfig, "functional_env_config", "s3_client_functional"),
+        (IndexingTestConfig, "indexing_functional_env_config", "s3_client_indexing_functional"),
+    ):
+        selected = [config for config in configs if isinstance(config, config_type)]
+        if not selected:
+            continue
+        env_config = request.getfixturevalue(env_fixture)
+        if env_config is None:
+            # Pipeline tests skip when their environment is incomplete.
+            continue
+        client = request.getfixturevalue(client_fixture)
+        if client is None:
+            pytest.skip("S3 client is required to upload AutoRAG datasets — set AWS_* env vars")
+
+        bucket_keys = [
+            (
+                env_config["input_data_bucket_name"],
+                {key for config in selected for key in (config.input_data_keys or [])},
             )
-        else:
-            from .configs.configs import get_all_dataset_keys
-            from .utils import upload_test_datasets
-
-            local_data_dir = Path(__file__).parent / "data"
-            input_bucket = functional_env_config["input_data_bucket_name"]
-            test_bucket = functional_env_config["test_data_bucket_name"]
-            input_keys, test_keys = get_all_dataset_keys()
-
-            for key in upload_test_datasets(
-                s3_client_functional,
-                input_bucket,
-                input_keys,
-                local_data_dir,
-            ):
-                uploaded.append((input_bucket, key))
-
-            for key in upload_test_datasets(
-                s3_client_functional,
-                test_bucket,
-                test_keys,
-                local_data_dir,
-            ):
-                uploaded.append((test_bucket, key))
-
-    yield
-
-    if uploaded:
-        from autox_tests.lib.s3_data import delete_s3_objects
-        from collections import defaultdict
-
-        by_bucket: dict[str, list[str]] = defaultdict(list)
-        for bucket, key in uploaded:
-            by_bucket[bucket].append(key)
-
-        total_deleted = 0
-        total_keys = len(uploaded)
-        for bucket, keys in by_bucket.items():
-            deleted = delete_s3_objects(s3_client_functional, bucket, keys)
-            total_deleted += deleted
-
-        if total_deleted < total_keys:
-            logger.warning(
-                "Dataset teardown: only %d of %d object(s) deleted — buckets may be dirty",
-                total_deleted,
-                total_keys,
+        ]
+        if config_type is AutoRAGTestConfig:
+            bucket_keys.append(
+                (
+                    env_config["test_data_bucket_name"],
+                    {config.test_data_key for config in selected if config.test_data_key},
+                )
             )
-        else:
+        for bucket, keys in bucket_keys:
+            if keys:
+                datasets.setdefault(bucket, (client, set()))[1].update(keys)
+
+    for bucket, (client, keys) in datasets.items():
+        uploaded_keys: list[str] = []
+
+        def cleanup(client=client, bucket=bucket, uploaded_keys=uploaded_keys):
+            from autox_tests.lib.s3_data import delete_s3_objects
+
+            deleted = delete_s3_objects(client, bucket, uploaded_keys)
+            if deleted < len(uploaded_keys):
+                logger.warning(
+                    "Dataset teardown: only %d of %d object(s) deleted from s3://%s",
+                    deleted, len(uploaded_keys), bucket,
+                )
             logger.info(
-                "Dataset teardown complete: %d file(s) removed from S3",
-                total_deleted,
+                "Dataset teardown: %d file(s) removed from s3://%s", deleted, bucket
             )
+
+        request.addfinalizer(cleanup)
+        upload_test_datasets(
+            client, bucket, list(keys), Path(__file__).parent / "data",
+            uploaded_keys=uploaded_keys,
+        )
 
 
 @pytest.fixture(scope="session")

@@ -265,7 +265,7 @@ AUTOML_FUNCTIONAL_TESTS_TAGS=user_test_data pytest autox_tests/automl/ -v
 
 ### Test data sources
 
-Training datasets used by the positive scenarios are stored in the S3 bucket defined by `RHOAI_TRAIN_DATA_BUCKET`. The files for the original scenarios ship in `automl/data/` for local reference; the three datasets added for RHAIENG-4179 pairwise coverage are described below.
+Training datasets used by the positive scenarios are uploaded from `automl/data/` to the S3 bucket defined by `RHOAI_TRAIN_DATA_BUCKET` before the session and deleted afterward. The files for the original scenarios ship in `automl/data/` for local reference; the three datasets added for RHAIENG-4179 pairwise coverage are described below.
 
 #### User-provided test datasets
 
@@ -331,7 +331,7 @@ The field is optional. The two `bad_credentials` scenarios leave it unset on pur
 
 #### `missing_object_keys` (negative scenarios)
 
-S3 keys whose *absence* is the injected fault. Dataset setup uses only scenarios selected for execution after tag filters, pytest `-k`, `-m`, and test paths are applied. Before the first run is submitted, the session fixture uploads their required training and user-test files once per S3 key (when `AUTOML_UPLOAD_TEST_DATASETS=true`) and then verifies with `head_object` that every required key exists and every `missing_object_keys` entry does not. Intentionally absent keys are never uploaded. For example, `-k "TC-A-2"` uploads only `titanic.csv` with the default configs. A fixture that never reached the bucket fails at setup with a clear message instead of surfacing twenty minutes later as a `NoSuchKey` that reads like a product bug. Uploads fail when a required key has no matching local CSV.
+S3 keys whose *absence* is the injected fault. Dataset setup uses only scenarios selected for execution after tag filters, pytest `-k`, `-m`, and test paths are applied. Before the first run is submitted, the session fixture uploads their required training and user-test files once per S3 key and then verifies with `head_object` that every required key exists and every `missing_object_keys` entry does not. Intentionally absent keys are never uploaded. For example, `-k "TC-A-2"` uploads only `titanic.csv` with the default configs. A fixture that never reached the bucket fails at setup with a clear message instead of surfacing twenty minutes later as a `NoSuchKey` that reads like a product bug. Uploads fail when a required key has no matching local CSV. Uploaded datasets are deleted at session teardown, including after setup or test failures. Dataset cleanup is unconditional; `AUTOML_FUNCTIONAL_TEST_KEEP_ARTIFACTS` only controls generated pipeline artifacts.
 
 ### Pass criteria
 
@@ -368,6 +368,8 @@ S3 keys whose *absence* is the injected fault. Dataset setup uses only scenarios
 ## AutoRAG functional tests
 
 End-to-end tests for the Documents RAG optimization and indexing pipelines. They submit pipeline runs to KFP, validate S3 artifacts, and can execute generated optimization notebooks in Kubernetes Jobs.
+
+The selected scenarios' document inputs and optimization benchmarks are always uploaded from `autorag/data/` before the tests run. Documents go to `INPUT_DATA_BUCKET_NAME`; benchmarks go to `TEST_DATA_BUCKET_NAME`. Indexing-only runs upload only their document inputs. Shared keys are uploaded once per bucket. Uploaded datasets are deleted at session teardown, including after setup or test failures. `AUTORAG_FUNCTIONAL_TEST_KEEP_ARTIFACTS` only controls generated pipeline artifacts.
 
 ### Directory layout
 

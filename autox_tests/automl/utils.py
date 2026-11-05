@@ -15,7 +15,6 @@ from io import BytesIO, StringIO
 from pathlib import Path
 
 from autox_tests.lib.k8s_utils import load_k8s_config
-from autox_tests.lib.settings import AUTOML_UPLOAD_TEST_DATASETS_ENV
 from autox_tests.lib.kfp_run_state import _get_failed_task_names, _normalize_state  # noqa: F401
 from autox_tests.lib.s3_data import list_s3_objects, read_s3_json
 from autox_tests.lib.notebooks import run_notebooks_as_k8s_job
@@ -1537,6 +1536,8 @@ def upload_test_datasets(
     s3_keys: list[str],
     local_data_dir: Path,
     optional_keys: list[str] | None = None,
+    *,
+    uploaded_keys: list[str] | None = None,
 ) -> list[str]:
     """Upload local CSV files to S3 for each key in s3_keys that has a matching local file.
 
@@ -1546,11 +1547,13 @@ def upload_test_datasets(
     key without a local file, or whose upload fails, raises. A fixture that silently never
     reaches S3 turns into a bogus mid-pipeline ``NoSuchKey`` that reads like a product bug.
 
-    Returns the list of S3 keys that were actually uploaded.
+    Returns the list of S3 keys that were actually uploaded. When supplied,
+    ``uploaded_keys`` records successful uploads even if a later upload fails,
+    so the caller can clean up partial setup.
     """
     if not local_data_dir.is_dir():
         raise FileNotFoundError(
-            f"AUTOML_UPLOAD_TEST_DATASETS is set but local data directory does not exist: {local_data_dir}"
+            f"Local dataset directory does not exist: {local_data_dir}"
         )
 
     optional = set(optional_keys or ())
@@ -1566,7 +1569,8 @@ def upload_test_datasets(
             )
         local_index[f.name] = f
 
-    uploaded_keys: list[str] = []
+    if uploaded_keys is None:
+        uploaded_keys = []
     unmatched: list[str] = []
     failed: list[str] = []
     for s3_key in sorted(set(s3_keys)):
@@ -1645,7 +1649,7 @@ def verify_dataset_objects(
     if missing:
         problems.append(
             f"required dataset object(s) not found in s3://{bucket}: {missing} — "
-            f"set {AUTOML_UPLOAD_TEST_DATASETS_ENV}=true to upload them from the local data/ dir"
+            "check the dataset upload logs and S3 connection"
         )
     if present:
         problems.append(

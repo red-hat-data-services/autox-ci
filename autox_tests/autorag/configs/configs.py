@@ -210,15 +210,6 @@ def _load_configs(pass_type: str) -> list[AutoRAGTestConfig]:
     return _load_test_configs_from_json(_CONFIGS_JSON_PATH, AutoRAGTestConfig, "optimisation_test_configs", pass_type)
 
 
-def get_all_dataset_keys() -> tuple[list[str], list[str]]:
-    """Return (input_data_keys, test_data_keys) deduplicated across all test configs."""
-    with open(_CONFIGS_JSON_PATH) as f:
-        all_items = json.load(f)
-    input_keys = list({key for item in all_items for key in (item.get("input_data_keys") or [])})
-    test_keys = list({item["test_data_key"] for item in all_items if item.get("test_data_key")})
-    return input_keys, test_keys
-
-
 @dataclass
 class IndexingTestConfig:
     """Single test configuration for one documents-indexing-pipeline run.

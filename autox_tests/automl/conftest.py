@@ -20,7 +20,6 @@ from autox_tests.lib.pipeline_yaml_sources import (
 )
 from autox_tests.lib.s3_data import S3CleanupTracker
 from autox_tests.lib.settings import (
-    AUTOML_UPLOAD_TEST_DATASETS_ENV,
     RHOAI_TRAIN_DATA_BUCKET_ENV,
     RHOAI_TRAIN_S3_SECRET_NAME_ENV,
     S3_BUCKET_DATA_ENV,
@@ -194,28 +193,18 @@ def s3_cleanup_tracker():
 
 
 @pytest.fixture(scope="session", autouse=True)
-def upload_datasets_if_requested(
+def upload_datasets(
     request: pytest.FixtureRequest,
     automl_functional_config,
     s3_client_automl_functional,
 ):
-    """Upload test datasets to S3 at session start when ``AUTOML_UPLOAD_TEST_DATASETS`` is set.
+    """Upload selected scenarios' datasets and delete them at session teardown.
 
-    When set to ``1``, ``true``, or ``yes``, train and user-test CSVs referenced in
-    tabular_test_configs.json and timeseries_test_configs.json are uploaded from the
-    local ``data/`` directory to S3 before any tests run. When unset, datasets are
-    assumed to already be present in S3.
-
-    Either way the bucket is verified before the first run is submitted: every object the
-    selected scenarios reference present, and every object behind a missing-object fault
-    absent. Checking this here keeps a fixture problem from masquerading as a pipeline
-    failure twenty minutes into a run. Both the upload and the check follow
-    the final pytest selection (tags, ``-k``, ``-m``, and test paths), so a filtered run
-    neither uploads nor requires datasets it will not touch.
+    Train and user-test CSVs are uploaded from the local ``data/`` directory once
+    per S3 key. Required and intentionally absent objects are then verified before
+    any pipeline runs. Selection follows tags, ``-k``, ``-m``, and test paths.
+    Cleanup also runs when an upload, verification, or test fails.
     """
-    uploaded_keys: list[str] = []
-    bucket: str | None = None
-
     from .configs.configs import (
         AutoMLTabularFunctionalConfig,
         AutoMLTimeseriesFunctionalConfig,
@@ -234,37 +223,23 @@ def upload_datasets_if_requested(
 
     required_keys, absent_keys = get_dataset_key_expectations(configs)
     if not required_keys and not absent_keys:
-        yield
         return
 
-    raw = os.environ.get(AUTOML_UPLOAD_TEST_DATASETS_ENV, "").strip().lower()
-    if raw in ("1", "true", "yes"):
-        if automl_functional_config is None or s3_client_automl_functional is None:
-            pytest.skip(
-                f"{AUTOML_UPLOAD_TEST_DATASETS_ENV} is set but S3 client is not configured — "
-                "set AWS_* and RHOAI_TRAIN_DATA_BUCKET env vars"
-            )
-        else:
-            local_data_dir = Path(__file__).parent / "data"
-            bucket = automl_functional_config["train_data_bucket_name"]
-            uploaded_keys = upload_test_datasets(
-                s3_client_automl_functional,
-                bucket,
-                required_keys,
-                local_data_dir,
-            )
-
-    if automl_functional_config is not None and s3_client_automl_functional is not None:
-        verify_dataset_objects(
-            s3_client_automl_functional,
-            automl_functional_config["train_data_bucket_name"],
-            required_keys,
-            absent_keys,
+    if automl_functional_config is None:
+        # Pipeline tests skip when their environment is incomplete.
+        return
+    if s3_client_automl_functional is None:
+        pytest.skip(
+            "S3 dataset upload is not configured — "
+            "set AWS_* and RHOAI_TRAIN_DATA_BUCKET env vars"
         )
 
-    yield
+    bucket = automl_functional_config["train_data_bucket_name"]
+    uploaded_keys: list[str] = []
 
-    if uploaded_keys and bucket:
+    def cleanup():
+        if not uploaded_keys:
+            return
         from autox_tests.lib.s3_data import delete_s3_objects
 
         deleted = delete_s3_objects(s3_client_automl_functional, bucket, uploaded_keys)
@@ -281,6 +256,18 @@ def upload_datasets_if_requested(
                 deleted,
                 bucket,
             )
+
+    request.addfinalizer(cleanup)
+    upload_test_datasets(
+        s3_client_automl_functional,
+        bucket,
+        required_keys,
+        Path(__file__).parent / "data",
+        uploaded_keys=uploaded_keys,
+    )
+    verify_dataset_objects(
+        s3_client_automl_functional, bucket, required_keys, absent_keys
+    )
 
 
 @pytest.fixture(scope="session", autouse=True)

@@ -1,7 +1,7 @@
 """Parametrized functional tests for AutoGluon timeseries training pipeline on RHOAI.
 
-Test scenarios are defined in configs/timeseries_test_configs.json. Data is pre-loaded
-in S3; tests reference existing S3 keys without uploading local files. Filter by tags
+Test scenarios are defined in configs/timeseries_test_configs.json. Local datasets are uploaded
+to S3 before the session and deleted afterward. Filter by tags
 with AUTOML_FUNCTIONAL_TESTS_TAGS (e.g. smoke, timeseries, negative).
 
 Passing criteria for positive scenarios:
