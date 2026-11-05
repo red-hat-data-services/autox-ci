@@ -173,6 +173,8 @@ def upload_test_datasets(
     bucket: str,
     s3_keys: list[str],
     local_data_dir: Path,
+    *,
+    uploaded_keys: list[str] | None = None,
 ) -> list[str]:
     """Upload local files or directories to S3 for each key in s3_keys.
 
@@ -184,11 +186,13 @@ def upload_test_datasets(
     directory name shares the longest common prefix with the S3 key's parent component
     is chosen. Keys with no local match are skipped (covers intentional negative-test keys).
 
-    Returns the list of S3 keys that were actually uploaded.
+    Returns the list of S3 keys that were actually uploaded. When supplied,
+    ``uploaded_keys`` records successful uploads even if a later upload fails,
+    so the caller can clean up partial setup.
     """
     if not local_data_dir.is_dir():
         raise FileNotFoundError(
-            f"AUTORAG_UPLOAD_TEST_DATASETS is set but local data directory does not exist: {local_data_dir}"
+            f"Local dataset directory does not exist: {local_data_dir}"
         )
 
     local_files: dict[str, list[Path]] = {}
@@ -199,7 +203,8 @@ def upload_test_datasets(
         elif entry.is_dir():
             local_dirs.setdefault(entry.name, []).append(entry)
 
-    uploaded_keys: list[str] = []
+    if uploaded_keys is None:
+        uploaded_keys = []
     failed_uploads: list[str] = []
 
     for s3_key in sorted(set(s3_keys)):
