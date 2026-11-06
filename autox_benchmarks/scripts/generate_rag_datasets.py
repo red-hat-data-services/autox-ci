@@ -63,7 +63,7 @@ def main():
     parser.add_argument(
         "--dataset",
         required=True,
-        choices=["beir", "open_ragbench", "slidevqa", "html_rag", "nomiracl", "mlqa", "mkqa", "enterprise_ragbench", "spoken_squad"],
+        choices=["beir", "open_ragbench", "slidevqa", "html_rag", "nomiracl", "mlqa", "mkqa", "enterprise_ragbench", "spoken_squad", "financebench", "multihop_rag", "fanoutqa"],
         help="Dataset to generate",
     )
 
@@ -85,6 +85,26 @@ def main():
         default="txt",
         help="Output format for knowledge base documents (default: txt). "
              "Audio formats (wav, mp3, flac) apply to --dataset spoken_squad.",
+    )
+    parser.add_argument(
+        "--financebench-dir",
+        type=Path,
+        help="Local FinanceBench checkout containing data/ and pdfs/ (or set FINANCEBENCH_DIR)",
+    )
+    parser.add_argument(
+        "--multihop-rag-dir",
+        type=Path,
+        help="Local directory containing MultiHop-RAG corpus.json and MultiHopRAG.json",
+    )
+    parser.add_argument(
+        "--fanoutqa-dev-json",
+        type=Path,
+        help="Local FanOutQA dev JSON file",
+    )
+    parser.add_argument(
+        "--fanoutqa-corpus-arrow",
+        type=Path,
+        help="Local FanOutQA retrieval corpus Arrow file",
     )
 
     # BEIR-specific options
@@ -216,6 +236,18 @@ def main():
     )
 
     args = parser.parse_args()
+    if args.financebench_dir and args.dataset != "financebench":
+        parser.error("--financebench-dir requires --dataset financebench")
+    if args.dataset == "financebench" and args.output_format != "pdf":
+        parser.error("FinanceBench requires --output-format pdf")
+    if args.multihop_rag_dir and args.dataset != "multihop_rag":
+        parser.error("--multihop-rag-dir requires --dataset multihop_rag")
+    if args.fanoutqa_dev_json and args.dataset != "fanoutqa":
+        parser.error("--fanoutqa-dev-json requires --dataset fanoutqa")
+    if args.fanoutqa_corpus_arrow and args.dataset != "fanoutqa":
+        parser.error("--fanoutqa-corpus-arrow requires --dataset fanoutqa")
+    if args.dataset in {"multihop_rag", "fanoutqa"} and args.output_format not in {"txt", "md"}:
+        parser.error(f"{args.dataset} requires --output-format txt or md")
 
     # Import dataset registry
     from autorag_benchmark.datasets import get, list_datasets
@@ -285,6 +317,15 @@ def main():
             options["local_dir"] = args.erb_local_dir
         if args.erb_category:
             options["question_category"] = args.erb_category
+    elif args.dataset == "financebench" and args.financebench_dir:
+        options["local_dir"] = args.financebench_dir
+    elif args.dataset == "multihop_rag" and args.multihop_rag_dir:
+        options["local_dir"] = args.multihop_rag_dir
+    elif args.dataset == "fanoutqa":
+        if args.fanoutqa_dev_json:
+            options["source_json"] = args.fanoutqa_dev_json
+        if args.fanoutqa_corpus_arrow:
+            options["corpus_arrow"] = args.fanoutqa_corpus_arrow
 
     # Generate dataset
     print(f"\n{'='*60}")
@@ -439,6 +480,7 @@ def main():
     # Generate dataset ID
     dataset_id = args.dataset
     dataset_name = args.dataset.replace("_", " ").title()
+    optimization_metric = "answer_correctness" if args.dataset == "financebench" else "faithfulness"
 
     if args.dataset == "beir":
         dataset_id = f"beir-{args.beir_dataset}-{args.beir_split}-{args.num_samples}-{args.output_format}"
@@ -472,6 +514,15 @@ def main():
         src_label = src.replace("_", " ").title()
         category_label = f" {args.erb_category.replace('_', ' ').title()}" if args.erb_category else ""
         dataset_name = f"EnterpriseRAG-Bench {src_label}{category_label} ({samples}) {args.output_format.upper()}"
+    elif args.dataset == "financebench":
+        dataset_id = f"financebench-{args.num_samples}-pdf"
+        dataset_name = f"FinanceBench ({args.num_samples} questions) PDF"
+    elif args.dataset == "multihop_rag":
+        dataset_id = f"multihop-rag-{args.num_samples}-{args.output_format}"
+        dataset_name = f"MultiHop-RAG ({args.num_samples} questions) {args.output_format.upper()}"
+    elif args.dataset == "fanoutqa":
+        dataset_id = f"fanoutqa-{args.num_samples}-{args.output_format}"
+        dataset_name = f"FanOutQA ({args.num_samples} questions) {args.output_format.upper()}"
 
     if args.upload_to_s3:
         print(f"""
@@ -479,7 +530,7 @@ def main():
   name: "{dataset_name}"
   input_data_key: "{input_data_key}"
   test_data_key: "{test_data_key}"
-  optimization_metric: "faithfulness"
+  optimization_metric: "{optimization_metric}"
   embeddings_models:
     - "vllm-embedding/bge-m3"
 """)
@@ -492,7 +543,7 @@ def main():
 #   name: "{dataset_name}"
 #   input_data_key: "your-s3-prefix/knowledge_base"
 #   test_data_key: "your-s3-prefix/benchmark_data.json"
-#   optimization_metric: "faithfulness"
+#   optimization_metric: "{optimization_metric}"
 #   embeddings_models:
 #     - "vllm-embedding/bge-m3"
 """)
