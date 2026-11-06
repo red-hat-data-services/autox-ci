@@ -33,7 +33,9 @@ def build_pipeline_arguments(
         "test_data_secret_name": settings.test_data_secret_name,
         "test_data_key": str(dataset["test_data_key"]),
         "maas_secret_name": settings.maas_secret_name,
-        "vector_db_secret_name": settings.vector_db_secret_name,
+        # The MaaS pipeline reads the vector store secret as db_secret_name; the env/config
+        # setting keeps the more descriptive vector_db_secret_name name.
+        "db_secret_name": settings.vector_db_secret_name,
     }
 
     # The pipeline takes a list but honours only its first entry; manifests stay single-valued.
