@@ -171,7 +171,7 @@ tls = [
 [package.metadata]
 requires-dist = [
     { name = "beir", marker = "extra == 'benchmarks'", specifier = ">=2.0.0" },
-    { name = "boto3", specifier = ">=1.28" },
+    { name = "boto3", specifier = ">=1.35.2" },
     { name = "cryptography", marker = "extra == 'tls'", specifier = ">=42" },
     { name = "datasets", marker = "extra == 'benchmarks'", specifier = ">=2.0.0" },
     { name = "huggingface-hub", marker = "extra == 'benchmarks'", specifier = ">=0.20.0" },
