@@ -39,6 +39,7 @@ def require_private_s3_ca(report):
     if url.scheme != "https" or not url.hostname:
         raise ValueError("S3 CA preflight requires an HTTPS endpoint")
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
     # Use the SDK's default CA file, never the scenario's injected trust/env.
     context.load_verify_locations(cafile=get_cert_path(True))
     try:
