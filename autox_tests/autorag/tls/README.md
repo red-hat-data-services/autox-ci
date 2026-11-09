@@ -82,6 +82,8 @@ Currently `--suite tls` runs only AutoRAG and loads `.env.rag`.
 Missing external-service credentials and disabled DSPA/N01 scenarios are reported
 as skipped; `-rs` shows why. For direct pytest runs, install host dependencies
 with `uv sync --extra tls` and select `autox_tests/autorag/tls/ -m tls`.
+The TLS dependencies include `pyOpenSSL` to calculate CA subject hashes; the
+host does not need the OpenSSL CLI, including for hashed-directory scenarios.
 
 `./run_tests.sh --suite autorag` excludes TLS by default. A custom marker or direct
 pytest invocation can include TLS: use `positive and not tls` for ordinary positive

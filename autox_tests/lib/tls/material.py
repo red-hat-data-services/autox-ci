@@ -2,11 +2,11 @@
 
 from datetime import datetime, timedelta, timezone
 from ipaddress import ip_address
-import subprocess
 
 
 def generate_material() -> dict[str, str]:
     """Return PEM material; private keys are only mounted through a test Secret."""
+    from OpenSSL import crypto
     from cryptography import x509
     from cryptography.hazmat.primitives import hashes, serialization
     from cryptography.hazmat.primitives.asymmetric import rsa
@@ -104,11 +104,6 @@ def generate_material() -> dict[str, str]:
         result[f"{label}.pem"] = certificate(
             name("autox-server"), root, server_key.public_key(), root_key, **options
         )
-    result["ca.hash"] = subprocess.run(
-        ["openssl", "x509", "-subject_hash", "-noout"],
-        input=result["ca.pem"],
-        text=True,
-        capture_output=True,
-        check=True,
-    ).stdout.strip()
+    ca = crypto.load_certificate(crypto.FILETYPE_PEM, result["ca.pem"].encode())
+    result["ca.hash"] = f"{ca.subject_name_hash():08x}"
     return result

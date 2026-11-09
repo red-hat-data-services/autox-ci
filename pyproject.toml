@@ -22,7 +22,7 @@ dependencies = [
 [project.optional-dependencies]
 # Same runtime stack as `dependencies`; kept for `pip install -e ".[test_rhoai]"` compatibility.
 test_rhoai = []
-tls = ["cryptography>=42", "kfp-kubernetes>=2.16.1"]
+tls = ["cryptography>=42", "kfp-kubernetes>=2.16.1", "pyOpenSSL>=24.0.0"]
 # AutoML and AutoRAG benchmarking orchestration + dataset generation
 benchmarks = [
   "pandas>=2.0",
