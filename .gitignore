@@ -220,7 +220,6 @@ results/
 .idea/
 **/.env.ml*
 **/.env.rag*
-**/.env.tls*
 
 !**/.env.ml.example
 !**/.env.rag.example
