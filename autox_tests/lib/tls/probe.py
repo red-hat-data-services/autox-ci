@@ -521,13 +521,13 @@ def start_milvus_tls(material, certificate):
 
 def milvus_certificate_reason(exc, report):
     reasons = set(report.get("native_certificate_signals", ()))
-    reason = s3_certificate_reason(exc)
+    reason = certificate_rejection_reason(exc)
     if reason:
         reasons.add(reason)
     return next(iter(reasons)) if len(reasons) == 1 else None
 
 
-def s3_certificate_reason(exc):
+def certificate_rejection_reason(exc):
     """Extract only hostname/expiry signals; never retain raw SDK error text."""
     pending, seen, reasons = [exc], set(), set()
     while pending:
@@ -905,11 +905,11 @@ def execute(case):
         # Do not print exception text: SDK errors can include endpoint credentials.
         report["exception_type"] = type(exc).__name__
         report["error_diagnostics"] = error_diagnostics(exc)
-        if case["engine"] == "s3" and case.get("certificate") in {
+        if case.get("certificate") in {
             "wrong-host",
             "expired",
         }:
-            report["certificate_rejection_reason"] = s3_certificate_reason(exc)
+            report["certificate_rejection_reason"] = certificate_rejection_reason(exc)
         if case["engine"] == "milvus" and case.get("certificate") in {
             "wrong-host",
             "expired",
@@ -934,7 +934,7 @@ def execute(case):
             server.server_close()
             thread.join(timeout=5)
     report["passed"] = report["outcome"] == case["expected"]
-    if case["engine"] in {"s3", "milvus"} and case.get("certificate") in {
+    if case.get("certificate") in {
         "wrong-host",
         "expired",
     }:

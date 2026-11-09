@@ -184,6 +184,8 @@ verified TLS. For cluster-local PGVector run D01/D02/D04 with
 pgvector and Neo4j vector-index support.
 
 Database CA coverage uses explicit CA settings and certificate rejection.
+Every wrong-host and expired scenario requires evidence of the matching rejection
+reason. Unknown-issuer errors cannot satisfy hostname or expiry coverage.
 Generic database success with `SSL_CERT_FILE` is not a separate scenario because
 it does not establish that the selected driver consumed that CA source.
 
