@@ -8,6 +8,7 @@ from pathlib import Path
 
 import yaml
 
+from autox_tests.lib.managed_pipelines import wait_for_managed_pipeline_version
 from autox_tests.lib.tls.flows import TLS_ERROR
 
 CA_MARKER = "AUTOX_TLS_MAAS_CA_SHA256="
@@ -60,6 +61,13 @@ def maas_ca_wrapper(pem):
 
 def prepare_maas_ca_fault(client, target, directory, pem):
     """Preserve images, args, credentials and platform settings in a per-run package."""
+    if target.mode == "managed" and target.pipeline_id and not target.pipeline_version_id:
+        target = replace(
+            target,
+            pipeline_version_id=wait_for_managed_pipeline_version(
+                client, target.pipeline_id
+            ),
+        )
     documents = copy.deepcopy(_pipeline_documents(client, target))
     specs = [
         doc for doc in documents if isinstance(doc, dict) and "deploymentSpec" in doc

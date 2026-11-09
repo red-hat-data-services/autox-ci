@@ -156,6 +156,22 @@ def _resolve_latest_pipeline_version_id(client: Any, pipeline_id: str) -> str | 
     return None
 
 
+def wait_for_managed_pipeline_version(client: Any, pipeline_id: str) -> str | None:
+    """Retry version resolution within the managed pipeline wait timeout."""
+    timeout = parse_timeout_seconds_from_env(
+        RHOAI_MANAGED_PIPELINE_WAIT_TIMEOUT_ENV, 300, max_seconds=600
+    )
+    deadline = time.monotonic() + timeout
+    while True:
+        version_id = _resolve_latest_pipeline_version_id(client, pipeline_id)
+        if version_id:
+            return version_id
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return None
+        time.sleep(min(10.0, remaining))
+
+
 def _list_pipeline_display_names(client: Any, *, page_size: int = 50) -> list[str]:
     """Return display names from the first page of ``list_pipelines`` (for timeout hints)."""
     try:
