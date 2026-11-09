@@ -826,6 +826,7 @@ def execute(case):
                 else:
                     # Avoid image-level proxy configuration altering loopback probes.
                     os.environ["NO_PROXY"] = "127.0.0.1,localhost"
+                    os.environ["no_proxy"] = "127.0.0.1,localhost"
                     server, thread, counts = start_maas(
                         material,
                         case.get("certificate", "server"),
