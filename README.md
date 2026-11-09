@@ -61,13 +61,13 @@ Everything after `--` is forwarded to pytest.
 
 ```bash
 # AutoRAG smoke tests
-./run_tests.sh --env-file autox_tests/.env.rag -t smoke "autorag and positive"
+./run_tests.sh --env-file autox_tests/.env.rag -t smoke "autorag and positive and not tls"
 
 # AutoML tabular tests
 ./run_tests.sh --env-file autox_tests/.env.ml "tabular"
 
 # Dry-run to inspect the command
-./run_tests.sh --dry-run "autorag and negative"
+./run_tests.sh --dry-run "autorag and negative and not tls"
 
 # Pass extra pytest flags
 ./run_tests.sh --env-file autox_tests/.env.rag "autorag" -- -v -x

@@ -13,7 +13,7 @@ autorag/
     configs.py                AutoRAGTestConfig dataclass, config loading and tag filtering
     test_configs.json          Scenario definitions (positive / negative)
   data/                       Static benchmark datasets used by pipeline runs
-  tls/                        Certificate tests and catalogs; shared helpers live in ../lib/tls/
+  tls/                        TLS certificate integration tests
 ```
 
 ## Prerequisites
@@ -35,20 +35,20 @@ cp autox_tests/.env.rag.example autox_tests/.env.rag
 ./run_tests.sh --suite autorag --env-file autox_tests/.env.rag
 
 # 3. Run only positive scenarios
-./run_tests.sh --env-file autox_tests/.env.rag "autorag and positive"
+./run_tests.sh --env-file autox_tests/.env.rag "autorag and positive and not tls"
 
 # 4. Run only scenarios tagged "smoke"
-./run_tests.sh --env-file autox_tests/.env.rag -t smoke "autorag and positive"
+./run_tests.sh --env-file autox_tests/.env.rag -t smoke "autorag and positive and not tls"
 
 # 5. Dry-run to inspect the generated command
-./run_tests.sh --env-file autox_tests/.env.rag --dry-run "autorag"
+./run_tests.sh --env-file autox_tests/.env.rag --dry-run "autorag and not tls"
 ```
 
 Tests are automatically skipped when required environment variables are missing.
 
-Certificate tests use the same `.env.rag`; see [TLS tests](tls/README.md).
-Run them with `./run_tests.sh --suite autorag tls` or `./run_tests.sh --suite tls`.
-The runner excludes TLS by default when no marker expression is supplied.
+For certificate scenarios, see [TLS integration tests](tls/README.md).
+The runner excludes TLS when no marker expression is supplied; add `and not tls`
+to custom markers to keep ordinary functional runs separate.
 
 Datasets required by the selected optimization and indexing scenarios are always uploaded from `data/` before the tests and deleted at session teardown, including after setup or test failures. Document inputs use `INPUT_DATA_BUCKET_NAME`; optimization benchmarks use `TEST_DATA_BUCKET_NAME`. Shared keys are uploaded once per bucket. `AUTORAG_FUNCTIONAL_TEST_KEEP_ARTIFACTS` only preserves generated pipeline artifacts.
 
@@ -80,7 +80,7 @@ Pass tags via `--tags` / `-t` on the CLI or set `AUTORAG_FUNCTIONAL_TESTS_TAGS` 
 `TC-P-8` covers OCR text extraction ([pipelines-components#243](https://github.com/opendatahub-io/pipelines-components/pull/243)) using image-only SlideVQA input. Without OCR the pipeline extracts no text; the scenario verifies that OCR produces extracted text for every uploaded document (RHOAIENG-91789).
 
 ```bash
-./run_tests.sh --env-file autox_tests/.env.rag -t ocr "autorag and positive"
+./run_tests.sh --env-file autox_tests/.env.rag -t ocr "autorag and positive and not tls"
 ```
 
 ## Pass / fail criteria
