@@ -193,6 +193,8 @@ def tls_flow(test_config, tls_environment_config, request):
         )
         uploader.prepare(flow, plan)
         return flow
+    except MissingTLSConfiguration as exc:
+        pytest.skip(str(exc))
     except ValueError as exc:
         pytest.fail(str(exc))
 
