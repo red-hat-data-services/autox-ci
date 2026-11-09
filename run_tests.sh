@@ -362,7 +362,18 @@ else
     PYTEST_TLS_PATH=""
 fi
 
-PYTEST_CMD=(uv run --project "$SCRIPT_DIR" --extra tls)
+PYTEST_CMD=(uv run --project "$SCRIPT_DIR")
+
+# Custom markers can select TLS tests, including overrides forwarded to pytest.
+TLS_EXTRA_NEEDED=false
+[[ -n "$MARKER_EXPR" ]] && TLS_EXTRA_NEEDED=true
+for PYTEST_ARG in ${PYTEST_EXTRA_ARGS[@]+"${PYTEST_EXTRA_ARGS[@]}"}; do
+    [[ "$PYTEST_ARG" == -- ]] && break
+    case "$PYTEST_ARG" in
+        -m*) TLS_EXTRA_NEEDED=true ;;
+    esac
+done
+[[ "$TLS_EXTRA_NEEDED" == true ]] && PYTEST_CMD+=(--extra tls)
 
 PYTEST_CMD+=(pytest --rootdir "$SCRIPT_DIR")
 
