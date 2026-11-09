@@ -1,0 +1,51 @@
+[
+  {
+    "id": "N01-maas",
+    "family": "autorag",
+    "arguments": {
+      "input_data_secret_name": {
+        "secret": "s3_input"
+      },
+      "input_data_bucket_name": {
+        "env": "INPUT_DATA_BUCKET_NAME"
+      },
+      "maas_secret_name": {
+        "secret": "maas"
+      },
+      "db_secret_name": {
+        "secret": "vector_db"
+      },
+      "input_data_keys": {
+        "data": "input_data_keys"
+      },
+      "test_data_secret_name": {
+        "secret": "s3_test"
+      },
+      "test_data_bucket_name": {
+        "env": "TEST_DATA_BUCKET_NAME"
+      },
+      "test_data_key": {
+        "data": "test_data_key"
+      },
+      "embedding_models": {
+        "env": "AUTORAG_EMBEDDING_MODELS",
+        "format": "list"
+      },
+      "generation_models": {
+        "env": "AUTORAG_GENERATION_MODELS",
+        "format": "list"
+      },
+      "optimization_max_rag_patterns": 4,
+      "preset": "speed"
+    },
+    "expected": "tls_error",
+    "expected_failed_task": "search-space-preparation",
+    "tags": [
+      "pipeline",
+      "autorag",
+      "negative"
+    ],
+    "dataset": "rag-light",
+    "fault": "maas_wrong_ca"
+  }
+]

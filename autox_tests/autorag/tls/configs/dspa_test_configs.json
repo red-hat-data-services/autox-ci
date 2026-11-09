@@ -1,0 +1,26 @@
+[
+  {
+    "id": "platform",
+    "engine": "agent",
+    "trust": "dspa",
+    "dspa": true,
+    "dspa_mode": "platform",
+    "tags": [
+      "dspa",
+      "positive",
+      "smoke"
+    ]
+  },
+  {
+    "id": "plain-dir",
+    "engine": "agent",
+    "trust": "dspa",
+    "dspa": true,
+    "dspa_mode": "plain-dir",
+    "tags": [
+      "dspa",
+      "positive",
+      "smoke"
+    ]
+  }
+]

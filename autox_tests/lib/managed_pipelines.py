@@ -22,6 +22,7 @@ except ImportError:
     _CONNECTION_ERRORS = (ConnectionError, _RemoteDisconnected)
 
 from autox_tests.lib.env import load_tests_env
+from autox_tests.lib.kfp_retry import kfp_api_deadline
 from autox_tests.lib.settings import parse_timeout_seconds_from_env
 from autox_tests.lib.pipeline_yaml_sources import (
     PIPELINE_YAML_AUTORAG_ENV,
@@ -138,14 +139,21 @@ class PipelineRunTarget:
     kfp_pipeline_name: str | None = None
 
 
-def _resolve_latest_pipeline_version_id(client: Any, pipeline_id: str) -> str | None:
+def _resolve_latest_pipeline_version_id(
+    client: Any, pipeline_id: str, *, deadline: float | None = None
+) -> str | None:
     """Return the newest pipeline version id, or ``None`` if none are listed or on error."""
     try:
-        versions = client.list_pipeline_versions(
-            pipeline_id=pipeline_id,
-            page_size=10,
-            sort_by="created_at desc",
-        )
+        if deadline is None:
+            deadline = time.monotonic() + parse_timeout_seconds_from_env(
+                RHOAI_MANAGED_PIPELINE_WAIT_TIMEOUT_ENV, 300, max_seconds=600
+            )
+        with kfp_api_deadline(client, deadline):
+            versions = client.list_pipeline_versions(
+                pipeline_id=pipeline_id,
+                page_size=10,
+                sort_by="created_at desc",
+            )
         version_list = getattr(versions, "pipeline_versions", None) or []
         if version_list:
             vid = getattr(version_list[0], "pipeline_version_id", None)
@@ -153,6 +161,23 @@ def _resolve_latest_pipeline_version_id(client: Any, pipeline_id: str) -> str | 
                 return vid
     except Exception as exc:
         logger.debug("list_pipeline_versions failed for %s: %s", pipeline_id, exc)
+    return None
+
+
+def wait_for_managed_pipeline_version(client: Any, pipeline_id: str) -> str | None:
+    """Retry version resolution within the managed pipeline wait timeout."""
+    timeout = parse_timeout_seconds_from_env(
+        RHOAI_MANAGED_PIPELINE_WAIT_TIMEOUT_ENV, 300, max_seconds=600
+    )
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        version_id = _resolve_latest_pipeline_version_id(client, pipeline_id, deadline=deadline)
+        if version_id:
+            return version_id
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return None
+        time.sleep(min(10.0, remaining))
     return None
 
 
@@ -172,6 +197,8 @@ def _list_pipeline_display_names(client: Any, *, page_size: int = 50) -> list[st
 def _find_pipeline_by_display_name(
     client: Any,
     display_name: str,
+    *,
+    deadline: float | None = None,
 ) -> tuple[tuple[str, str | None] | None, list[str]]:
     """Return ``(result_or_None, list_of_known_names)``.
 
@@ -192,7 +219,7 @@ def _find_pipeline_by_display_name(
             return None, _list_pipeline_display_names(client)
         return (
             pipeline_id,
-            _resolve_latest_pipeline_version_id(client, pipeline_id),
+            _resolve_latest_pipeline_version_id(client, pipeline_id, deadline=deadline),
         ), []
 
     # Fallback for older clients: list and match client-side (no server filter).
@@ -213,7 +240,7 @@ def _find_pipeline_by_display_name(
                     return (pipeline_id, version_id), known_names
                 return (
                     pipeline_id,
-                    _resolve_latest_pipeline_version_id(client, pipeline_id),
+                    _resolve_latest_pipeline_version_id(client, pipeline_id, deadline=deadline),
                 ), known_names
         page_token = getattr(resp, "next_page_token", None) or ""
         if not page_token:
@@ -250,7 +277,13 @@ def wait_for_managed_pipeline(
     consecutive_empty = 0
 
     while time.monotonic() < deadline:
-        found, last_names = _find_pipeline_by_display_name(client, kfp_pipeline_name)
+        try:
+            with kfp_api_deadline(client, deadline):
+                found, last_names = _find_pipeline_by_display_name(
+                    client, kfp_pipeline_name, deadline=deadline
+                )
+        except TimeoutError:
+            break
         if found:
             pipeline_id, version_id = found
             logger.info(
@@ -276,7 +309,7 @@ def wait_for_managed_pipeline(
         else:
             consecutive_empty = 0
 
-        time.sleep(poll_interval_seconds)
+        time.sleep(min(poll_interval_seconds, max(0.0, deadline - time.monotonic())))
 
     hint = f" Known pipelines: {last_names!r}" if last_names else ""
     raise TimeoutError(

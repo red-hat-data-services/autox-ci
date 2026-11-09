@@ -1,0 +1,410 @@
+[
+  {
+    "id": "S01-s3-default",
+    "engine": "s3",
+    "trust": "default_store",
+    "expected": "success",
+    "redirect": false,
+    "certificate": "server",
+    "tags": [
+      "service",
+      "positive",
+      "s3",
+      "storage"
+    ]
+  },
+  {
+    "id": "S02-s3-aws-env",
+    "engine": "s3",
+    "trust": "aws_env",
+    "expected": "success",
+    "redirect": false,
+    "certificate": "server",
+    "tags": [
+      "service",
+      "positive",
+      "s3",
+      "storage",
+      "smoke"
+    ]
+  },
+  {
+    "id": "S03-s3-explicit",
+    "engine": "s3",
+    "trust": "explicit",
+    "expected": "success",
+    "redirect": false,
+    "certificate": "server",
+    "tags": [
+      "service",
+      "positive",
+      "s3",
+      "storage",
+      "smoke"
+    ]
+  },
+  {
+    "id": "S03-s3-explicit-over-env",
+    "engine": "s3",
+    "trust": "explicit_over_env",
+    "expected": "success",
+    "redirect": false,
+    "certificate": "server",
+    "tags": [
+      "service",
+      "positive",
+      "s3",
+      "storage"
+    ]
+  },
+  {
+    "id": "S04-s3-plain-dir",
+    "engine": "s3",
+    "trust": "mounted",
+    "expected": "tls_error",
+    "redirect": false,
+    "certificate": "server",
+    "tags": [
+      "service",
+      "negative",
+      "s3",
+      "storage"
+    ]
+  },
+  {
+    "id": "S05-s3-wrong",
+    "engine": "s3",
+    "trust": "wrong",
+    "expected": "tls_error",
+    "redirect": false,
+    "certificate": "server",
+    "tags": [
+      "service",
+      "negative",
+      "s3",
+      "storage"
+    ]
+  },
+  {
+    "id": "S05-s3-missing",
+    "engine": "s3",
+    "trust": "missing",
+    "expected": "tls_error",
+    "redirect": false,
+    "certificate": "server",
+    "tags": [
+      "service",
+      "negative",
+      "s3",
+      "storage"
+    ]
+  },
+  {
+    "id": "S05-s3-malformed",
+    "engine": "s3",
+    "trust": "invalid",
+    "expected": "ca_error",
+    "redirect": false,
+    "certificate": "server",
+    "tags": [
+      "service",
+      "negative",
+      "s3",
+      "storage"
+    ]
+  },
+  {
+    "id": "S05-s3-wrong-host",
+    "engine": "s3",
+    "trust": "aws_env",
+    "expected": "tls_error",
+    "redirect": false,
+    "certificate": "wrong-host",
+    "tags": [
+      "service",
+      "negative",
+      "s3",
+      "storage",
+      "wrong-host"
+    ]
+  },
+  {
+    "id": "S05-s3-expired",
+    "engine": "s3",
+    "trust": "aws_env",
+    "expected": "tls_error",
+    "redirect": false,
+    "certificate": "expired",
+    "tags": [
+      "service",
+      "negative",
+      "s3",
+      "storage",
+      "expired"
+    ]
+  },
+  {
+    "id": "D01-milvus-explicit",
+    "engine": "milvus",
+    "trust": "explicit",
+    "expected": "success",
+    "redirect": false,
+    "certificate": "server",
+    "tags": [
+      "service",
+      "positive",
+      "milvus",
+      "database",
+      "smoke"
+    ]
+  },
+  {
+    "id": "D02-milvus-wrong",
+    "engine": "milvus",
+    "trust": "wrong",
+    "expected": "tls_error",
+    "redirect": false,
+    "certificate": "server",
+    "tags": [
+      "service",
+      "negative",
+      "milvus",
+      "database"
+    ]
+  },
+  {
+    "id": "D03-milvus-missing",
+    "engine": "milvus",
+    "trust": "missing",
+    "expected": "tls_error",
+    "redirect": false,
+    "certificate": "server",
+    "tags": [
+      "service",
+      "negative",
+      "milvus",
+      "database"
+    ]
+  },
+  {
+    "id": "D04-milvus-malformed",
+    "engine": "milvus",
+    "trust": "invalid",
+    "expected": "ca_error",
+    "redirect": false,
+    "certificate": "server",
+    "tags": [
+      "service",
+      "negative",
+      "milvus",
+      "database"
+    ]
+  },
+  {
+    "id": "D06-milvus-wrong-host",
+    "engine": "milvus",
+    "trust": "explicit",
+    "expected": "tls_error",
+    "redirect": false,
+    "certificate": "wrong-host",
+    "tags": [
+      "service",
+      "negative",
+      "milvus",
+      "database",
+      "wrong-host"
+    ]
+  },
+  {
+    "id": "D06-milvus-expired",
+    "engine": "milvus",
+    "trust": "explicit",
+    "expected": "tls_error",
+    "redirect": false,
+    "certificate": "expired",
+    "tags": [
+      "service",
+      "negative",
+      "milvus",
+      "database",
+      "expired"
+    ]
+  },
+  {
+    "id": "D01-pgvector-explicit",
+    "engine": "pgvector",
+    "trust": "explicit",
+    "expected": "success",
+    "redirect": false,
+    "certificate": "server",
+    "tags": [
+      "service",
+      "positive",
+      "pgvector",
+      "database",
+      "smoke",
+      "cluster-local"
+    ]
+  },
+  {
+    "id": "D02-pgvector-wrong",
+    "engine": "pgvector",
+    "trust": "wrong",
+    "expected": "tls_error",
+    "redirect": false,
+    "certificate": "server",
+    "tags": [
+      "service",
+      "negative",
+      "pgvector",
+      "database",
+      "cluster-local"
+    ]
+  },
+  {
+    "id": "D03-pgvector-missing",
+    "engine": "pgvector",
+    "trust": "missing",
+    "expected": "tls_error",
+    "redirect": false,
+    "certificate": "server",
+    "tags": [
+      "service",
+      "negative",
+      "pgvector",
+      "database"
+    ]
+  },
+  {
+    "id": "D04-pgvector-malformed",
+    "engine": "pgvector",
+    "trust": "invalid",
+    "expected": "ca_error",
+    "redirect": false,
+    "certificate": "server",
+    "tags": [
+      "service",
+      "negative",
+      "pgvector",
+      "database",
+      "cluster-local"
+    ]
+  },
+  {
+    "id": "D06-pgvector-wrong-host",
+    "engine": "pgvector",
+    "trust": "explicit",
+    "expected": "tls_error",
+    "redirect": false,
+    "certificate": "wrong-host",
+    "tags": [
+      "service",
+      "negative",
+      "pgvector",
+      "database",
+      "wrong-host"
+    ]
+  },
+  {
+    "id": "D06-pgvector-expired",
+    "engine": "pgvector",
+    "trust": "explicit",
+    "expected": "tls_error",
+    "redirect": false,
+    "certificate": "expired",
+    "tags": [
+      "service",
+      "negative",
+      "pgvector",
+      "database",
+      "expired"
+    ]
+  },
+  {
+    "id": "D01-neo4j-explicit",
+    "engine": "neo4j",
+    "trust": "explicit",
+    "expected": "success",
+    "redirect": false,
+    "certificate": "server",
+    "tags": [
+      "service",
+      "positive",
+      "neo4j",
+      "database",
+      "smoke"
+    ]
+  },
+  {
+    "id": "D02-neo4j-wrong",
+    "engine": "neo4j",
+    "trust": "wrong",
+    "expected": "tls_error",
+    "redirect": false,
+    "certificate": "server",
+    "tags": [
+      "service",
+      "negative",
+      "neo4j",
+      "database"
+    ]
+  },
+  {
+    "id": "D03-neo4j-missing",
+    "engine": "neo4j",
+    "trust": "missing",
+    "expected": "tls_error",
+    "redirect": false,
+    "certificate": "server",
+    "tags": [
+      "service",
+      "negative",
+      "neo4j",
+      "database"
+    ]
+  },
+  {
+    "id": "D04-neo4j-malformed",
+    "engine": "neo4j",
+    "trust": "invalid",
+    "expected": "ca_error",
+    "redirect": false,
+    "certificate": "server",
+    "tags": [
+      "service",
+      "negative",
+      "neo4j",
+      "database"
+    ]
+  },
+  {
+    "id": "D06-neo4j-wrong-host",
+    "engine": "neo4j",
+    "trust": "explicit",
+    "expected": "tls_error",
+    "redirect": false,
+    "certificate": "wrong-host",
+    "tags": [
+      "service",
+      "negative",
+      "neo4j",
+      "database",
+      "wrong-host"
+    ]
+  },
+  {
+    "id": "D06-neo4j-expired",
+    "engine": "neo4j",
+    "trust": "explicit",
+    "expected": "tls_error",
+    "redirect": false,
+    "certificate": "expired",
+    "tags": [
+      "service",
+      "negative",
+      "neo4j",
+      "database",
+      "expired"
+    ]
+  }
+]

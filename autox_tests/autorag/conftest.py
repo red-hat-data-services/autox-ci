@@ -1,6 +1,5 @@
 """Pytest fixtures for AutoRAG functional tests (Documents RAG Optimization)."""
 
-import json
 import logging
 import os
 from pathlib import Path
@@ -31,20 +30,6 @@ logger = logging.getLogger(__name__)
 def pytest_configure(config: pytest.Config) -> None:
     """Load env vars from ``.env.rag`` before collection."""
     load_tests_env("autorag")
-
-
-def _parse_json_list(env_name):
-    """Parse an env var as a JSON array; return None if unset, raise on invalid JSON."""
-    raw = os.environ.get(env_name)
-    if not raw:
-        return None
-    try:
-        value = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"{env_name} is not valid JSON: {exc}") from exc
-    if not isinstance(value, list):
-        raise ValueError(f"{env_name} must be a JSON array, got {type(value).__name__}")
-    return value
 
 
 def get_functional_config():
@@ -300,12 +285,18 @@ def s3_cleanup_tracker():
 
 
 @pytest.fixture(scope="session", autouse=True)
-def s3_teardown(s3_client_functional, s3_cleanup_tracker):
+def s3_teardown(request, s3_cleanup_tracker):
     """Session-scoped teardown: delete pipeline artifacts from S3.
 
     Set ``AUTORAG_FUNCTIONAL_TEST_KEEP_ARTIFACTS=true`` to skip deletion and
     inspect artifacts manually after the session.
     """
+    from .configs.configs import AutoRAGTestConfig
+
+    s3_client_functional = (
+        request.getfixturevalue("s3_client_functional")
+        if _has_selected_config(request, AutoRAGTestConfig) else None
+    )
     yield
     if s3_client_functional is None:
         return
@@ -335,13 +326,19 @@ def s3_teardown(s3_client_functional, s3_cleanup_tracker):
 
 
 @pytest.fixture(scope="session", autouse=True)
-def s3_teardown_indexing(s3_client_indexing_functional, s3_cleanup_tracker):
+def s3_teardown_indexing(request, s3_cleanup_tracker):
     """Session-scoped teardown: delete indexing pipeline artifacts from S3.
 
     Mirrors s3_teardown but uses the indexing-pipeline S3 client so cleanup
     works even when the optimization pipeline is not configured.
     Set ``AUTORAG_FUNCTIONAL_TEST_KEEP_ARTIFACTS=true`` to skip deletion.
     """
+    from .configs.configs import IndexingTestConfig
+
+    s3_client_indexing_functional = (
+        request.getfixturevalue("s3_client_indexing_functional")
+        if _has_selected_config(request, IndexingTestConfig) else None
+    )
     yield
     if s3_client_indexing_functional is None:
         return
@@ -366,6 +363,15 @@ def s3_teardown_indexing(s3_client_indexing_functional, s3_cleanup_tracker):
                     bucket,
                     prefix,
                 )
+
+
+def _has_selected_config(request, config_type):
+    """Keep functional clients out of TLS-only and local configuration runs."""
+    return any(
+        isinstance(value, config_type)
+        for item in request.session.items
+        for value in getattr(getattr(item, "callspec", None), "params", {}).values()
+    )
 
 
 @pytest.fixture(scope="session", autouse=True)

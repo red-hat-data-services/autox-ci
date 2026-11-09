@@ -9,6 +9,8 @@ Two independent suites live here, each with its own env file, config JSON, and p
 | **AutoML** | `automl/` | `.env.ml` |
 | **AutoRAG** | `autorag/` | `.env.rag` |
 
+AutoRAG also includes [TLS certificate integration tests](autorag/tls/README.md), using `.env.rag`.
+
 ---
 
 ## Running tests (cluster setup)
@@ -473,7 +475,7 @@ Managed AutoRAG pipelines are used by default. `AUTORAG_PIPELINE_PATH` is requir
 pytest autox_tests/autorag/ -v
 
 # Positive scenarios only
-pytest autox_tests/autorag/ -m positive -v
+pytest autox_tests/autorag/ -m 'positive and not tls' -v
 
 # Optimization tests only
 pytest autox_tests/autorag/test_pipeline_functional.py -v

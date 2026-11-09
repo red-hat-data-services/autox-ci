@@ -90,8 +90,9 @@ s3 = boto3.client(
     "s3",
     endpoint_url=os.environ.get("AWS_S3_ENDPOINT"),
     region_name=os.environ.get("AWS_DEFAULT_REGION"),
-    verify=os.environ.get("S3_SSL_VERIFY", "true").strip().lower()
-    not in ("0", "false", "no"),
+    verify=(os.environ.get("AWS_CA_BUNDLE", "").strip() or True)
+    if os.environ.get("S3_SSL_VERIFY", "true").strip().lower() not in ("0", "false", "no")
+    else False,
 )
 notebook_pip_index_url = os.environ.get("NOTEBOOK_PIP_INDEX_URL", "").strip()
 if notebook_pip_index_url and not os.environ.get("PIP_INDEX_URL", "").strip():

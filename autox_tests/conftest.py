@@ -271,6 +271,9 @@ def make_kfp_client_for_session(
     }
     if not get_rhoai_integration_https_verify():
         client_kw["verify_ssl"] = False
+    ca_bundle = (os.environ.get("KFP_CA_BUNDLE") or "").strip()
+    if ca_bundle:
+        client_kw["ssl_ca_cert"] = ca_bundle
     client = kfp.Client(**client_kw)
 
     install_kfp_api_retries(client)

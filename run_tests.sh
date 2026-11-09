@@ -15,13 +15,14 @@ Arguments:
                            Omit to run all tests in the selected suite.
 
 Options:
-  -s, --suite SUITE        Test suite to run: automl | autorag | all.
-                           Sets the tags env var and test path.
+  -s, --suite SUITE        Test suite to run: automl | autorag | tls | all.
+                           tls selects certificate tests in each product suite,
+                           using its own .env file in a separate process.
   -t, --tags TAGS          Comma-separated tags for scenario filtering (matched
                            against the 'tags' field in test config JSON files).
                            Exported as AUTOML_FUNCTIONAL_TESTS_TAGS for automl,
-                           AUTORAG_FUNCTIONAL_TESTS_TAGS for autorag (both when
-                           --suite all).
+                           AUTORAG_FUNCTIONAL_TESTS_TAGS for autorag.
+                           tls/all use the corresponding product's variable.
   --env-file FILE          Source a .env file before running. May be repeated to
                            source multiple files in order. Shell-exported vars
                            take precedence (dotenv override=False semantics).
@@ -44,6 +45,7 @@ Options:
   -h, --help               Show this message and exit.
 
 Everything after "--" is forwarded to pytest verbatim.
+For --suite tls, pass marker expressions before "--"; extra pytest -m is rejected.
 
 Examples:
   # AutoML — all tests
@@ -172,9 +174,88 @@ done
 
 # ── Validate suite ───────────────────────────────────────────────────────────
 
-if [[ -n "$SUITE" && "$SUITE" != "automl" && "$SUITE" != "autorag" && "$SUITE" != "all" ]]; then
-    echo "error: --suite must be 'automl', 'autorag', or 'all', got '$SUITE'" >&2
+if [[ -n "$SUITE" && "$SUITE" != "automl" && "$SUITE" != "autorag" && "$SUITE" != "tls" && "$SUITE" != "all" ]]; then
+    echo "error: --suite must be 'automl', 'autorag', 'tls', or 'all', got '$SUITE'" >&2
     exit 1
+fi
+
+# Run the TLS subsets separately so .env.ml and .env.rag cannot overwrite
+# each other's shared setting names. A product participates when it has tls/.
+if [[ "$SUITE" == "tls" ]]; then
+    for PYTEST_ARG in ${PYTEST_EXTRA_ARGS[@]+"${PYTEST_EXTRA_ARGS[@]}"}; do
+        [[ "$PYTEST_ARG" == -- ]] && break
+        case "$PYTEST_ARG" in
+            -m*)
+                echo 'error: --suite tls does not accept pytest -m after --; pass the marker expression before -- to combine it with tls' >&2
+                exit 1
+                ;;
+        esac
+    done
+    TLS_ARGS=()
+    for ENV_FILE in ${ENV_FILES[@]+"${ENV_FILES[@]}"}; do
+        TLS_ARGS+=(--env-file "$ENV_FILE")
+    done
+    [[ "$DRY_RUN" == true ]] && TLS_ARGS+=(--dry-run)
+    [[ "$LEGACY_PIPELINE_YAML" == true ]] && TLS_ARGS+=(--legacy-pipeline-yaml)
+    for _pair in \
+        "TESTS_TAGS:--tags" \
+        "TABULAR_PIPELINE:--tabular-pipeline" \
+        "TIMESERIES_PIPELINE:--timeseries-pipeline" \
+        "RAG_CONFIGS:--rag-configs" \
+        "TABULAR_CONFIGS:--tabular-configs" \
+        "TIMESERIES_CONFIGS:--timeseries-configs"; do
+        IFS=: read -r _var _flag <<< "$_pair"
+        [[ -n "${!_var}" ]] && TLS_ARGS+=("$_flag" "${!_var}")
+    done
+    TLS_MARKER=tls
+    [[ -n "$MARKER_EXPR" ]] && TLS_MARKER="tls and ($MARKER_EXPR)"
+    TLS_PRODUCTS=()
+    for PRODUCT_SUITE in automl autorag; do
+        [[ -d "$SCRIPT_DIR/autox_tests/$PRODUCT_SUITE/tls" ]] && TLS_PRODUCTS+=("$PRODUCT_SUITE")
+    done
+    if [[ ${#TLS_PRODUCTS[@]} -eq 0 ]]; then
+        echo "error: no product TLS directories found" >&2
+        exit 5
+    fi
+    tls_report_path() {
+        local report_path="$1" product="$2"
+        if [[ "$report_path" == */* ]]; then
+            printf '%s/%s-%s' "${report_path%/*}" "$product" "${report_path##*/}"
+        else
+            printf '%s-%s' "$product" "$report_path"
+        fi
+    }
+    TLS_STATUS=5
+    for PRODUCT_SUITE in "${TLS_PRODUCTS[@]}"; do
+        PRODUCT_PYTEST_ARGS=()
+        JUNIT_PATH_NEXT=false
+        for PYTEST_ARG in ${PYTEST_EXTRA_ARGS[@]+"${PYTEST_EXTRA_ARGS[@]}"}; do
+            if [[ ${#TLS_PRODUCTS[@]} -gt 1 && "$JUNIT_PATH_NEXT" == true ]]; then
+                PYTEST_ARG="$(tls_report_path "$PYTEST_ARG" "$PRODUCT_SUITE")"
+                JUNIT_PATH_NEXT=false
+            elif [[ ${#TLS_PRODUCTS[@]} -gt 1 ]]; then
+                case "$PYTEST_ARG" in
+                    --junitxml|--junit-xml) JUNIT_PATH_NEXT=true ;;
+                    --junitxml=*|--junit-xml=*)
+                        PYTEST_ARG="${PYTEST_ARG%%=*}=$(tls_report_path "${PYTEST_ARG#*=}" "$PRODUCT_SUITE")"
+                        ;;
+                esac
+            fi
+            PRODUCT_PYTEST_ARGS+=("$PYTEST_ARG")
+        done
+        echo "TLS: running $PRODUCT_SUITE with its product environment"
+        if bash "$SCRIPT_DIR/run_tests.sh" --suite "$PRODUCT_SUITE" \
+            ${TLS_ARGS[@]+"${TLS_ARGS[@]}"} "$TLS_MARKER" -- \
+            ${PRODUCT_PYTEST_ARGS[@]+"${PRODUCT_PYTEST_ARGS[@]}"}; then
+            [[ "$TLS_STATUS" == 5 ]] && TLS_STATUS=0
+        else
+            PRODUCT_STATUS=$?
+            if [[ "$PRODUCT_STATUS" != 5 ]]; then
+                TLS_STATUS=$PRODUCT_STATUS
+            fi
+        fi
+    done
+    exit "$TLS_STATUS"
 fi
 
 # ── Source .env files ────────────────────────────────────────────────────────
@@ -195,7 +276,10 @@ fi
 
 # ── DSPA auto-setup (default when RHOAI_KFP_URL is unset in .env) ───────────
 
-if [[ -z "${RHOAI_KFP_URL:-}" && -z "${KFP_HOST:-}" ]]; then
+if [[ "$MARKER_EXPR" == tls || "$MARKER_EXPR" == tls\ and\ * ]]; then
+    export RHOAI_CREATE_DSPA=false
+    echo "cluster: TLS uses existing namespace/DSPA; automatic setup disabled"
+elif [[ -z "${RHOAI_KFP_URL:-}" && -z "${KFP_HOST:-}" ]]; then
     case "${RHOAI_CREATE_DSPA:-}" in
         false|0|no|off) ;;  # user explicitly disabled
         *) export RHOAI_CREATE_DSPA=true
@@ -212,8 +296,13 @@ elif [[ -n "${AUTOML_TABULAR_PIPELINE_PATH:-}" || -n "${AUTOML_TIMESERIES_PIPELI
     export RHOAI_USE_MANAGED_PIPELINES=false
     echo "pipeline: legacy package upload (pipeline path set in environment)"
 elif [[ -z "${RHOAI_USE_MANAGED_PIPELINES:-}" ]]; then
-    export RHOAI_USE_MANAGED_PIPELINES=true
-    echo "pipeline: DSPA managed pipelines (default; no pipeline.yaml required)"
+    if [[ "$MARKER_EXPR" == tls || "$MARKER_EXPR" == tls\ and\ * ]]; then
+        # Let pytest load the product's env before resolving the pipeline source.
+        echo "pipeline: TLS resolves managed/YAML settings from the product .env"
+    else
+        export RHOAI_USE_MANAGED_PIPELINES=true
+        echo "pipeline: DSPA managed pipelines (default; no pipeline.yaml required)"
+    fi
 fi
 if [[ -n "$TABULAR_PIPELINE" ]]; then
     export AUTOML_TABULAR_PIPELINE_PATH="$TABULAR_PIPELINE"
@@ -265,22 +354,47 @@ case "$SUITE" in
     *) ;;
 esac
 
+# A TLS-only invocation stays within that product's TLS directory even if an
+# additional pytest -m option is supplied after --.
+if [[ "$MARKER_EXPR" == tls || "$MARKER_EXPR" == tls\ and\ * ]]; then
+    PYTEST_TLS_PATH="autox_tests/$SUITE/tls/"
+else
+    PYTEST_TLS_PATH=""
+fi
+
 PYTEST_CMD=(uv run --project "$SCRIPT_DIR")
+
+# Custom markers can select TLS tests, including overrides forwarded to pytest.
+TLS_EXTRA_NEEDED=false
+[[ -n "$MARKER_EXPR" ]] && TLS_EXTRA_NEEDED=true
+for PYTEST_ARG in ${PYTEST_EXTRA_ARGS[@]+"${PYTEST_EXTRA_ARGS[@]}"}; do
+    [[ "$PYTEST_ARG" == -- ]] && break
+    case "$PYTEST_ARG" in
+        -m*) TLS_EXTRA_NEEDED=true ;;
+    esac
+done
+[[ "$TLS_EXTRA_NEEDED" == true ]] && PYTEST_CMD+=(--extra tls)
 
 PYTEST_CMD+=(pytest --rootdir "$SCRIPT_DIR")
 
 if [[ -n "$MARKER_EXPR" ]]; then
     PYTEST_CMD+=(-m "$MARKER_EXPR")
 elif [[ "$SUITE" == "automl" ]]; then
-    PYTEST_CMD+=(-m "not config")
+    PYTEST_CMD+=(-m "not config and not tls")
+else
+    PYTEST_CMD+=(-m "not tls")
 fi
 
 # Append suite test path(s) before user-supplied pytest args
-case "$SUITE" in
-    automl)  PYTEST_CMD+=(autox_tests/automl/) ;;
-    autorag) PYTEST_CMD+=(autox_tests/autorag/) ;;
-    all)     PYTEST_CMD+=(autox_tests/automl/ autox_tests/autorag/) ;;
-esac
+if [[ -n "$PYTEST_TLS_PATH" && ( "$SUITE" == automl || "$SUITE" == autorag ) ]]; then
+    PYTEST_CMD+=("$PYTEST_TLS_PATH")
+else
+    case "$SUITE" in
+        automl)  PYTEST_CMD+=(autox_tests/automl/) ;;
+        autorag) PYTEST_CMD+=(autox_tests/autorag/) ;;
+        all)     PYTEST_CMD+=(autox_tests/automl/ autox_tests/autorag/) ;;
+    esac
+fi
 
 if [[ ${#PYTEST_EXTRA_ARGS[@]} -gt 0 ]]; then
     PYTEST_CMD+=("${PYTEST_EXTRA_ARGS[@]}")

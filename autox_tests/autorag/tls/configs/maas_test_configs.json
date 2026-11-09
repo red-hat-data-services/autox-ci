@@ -1,0 +1,287 @@
+[
+  {
+    "id": "M01-default-store",
+    "engine": "maas",
+    "trust": "default_store",
+    "expected": "success",
+    "redirect": false,
+    "certificate": "server",
+    "tags": [
+      "maas",
+      "positive",
+      "smoke"
+    ]
+  },
+  {
+    "id": "M02-ssl-file",
+    "engine": "maas",
+    "trust": "ssl_file",
+    "expected": "success",
+    "redirect": false,
+    "certificate": "server",
+    "tags": [
+      "maas",
+      "positive"
+    ]
+  },
+  {
+    "id": "M03-hashed-dir",
+    "engine": "maas",
+    "trust": "hashed",
+    "expected": "success",
+    "redirect": false,
+    "certificate": "server",
+    "tags": [
+      "maas",
+      "positive"
+    ]
+  },
+  {
+    "id": "M04-plain-dir",
+    "engine": "maas",
+    "trust": "mounted",
+    "expected": "success",
+    "redirect": false,
+    "certificate": "server",
+    "tags": [
+      "maas",
+      "positive",
+      "smoke"
+    ]
+  },
+  {
+    "id": "M05-agent-plain-dir",
+    "engine": "agent",
+    "trust": "mounted",
+    "expected": "success",
+    "redirect": false,
+    "certificate": "server",
+    "tags": [
+      "maas",
+      "positive",
+      "agent"
+    ]
+  },
+  {
+    "id": "M06-maas-env",
+    "engine": "maas",
+    "trust": "maas_env",
+    "expected": "success",
+    "redirect": false,
+    "certificate": "server",
+    "tags": [
+      "maas",
+      "positive"
+    ]
+  },
+  {
+    "id": "M06-ca-argument",
+    "engine": "maas",
+    "trust": "argument",
+    "expected": "success",
+    "redirect": false,
+    "certificate": "server",
+    "tags": [
+      "maas",
+      "positive"
+    ]
+  },
+  {
+    "id": "M07-redirect-env",
+    "engine": "maas",
+    "trust": "maas_env",
+    "expected": "success",
+    "redirect": true,
+    "certificate": "server",
+    "tags": [
+      "maas",
+      "positive"
+    ]
+  },
+  {
+    "id": "M07-redirect-argument",
+    "engine": "maas",
+    "trust": "argument",
+    "expected": "success",
+    "redirect": true,
+    "certificate": "server",
+    "tags": [
+      "maas",
+      "positive"
+    ]
+  },
+  {
+    "id": "M08-agent-env",
+    "engine": "agent",
+    "trust": "maas_env",
+    "expected": "success",
+    "redirect": false,
+    "certificate": "server",
+    "tags": [
+      "maas",
+      "positive",
+      "agent"
+    ]
+  },
+  {
+    "id": "M08-agent-argument",
+    "engine": "agent",
+    "trust": "argument",
+    "expected": "success",
+    "redirect": false,
+    "certificate": "server",
+    "tags": [
+      "maas",
+      "positive",
+      "agent"
+    ]
+  },
+  {
+    "id": "M08-agent-file",
+    "engine": "agent",
+    "trust": "ssl_file",
+    "expected": "success",
+    "redirect": false,
+    "certificate": "server",
+    "tags": [
+      "maas",
+      "positive",
+      "agent"
+    ]
+  },
+  {
+    "id": "M09-missing",
+    "engine": "maas",
+    "trust": "missing",
+    "expected": "tls_error",
+    "redirect": false,
+    "certificate": "server",
+    "tags": [
+      "maas",
+      "negative"
+    ]
+  },
+  {
+    "id": "M10-direct-plain-dir",
+    "engine": "direct",
+    "trust": "mounted",
+    "expected": "tls_error",
+    "redirect": false,
+    "certificate": "server",
+    "tags": [
+      "maas",
+      "negative",
+      "direct"
+    ]
+  },
+  {
+    "id": "M11-env-over-mount",
+    "engine": "maas",
+    "trust": "conflicting_env",
+    "expected": "tls_error",
+    "redirect": false,
+    "certificate": "server",
+    "tags": [
+      "maas",
+      "negative"
+    ]
+  },
+  {
+    "id": "M11-file-over-mount",
+    "engine": "maas",
+    "trust": "conflicting_file",
+    "expected": "tls_error",
+    "redirect": false,
+    "certificate": "server",
+    "tags": [
+      "maas",
+      "negative"
+    ]
+  },
+  {
+    "id": "M11-argument-over-env",
+    "engine": "maas",
+    "trust": "argument_over_env",
+    "expected": "success",
+    "redirect": false,
+    "certificate": "server",
+    "tags": [
+      "maas",
+      "positive"
+    ]
+  },
+  {
+    "id": "M12-multiple-dirs",
+    "engine": "maas",
+    "trust": "multiple_dirs",
+    "expected": "success",
+    "redirect": false,
+    "certificate": "server",
+    "tags": [
+      "maas",
+      "positive"
+    ]
+  },
+  {
+    "id": "M12-hashed-and-plain",
+    "engine": "maas",
+    "trust": "hashed_and_plain",
+    "expected": "success",
+    "redirect": false,
+    "certificate": "server",
+    "tags": [
+      "maas",
+      "positive"
+    ]
+  },
+  {
+    "id": "M13-malformed",
+    "engine": "maas",
+    "trust": "invalid",
+    "expected": "ca_error",
+    "redirect": false,
+    "certificate": "server",
+    "tags": [
+      "maas",
+      "negative"
+    ]
+  },
+  {
+    "id": "M13-missing-file",
+    "engine": "maas",
+    "trust": "missing_file",
+    "expected": "ca_error",
+    "redirect": false,
+    "certificate": "server",
+    "tags": [
+      "maas",
+      "negative"
+    ]
+  },
+  {
+    "id": "M14-hostname",
+    "engine": "maas",
+    "trust": "mounted",
+    "expected": "tls_error",
+    "redirect": false,
+    "certificate": "wrong-host",
+    "tags": [
+      "maas",
+      "negative",
+      "wrong-host"
+    ]
+  },
+  {
+    "id": "M15-expired",
+    "engine": "maas",
+    "trust": "mounted",
+    "expected": "tls_error",
+    "redirect": false,
+    "certificate": "expired",
+    "tags": [
+      "maas",
+      "negative",
+      "expired"
+    ]
+  }
+]

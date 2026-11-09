@@ -7,6 +7,8 @@ import logging
 import os
 import time
 from collections.abc import Callable
+from contextlib import contextmanager
+from contextvars import ContextVar
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -16,6 +18,31 @@ _RETRYABLE_STATUS_CODES = frozenset({0, 408, 425, 429, 500, 502, 503, 504})
 _DEFAULT_ATTEMPTS = 5
 _DEFAULT_BACKOFF_SECONDS = 1.0
 _DEFAULT_MAX_BACKOFF_SECONDS = 30.0
+_REQUEST_DEADLINE: ContextVar[float | None] = ContextVar("kfp_request_deadline", default=None)
+
+
+def _remaining_request_time() -> float | None:
+    deadline = _REQUEST_DEADLINE.get()
+    if deadline is None:
+        return None
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise TimeoutError("KFP API deadline exceeded")
+    return remaining
+
+
+@contextmanager
+def kfp_api_deadline(client: Any, deadline: float):
+    """Bound synchronous KFP reads and their retries by one monotonic deadline."""
+    install_kfp_api_retries(client)
+    current = _REQUEST_DEADLINE.get()
+    token = _REQUEST_DEADLINE.set(min(current, deadline) if current is not None else deadline)
+    try:
+        _remaining_request_time()
+        yield
+    finally:
+        _REQUEST_DEADLINE.reset(token)
+
 
 try:
     import urllib3
@@ -101,6 +128,23 @@ def install_kfp_api_retries(
         return
 
     original_call_api = api_client.call_api
+    pool_manager = getattr(getattr(api_client, "rest_client", None), "pool_manager", None)
+    if pool_manager is not None:
+        original_request = pool_manager.request
+
+        @functools.wraps(original_request)
+        def request_with_deadline(*args: Any, **kwargs: Any) -> Any:
+            remaining = _remaining_request_time()
+            if remaining is not None:
+                # The generated SDK ignores float _request_timeout values. Set
+                # urllib3's total timeout here and leave retries to our wrapper.
+                import urllib3
+
+                kwargs["timeout"] = urllib3.Timeout(total=remaining)
+                kwargs["retries"] = False
+            return original_request(*args, **kwargs)
+
+        pool_manager.request = request_with_deadline
 
     @functools.wraps(original_call_api)
     def call_api_with_retry(*args: Any, **kwargs: Any) -> Any:
@@ -110,6 +154,7 @@ def install_kfp_api_retries(
 
         path = _resource_path(args, kwargs)
         for attempt in range(1, total_attempts + 1):
+            _remaining_request_time()
             try:
                 return original_call_api(*args, **kwargs)
             except Exception as exc:
@@ -119,6 +164,9 @@ def install_kfp_api_retries(
                     _DEFAULT_BACKOFF_SECONDS * (2 ** (attempt - 1)),
                     _DEFAULT_MAX_BACKOFF_SECONDS,
                 )
+                remaining = _remaining_request_time()
+                if remaining is not None:
+                    delay = min(delay, remaining)
                 status = _exception_status(exc)
                 logger.warning(
                     "Transient KFP API %s %s failed (attempt %d/%d, status=%s): %s; "
