@@ -13,6 +13,7 @@ autorag/
     configs.py                AutoRAGTestConfig dataclass, config loading and tag filtering
     test_configs.json          Scenario definitions (positive / negative)
   data/                       Static benchmark datasets used by pipeline runs
+  tls/                        Certificate tests and catalogs; shared helpers live in ../lib/tls/
 ```
 
 ## Prerequisites
@@ -44,6 +45,10 @@ cp autox_tests/.env.rag.example autox_tests/.env.rag
 ```
 
 Tests are automatically skipped when required environment variables are missing.
+
+Certificate tests use the same `.env.rag`; see [TLS tests](tls/README.md).
+Run them with `./run_tests.sh --suite autorag tls` or `./run_tests.sh --suite tls`.
+The runner excludes TLS by default when no marker expression is supplied.
 
 Datasets required by the selected optimization and indexing scenarios are always uploaded from `data/` before the tests and deleted at session teardown, including after setup or test failures. Document inputs use `INPUT_DATA_BUCKET_NAME`; optimization benchmarks use `TEST_DATA_BUCKET_NAME`. Shared keys are uploaded once per bucket. `AUTORAG_FUNCTIONAL_TEST_KEEP_ARTIFACTS` only preserves generated pipeline artifacts.
 

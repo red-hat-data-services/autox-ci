@@ -55,7 +55,6 @@ packages = ["autox_tests", "autox_tests.lib"]
 testpaths = [
   "autox_tests/automl",
   "autox_tests/autorag",
-  "autox_tests/tls",
 ]
 markers = [
   "tls: opt-in certificate runtime and pipeline integration tests",

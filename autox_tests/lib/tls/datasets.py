@@ -1,11 +1,12 @@
-"""Minimal corpus preparation to reach the injected MaaS CA fault."""
+"""Owned S3 uploads for runtime probes and the injected MaaS CA fault."""
 
 import json
 import logging
-import os
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
+
+from autox_tests.lib.tls.settings import keep_resources
 
 
 logger = logging.getLogger(__name__)
@@ -76,8 +77,8 @@ def build_dataset_plan(definition, prefix):
 class OwnedDatasets:
     """Never create buckets, overwrite existing objects, or delete by prefix."""
 
-    def __init__(self, client):
-        self.client = client
+    def __init__(self, clients):
+        self.clients = clients
         self.owner = uuid.uuid4().hex
         self.prefix = "autox-tls-datasets/" + self.owner
         self.uploaded = {}
@@ -87,11 +88,11 @@ class OwnedDatasets:
             bucket = flow["arguments"][item.bucket_argument]
             if not bucket:
                 raise ValueError(f"Dataset upload needs {item.bucket_argument}")
-            location = (bucket, item.key)
+            location = (item.bucket_argument, bucket, item.key)
             if location in self.uploaded:
                 continue
             # Atomic create: even a pre-existing object at this random key is never replaced.
-            response = self.client.put_object(
+            response = self.clients[item.bucket_argument].put_object(
                 Bucket=bucket,
                 Key=item.key,
                 Body=item.body,
@@ -105,14 +106,15 @@ class OwnedDatasets:
             }
 
     def close(self):
-        if os.environ.get("AUTOX_TLS_KEEP_RESOURCES", "false").lower() == "true":
+        if keep_resources():
             return
-        for (bucket, key), identity in self.uploaded.items():
+        for (bucket_argument, bucket, key), identity in self.uploaded.items():
+            client = self.clients[bucket_argument]
             target = {"Bucket": bucket, "Key": key}
             if identity["VersionId"] is not None:
                 target["VersionId"] = identity["VersionId"]
             try:
-                current = self.client.head_object(**target)
+                current = client.head_object(**target)
                 if (
                     current.get("Metadata", {}).get("autox-tls-owner") != self.owner
                     or not identity["ETag"]
@@ -122,7 +124,7 @@ class OwnedDatasets:
                         "TLS dataset changed; leaving s3://%s/%s untouched", bucket, key
                     )
                     continue
-                self.client.delete_object(**target)
+                client.delete_object(**target)
             except Exception:
                 # Cleanup must not replace a pipeline/upload failure or expose SDK secrets.
                 logger.warning(

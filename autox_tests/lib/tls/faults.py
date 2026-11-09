@@ -8,7 +8,7 @@ from pathlib import Path
 
 import yaml
 
-from autox_tests.tls.utils.flows import TLS_ERROR
+from autox_tests.lib.tls.flows import TLS_ERROR
 
 CA_MARKER = "AUTOX_TLS_MAAS_CA_SHA256="
 

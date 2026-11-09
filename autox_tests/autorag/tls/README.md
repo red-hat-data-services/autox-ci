@@ -5,18 +5,19 @@ ai4rag clients, S3/vector stores, real DSPA injection and a product MaaS CA faul
 Ordinary AutoML/AutoRAG success and model quality belong to their functional suites.
 The suite never installs a different ai4rag into the runtime image.
 
-Tracked scenario catalogs live in `configs/`; helpers and the standalone container
-probe live in `utils/`. There are no environment overrides for scenario catalogs.
+Tracked scenario catalogs live in `autorag/tls/configs/`; shared helpers and the
+standalone container probe live in `lib/tls/`. There are no environment overrides
+for scenario catalogs.
 
 ## Run
 
 ```bash
-cp autox_tests/.env.tls.example autox_tests/.env.tls
-# Edit .env.tls; cluster execution is disabled in the example.
+# Reuse autox_tests/.env.rag (template: autox_tests/.env.rag.example).
+# Add the TLS settings from that template; cluster execution is opt-in.
 ./run_tests.sh --suite tls -- -k 'not pgvector and not neo4j' -vv -rs
 ```
 
-The runner loads `.env.tls`; existing shell exports take precedence. `--tags`
+Pytest loads `.env.rag`; existing shell exports take precedence. `--tags`
 requires every supplied tag to match. `-k` selects tests but does not remove
 credentials for other backends. Unconfigured external services and disabled
 DSPA/product flows skip with explicit reasons. Skips are not certificate coverage.
@@ -34,6 +35,29 @@ DSPA/product flows skip with explicit reasons. Skips are not certificate coverag
 ./run_tests.sh --suite tls -- -k 'test_product_pipeline_tls and N01' -vv -rs
 ```
 
+`--suite tls` runs each product's `tls/` tests in a separate pytest process,
+loading only that product's environment (`.env.ml` for AutoML, `.env.rag` for
+AutoRAG). Currently only AutoRAG has TLS cases; AutoML is not run by the alias.
+The two environment files are never combined by this alias. Exported Jenkins
+settings apply to every process; use the product commands for separate settings.
+
+```bash
+# Equivalent AutoRAG entry point:
+./run_tests.sh --suite autorag tls
+# Positive certificate cases:
+./run_tests.sh --suite autorag 'tls and positive'
+# JUnit results for Jenkins:
+./run_tests.sh --suite tls -- --junitxml=results/tls.xml -v -rs
+# Ordinary functional tests (TLS is excluded by default without a marker):
+./run_tests.sh --suite autorag
+```
+
+The TLS alias preserves extra filters, for example `--suite tls positive`
+selects `tls and (positive)`. `--tags` uses the product's existing tag setting.
+If both products have TLS directories, JUnit report filenames receive a product
+prefix, such as `automl-tls.xml` and `autorag-tls.xml`, to preserve both results.
+For direct pytest runs, install extras and select the product path with `-m tls`.
+
 The suite contains only integration tests in `test_runtime.py`, `test_dspa.py`
 and `test_flows.py`. Install the host dependencies with `uv sync --extra tls`.
 Generated endpoints run inside the probe pods; gRPC/pymilvus come from the product
@@ -42,28 +66,45 @@ comparing them with an expected digest.
 
 ## Minimal settings
 
+The `.env.rag.example` template adds only the TLS enable flag and product image.
+Namespace, connections, model lists and timeouts reuse the existing AutoRAG
+settings. Set `AUTOX_TLS_ENABLED=true` and provide the image to run the
+self-contained MaaS cases. S3 probes prepare their own object automatically.
+DSPA/N01 opt-ins and diagnostic options below are omitted from the env
+template and keep their defaults until explicitly configured.
+
 | Scope | Settings |
 | --- | --- |
-| Every cluster test | `AUTOX_TLS_ENABLED=true`, `AUTOX_TLS_NAMESPACE`, `AUTOX_TLS_AUTORAG_IMAGE`, verified kubeconfig |
-| Actual S3 endpoint | `AWS_S3_ENDPOINT`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `TLS_S3_BUCKET`, `TLS_S3_KEY`, trusted CA source |
+| Every cluster test | `AUTOX_TLS_ENABLED=true`, existing `RHOAI_PROJECT_NAME`, `AUTOX_TLS_AUTORAG_IMAGE`, verified kubeconfig |
+| Actual S3 endpoint | Existing input data connection or `AWS_*`, `INPUT_DATA_BUCKET_NAME`, trusted CA source; read/upload/delete access |
 | DSPA | `AUTOX_TLS_DSPA_ENABLED=true`, `RHOAI_KFP_URL`, `RHOAI_TOKEN`, MaaS credentials and model lists |
 | MaaS credentials | `MAAS_BASE_URL`, `MAAS_API_KEY`, or existing `MAAS_SECRET_NAME` |
 | Model selection | `AUTORAG_GENERATION_MODELS`, `AUTORAG_EMBEDDING_MODELS`; JSON lists or comma-separated IDs |
-| Milvus | `MILVUS_URI`, optional `MILVUS_TOKEN`, trusted CA source |
-| PGVector | `PGVECTOR_HOST`, `PGVECTOR_PASSWORD`, trusted CA source |
-| Neo4j | `NEO4J_URI`, `NEO4J_PASSWORD`, trusted CA source |
-| N01 | `AUTOX_TLS_FLOWS_ENABLED=true`, KFP settings, MaaS/model settings, S3 credentials/CA/`TLS_S3_BUCKET`, one selected vector backend |
+| Vector databases | Existing `VECTOR_DB_SECRET_NAME` / `NEO4J_DB_SECRET_NAME`, or local backend credentials, and trusted CA source |
+| N01 | `AUTOX_TLS_FLOWS_ENABLED=true`, existing KFP/MaaS/model settings, input/test data connections and buckets, vector connection and S3 CA |
 
 The namespace must already exist. The suite does not create a namespace or DSPA,
-or update shared cluster trust. `AUTOX_TLS_NAMESPACE` is explicit to keep TLS
-resources isolated from other suites. `AUTOX_TLS_AUTORAG_IMAGE` is the single
-runtime/DSPA image; N01 uses its source pipeline image.
+or update shared cluster trust. Resources use unique owned names within
+`RHOAI_PROJECT_NAME`. `AUTOX_TLS_AUTORAG_IMAGE` is the single runtime/DSPA image;
+N01 uses its source pipeline image. The image must contain product ai4rag clients;
+`RHOAI_NOTEBOOK_RUNNER_IMAGE` serves a different purpose and is not substituted.
 
 `AWS_DEFAULT_REGION` defaults to `us-east-1`; PostgreSQL port/database/user default
 to `5432`/`postgres`/`postgres`; Neo4j username/database to `neo4j`/`neo4j`.
-`TLS_S3_KEY` must identify an existing non-empty object. Runtime S3 probes use
-only `get_object` and read one byte; they do not list objects or perform a
-separate HEAD request. N01 does not use this key, and always prepares its own corpus.
+Real S3 probes upload a small non-empty object once per pytest session to
+`INPUT_DATA_BUCKET_NAME`, under `autox-tls-datasets/<random-session>/runtime/`.
+They use the input data connection and trusted CA settings for setup, then pass
+the generated key directly to each probe scenario. No manual object or key
+setting is needed. The product probe calls `get_object` and reads one byte;
+it does not list objects or perform a separate HEAD request.
+
+The upload and cleanup use the same ownership tracking as N01. Objects are
+created with `IfNoneMatch="*"` and removed at session teardown, including after
+probe failures, unless retention is enabled. Cleanup checks the recorded owner
+and ETag with HEAD before deleting; it leaves changed objects untouched.
+Permissions must allow read/upload/delete under the generated prefix. Setup
+upload failures fail the test and cannot count as expected certificate rejection.
+Generated wrong-host/expired S3 endpoints and non-S3 probes do not upload to real S3.
 
 ## CA and existing credentials
 
@@ -73,21 +114,34 @@ Databases with different issuers use `MILVUS_SERVER_CERT`, `PGVECTOR_CA_CERT` or
 SDK setting `AWS_CA_BUNDLE` must be a local file path. Use `KFP_CA_BUNDLE` if the
 KFP API requires another private issuer. Trust is never downloaded from the target.
 
-Alternatively, reuse existing namespace Secrets through `AUTOX_TLS_S3_SECRET`,
-`MAAS_SECRET_NAME`, `AUTOX_TLS_MILVUS_SECRET`, `AUTOX_TLS_PGVECTOR_SECRET` or
-`AUTOX_TLS_NEO4J_SECRET`. Explicit references take precedence over local credentials
-and are read-only. No manual Secret is required when standard endpoint values
-are supplied: tests generate and clean isolated credential Secrets automatically.
+Tests reuse existing namespace Secrets: `INPUT_DATA_SECRET_NAME`,
+`TEST_DATA_SECRET_NAME`, `MAAS_SECRET_NAME`, `VECTOR_DB_SECRET_NAME` and
+`NEO4J_DB_SECRET_NAME`. S3 connections fall back to `RHOAI_TRAIN_S3_SECRET_NAME`,
+then `RHOAI_TEST_S3_SECRET_NAME`, matching functional tests. Existing references
+take precedence over local credentials and are read-only. Database probes read
+the vector Secret's keys and only run the matching backend. Neo4j prefers its
+dedicated `NEO4J_DB_SECRET_NAME`. No normal-endpoint TLS-specific Secret aliases
+are needed.
 
-Existing MaaS Secrets must contain `MAAS_BASE_URL`, `MAAS_API_KEY`,
-`TLS_GENERATION_MODEL` and `TLS_EMBEDDING_MODEL`. The latter two are internal probe
-fields, generated automatically from the first model in each host model list.
-They are not additional host `.env.tls` settings. N01 uses the host model lists.
+Without existing Secrets, local settings can generate temporary credentials:
+`AWS_*`, `MAAS_BASE_URL` / `MAAS_API_KEY`, `MILVUS_URI` / `MILVUS_TOKEN`,
+`PGVECTOR_HOST` / `PGVECTOR_PASSWORD`, or `NEO4J_URI` / `NEO4J_PASSWORD`.
+Existing MaaS Secrets need only `MAAS_BASE_URL` and `MAAS_API_KEY`. DSPA takes
+the first models from `AUTORAG_GENERATION_MODELS` / `AUTORAG_EMBEDDING_MODELS`
+and passes them in the probe scenario; no extra model keys are added to Secrets.
 
-Existing CA ConfigMaps can be referenced with `AUTOX_TLS_<BACKEND>_CA_CONFIGMAP`
-and `AUTOX_TLS_<BACKEND>_CA_KEY` (default `ca-bundle.crt`). They take precedence
-over local CA values. For N01, the dataset uploader reads the selected S3 Secret
-and CA ConfigMap too, so upload and pipeline credentials address the same service.
+Milvus runtime probes first use CA PEM from `MILVUS_SERVER_CERT` (or
+`MILVUS_CA_CERT`) in the selected database Secret. This keeps the CA paired with
+the connection without duplicating it in `.env.rag`. An invalid nonempty Secret
+CA fails setup; it is not silently replaced. Negative trust cases still substitute
+or remove this CA inside the probe.
+
+The shared CA ConfigMap uses the existing `RHOAI_NOTEBOOK_CA_BUNDLE_CONFIGMAP`
+and `RHOAI_NOTEBOOK_CA_BUNDLE_CONFIGMAP_KEY` (default `ca-bundle.crt`). When set,
+it takes precedence over local CA values. Milvus probes use this fallback only
+when the selected Secret has no CA. For N01, the dataset uploader reads
+each selected S3 Secret and this CA ConfigMap, so upload and pipeline credentials
+address the same services, including separate input/test connections.
 Local CA file paths are never exported as product Secret values. For Milvus,
 the harness detects whether the installed product consumes `server_cert` or
 `ca_cert`; both fields receive the same trusted PEM when building a flow Secret.
@@ -148,16 +202,17 @@ consuming both MaaS credential keys are wrapped. A failed task must show the
 same generated CA hash marker and a certificate-specific error in the same
 container. No manual wrong-CA Secret or image assertion is used.
 
-Set `AUTOX_TLS_VECTOR_DB=milvus`/`pgvector`/`neo4j` when several databases are
-configured. Otherwise exactly one backend must be configured. N01 reuses the
-selected backend's credentials; locally supplied backend CA PEM is embedded in
+N01 uses `VECTOR_DB_SECRET_NAME`, falling back to `NEO4J_DB_SECRET_NAME`.
+Without either reference, exactly one local backend must be configured. N01
+reuses the selected backend's credentials; locally supplied backend CA PEM is embedded in
 temporary product credentials rather than exporting a host file path.
 
 After the explicit flow opt-in, N01 always uploads two bundled Aster documents
-and their benchmark to `TLS_S3_BUCKET`, under
+to `INPUT_DATA_BUCKET_NAME` and their benchmark to `TEST_DATA_BUCKET_NAME`, under
 `autox-tls-datasets/<random-session>/rag-light/`. References in the benchmark match
 the generated keys. S3 permissions must allow read/upload/delete there. No manual
-dataset-key override or separate input/test bucket/credential selection exists.
+dataset-key override is needed. Input and test uploads use their respective
+existing data-connection Secrets, including when the S3 endpoints differ.
 Uploads use `IfNoneMatch="*"`, never create buckets or overwrite objects, and
 record ownership, ETag and VersionId. Cleanup removes only recorded unchanged
 uploads; changed objects remain. No recursive prefix deletion or product artifact
@@ -167,11 +222,12 @@ cleanup occurs. Upload failures cannot count as certificate rejection.
 
 | Optional setting | Purpose |
 | --- | --- |
-| `AUTOX_TLS_TIMEOUT` | One positive-seconds override; defaults are runtime 180s, DSPA 600s, N01 3600s |
+| `RHOAI_NOTEBOOK_JOB_TIMEOUT` | Existing Job timeout reused for runtime probes; default 180s if unset |
+| `RHOAI_PIPELINE_RUN_TIMEOUT` | Existing pipeline timeout reused for DSPA/N01; defaults 600s/3600s if unset |
 | `AUTOX_TLS_REPORT_DIR` | Sanitized JSON evidence; defaults to `tls-results` |
-| `AUTOX_TLS_KEEP_RESOURCES=true` | Retain owned runtime Jobs/material/uploads for debugging |
+| `AUTORAG_FUNCTIONAL_TEST_KEEP_ARTIFACTS=true` | Existing retention option also retains owned TLS Jobs/material/uploads |
 | `AUTOX_TLS_PULL_SECRET` | Existing image-pull Secret for a private registry |
-| `AUTOX_TLS_TESTS_TAGS` | Selection normally set with runner `--tags` |
+| `AUTORAG_FUNCTIONAL_TESTS_TAGS` | Selection normally set with runner `--tags` |
 
 Temporary DSPA/N01 credential Secrets are always cleaned even when resources are
 retained. Existing Secrets/ConfigMaps are never changed or deleted. Runtime

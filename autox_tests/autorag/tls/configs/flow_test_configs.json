@@ -4,10 +4,10 @@
     "family": "autorag",
     "arguments": {
       "input_data_secret_name": {
-        "secret": "s3"
+        "secret": "s3_input"
       },
       "input_data_bucket_name": {
-        "env": "TLS_S3_BUCKET"
+        "env": "INPUT_DATA_BUCKET_NAME"
       },
       "maas_secret_name": {
         "secret": "maas"
@@ -19,10 +19,10 @@
         "data": "input_data_keys"
       },
       "test_data_secret_name": {
-        "secret": "s3"
+        "secret": "s3_test"
       },
       "test_data_bucket_name": {
-        "env": "TLS_S3_BUCKET"
+        "env": "TEST_DATA_BUCKET_NAME"
       },
       "test_data_key": {
         "data": "test_data_key"

@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pytest
 
-from autox_tests.tls.configs.configs import get_flow_configs
-from autox_tests.tls.utils.settings import timeout_seconds
-from autox_tests.tls.utils.flows import (
+from autox_tests.autorag.tls.configs.configs import get_flow_configs
+from autox_tests.lib.tls.settings import timeout_seconds
+from autox_tests.lib.tls.flows import (
     assert_tls_failure,
     collect_run_evidence,
     write_evidence,
@@ -59,7 +59,7 @@ def test_product_pipeline_tls(
     write_evidence(run_id, evidence)
     assert _run_failed(detail), f"Expected a CA-rejected pipeline run: {run_id}"
     assert_tls_failure(logs, flow["expected_failed_task"])
-    from autox_tests.tls.utils.faults import assert_injected_maas_rejection
+    from autox_tests.lib.tls.faults import assert_injected_maas_rejection
 
     assert_injected_maas_rejection(
         logs, flow["expected_failed_task"], flow["fault_evidence"]

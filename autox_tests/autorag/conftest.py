@@ -300,12 +300,18 @@ def s3_cleanup_tracker():
 
 
 @pytest.fixture(scope="session", autouse=True)
-def s3_teardown(s3_client_functional, s3_cleanup_tracker):
+def s3_teardown(request, s3_cleanup_tracker):
     """Session-scoped teardown: delete pipeline artifacts from S3.
 
     Set ``AUTORAG_FUNCTIONAL_TEST_KEEP_ARTIFACTS=true`` to skip deletion and
     inspect artifacts manually after the session.
     """
+    from .configs.configs import AutoRAGTestConfig
+
+    s3_client_functional = (
+        request.getfixturevalue("s3_client_functional")
+        if _has_selected_config(request, AutoRAGTestConfig) else None
+    )
     yield
     if s3_client_functional is None:
         return
@@ -335,13 +341,19 @@ def s3_teardown(s3_client_functional, s3_cleanup_tracker):
 
 
 @pytest.fixture(scope="session", autouse=True)
-def s3_teardown_indexing(s3_client_indexing_functional, s3_cleanup_tracker):
+def s3_teardown_indexing(request, s3_cleanup_tracker):
     """Session-scoped teardown: delete indexing pipeline artifacts from S3.
 
     Mirrors s3_teardown but uses the indexing-pipeline S3 client so cleanup
     works even when the optimization pipeline is not configured.
     Set ``AUTORAG_FUNCTIONAL_TEST_KEEP_ARTIFACTS=true`` to skip deletion.
     """
+    from .configs.configs import IndexingTestConfig
+
+    s3_client_indexing_functional = (
+        request.getfixturevalue("s3_client_indexing_functional")
+        if _has_selected_config(request, IndexingTestConfig) else None
+    )
     yield
     if s3_client_indexing_functional is None:
         return
@@ -366,6 +378,15 @@ def s3_teardown_indexing(s3_client_indexing_functional, s3_cleanup_tracker):
                     bucket,
                     prefix,
                 )
+
+
+def _has_selected_config(request, config_type):
+    """Keep functional clients out of TLS-only and local configuration runs."""
+    return any(
+        isinstance(value, config_type)
+        for item in request.session.items
+        for value in getattr(getattr(item, "callspec", None), "params", {}).values()
+    )
 
 
 @pytest.fixture(scope="session", autouse=True)

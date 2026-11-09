@@ -1,9 +1,12 @@
-"""Resolve reusable TLS settings without touching cluster resources."""
+"""Resolve TLS settings and read existing product data connections."""
 
+import base64
 import json
 import os
 from pathlib import Path
 import ssl
+
+from autox_tests.lib.settings import parse_timeout_seconds_from_env
 
 
 class CredentialValues(dict):
@@ -51,11 +54,50 @@ def service_prefix(engine, certificate="server"):
     return f"AUTOX_TLS_{engine.upper()}{suffix}"
 
 
-def endpoint_credentials(engine, certificate="server"):
+def s3_secret_name(data_kind="input"):
+    """Use the same data-connection precedence as the functional suite."""
+    return next(
+        (
+            os.environ[name].strip()
+            for name in (
+                f"{data_kind.upper()}_DATA_SECRET_NAME",
+                "RHOAI_TRAIN_S3_SECRET_NAME",
+                "RHOAI_TEST_S3_SECRET_NAME",
+            )
+            if os.environ.get(name, "").strip()
+        ),
+        None,
+    )
+
+
+def backend_secret_name(engine, core, namespace):
+    """Reuse product Secrets only for the backend identified by their keys."""
+    names = []
+    if engine == "neo4j":
+        names.append(os.environ.get("NEO4J_DB_SECRET_NAME", "").strip())
+    names.append(os.environ.get("VECTOR_DB_SECRET_NAME", "").strip())
+    for name in dict.fromkeys(name for name in names if name):
+        secret = core.read_namespaced_secret(name, namespace)
+        if _ENDPOINTS[engine][0][0] in (secret.data or {}):
+            return name
+    return None
+
+
+def endpoint_credentials(engine, certificate="server", *, data_kind="input", backend_secret=None):
     """Prefer an explicit existing Secret; otherwise use standard .env keys once."""
     prefix = service_prefix(engine, certificate)
-    secret_setting = "MAAS_SECRET_NAME" if engine == "maas" else prefix + "_SECRET"
-    name = os.environ.get(secret_setting, "").strip()
+    if certificate != "server":
+        secret_setting = prefix + "_SECRET"
+        name = os.environ.get(secret_setting, "").strip()
+    elif engine == "maas":
+        secret_setting = "MAAS_SECRET_NAME"
+        name = os.environ.get(secret_setting, "").strip()
+    elif engine == "s3":
+        secret_setting = f"{data_kind.upper()}_DATA_SECRET_NAME / RHOAI_TEST_S3_SECRET_NAME"
+        name = s3_secret_name(data_kind)
+    else:
+        secret_setting = "NEO4J_DB_SECRET_NAME / VECTOR_DB_SECRET_NAME" if engine == "neo4j" else "VECTOR_DB_SECRET_NAME"
+        name = backend_secret
     if name:
         return name, {}
     # Bad-host/expired cases must never accidentally target the healthy endpoint.
@@ -110,13 +152,36 @@ def ca_setting_names(engine):
     return tuple(dict.fromkeys((specific, "AWS_CA_BUNDLE")))
 
 
-def service_ca(engine, certificate="server"):
+def service_ca(engine, certificate="server", *, backend_secret=None, core=None, namespace=None):
+    # Keep the trust source paired with the selected Milvus connection. The probe
+    # intentionally clears product CA variables when exercising negative cases.
+    if engine == "milvus" and certificate == "server" and backend_secret and core is not None:
+        data = core.read_namespaced_secret(backend_secret, namespace).data or {}
+        for key in ("MILVUS_SERVER_CERT", "MILVUS_CA_CERT"):
+            if data.get(key):
+                try:
+                    pem = base64.b64decode(data[key], validate=True).decode()
+                except (ValueError, UnicodeError):
+                    raise ValueError(f"Milvus Secret {key} must contain CA PEM") from None
+                if not pem.strip():
+                    continue
+                if not pem.lstrip().startswith("-----BEGIN CERTIFICATE-----"):
+                    raise ValueError(f"Milvus Secret {key} must contain CA PEM")
+                return {"ca_pem": read_ca(pem, f"Milvus Secret {key}")}
     prefix = service_prefix(engine, certificate)
-    name = os.environ.get(prefix + "_CA_CONFIGMAP", "").strip()
+    configmap_setting = (
+        "RHOAI_NOTEBOOK_CA_BUNDLE_CONFIGMAP"
+        if certificate == "server" else prefix + "_CA_CONFIGMAP"
+    )
+    key_setting = (
+        "RHOAI_NOTEBOOK_CA_BUNDLE_CONFIGMAP_KEY"
+        if certificate == "server" else prefix + "_CA_KEY"
+    )
+    name = os.environ.get(configmap_setting, "").strip()
     if name:
         return {
             "ca_configmap": name,
-            "ca_key": os.environ.get(prefix + "_CA_KEY") or "ca-bundle.crt",
+            "ca_key": os.environ.get(key_setting) or "ca-bundle.crt",
         }
     specific = ca_setting_names(engine)[0]
     for setting in ca_setting_names(engine):
@@ -124,7 +189,7 @@ def service_ca(engine, certificate="server"):
         if value:
             return {"ca_pem": read_ca(value, setting)}
     raise ValueError(
-        f"Set {specific} or AWS_CA_BUNDLE, or reference {prefix}_CA_CONFIGMAP"
+        f"Set {specific} or AWS_CA_BUNDLE, or reference {configmap_setting}"
     )
 
 
@@ -146,39 +211,27 @@ def model_id(kind):
     raise ValueError(f"Set {name}")
 
 
-def maas_credentials():
-    name, values = endpoint_credentials("maas")
-    if not name:
-        values.update(
-            {
-                "TLS_GENERATION_MODEL": model_id("GENERATION"),
-                "TLS_EMBEDDING_MODEL": model_id("EMBEDDING"),
-            }
-        )
-    # No trust overrides: the real DSPA test must consume platform trust unchanged.
-    return name, values
+def timeout_seconds(default, env_var="RHOAI_PIPELINE_RUN_TIMEOUT"):
+    return parse_timeout_seconds_from_env(env_var, default)
 
 
-def timeout_seconds(default):
-    value = os.environ.get("AUTOX_TLS_TIMEOUT", "").strip()
-    try:
-        timeout = int(value) if value else default
-        if timeout <= 0:
-            raise ValueError
-    except ValueError:
-        raise ValueError(
-            "AUTOX_TLS_TIMEOUT must be a positive number of seconds"
-        ) from None
-    return timeout
+def keep_resources():
+    return os.environ.get("AUTORAG_FUNCTIONAL_TEST_KEEP_ARTIFACTS", "").strip().lower() in {
+        "true", "1", "yes",
+    }
 
 
 def flow_secret_credentials(engine):
+    if engine in {"s3_input", "s3_test"}:
+        return endpoint_credentials("s3", data_kind=engine.removeprefix("s3_"))
     if engine == "vector_db":
+        existing = (
+            os.environ.get("VECTOR_DB_SECRET_NAME", "").strip()
+            or os.environ.get("NEO4J_DB_SECRET_NAME", "").strip()
+        )
+        if existing:
+            return existing, {}
         engine = None
-    if engine is None and os.environ.get("AUTOX_TLS_VECTOR_DB", "").strip():
-        engine = os.environ["AUTOX_TLS_VECTOR_DB"].strip().lower()
-        if engine not in {"milvus", "pgvector", "neo4j"}:
-            raise ValueError("AUTOX_TLS_VECTOR_DB must be milvus, pgvector or neo4j")
     if engine is None:
         configured = []
         for backend in ("milvus", "pgvector", "neo4j"):
@@ -189,7 +242,7 @@ def flow_secret_credentials(engine):
                 pass
         if len(configured) != 1:
             raise ValueError(
-                "Set AUTOX_TLS_VECTOR_DB or configure exactly one database backend"
+                "Set VECTOR_DB_SECRET_NAME or configure exactly one database backend"
             )
         engine = configured[0]
     reference, values = endpoint_credentials(engine)

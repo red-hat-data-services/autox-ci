@@ -4,8 +4,9 @@ import json
 
 import pytest
 
-from autox_tests.tls.configs.configs import get_runtime_configs
-from autox_tests.tls.utils.runtime import PROBE_SOURCE, parse_result
+from autox_tests.autorag.tls.configs.configs import get_runtime_configs
+from autox_tests.lib.tls.runtime import PROBE_SOURCE, parse_result
+from autox_tests.lib.tls.settings import model_id
 
 
 def probe_component(source: str, scenario: str) -> str:
@@ -47,6 +48,8 @@ def test_dspa_plain_ca_injection(
     case = test_config.payload()
     case["id"] = "DSPA-" + test_config.id
     case["mount_dir"] = tls_dspa_config["ca_dir"]
+    case["generation_model"] = model_id("GENERATION")
+    case["embedding_model"] = model_id("EMBEDDING")
     component = dsl.component(base_image=tls_image, install_kfp_package=False)(
         probe_component
     )
@@ -61,8 +64,6 @@ def test_dspa_plain_ca_injection(
             {
                 "MAAS_BASE_URL": "MAAS_BASE_URL",
                 "MAAS_API_KEY": "MAAS_API_KEY",
-                "TLS_GENERATION_MODEL": "TLS_GENERATION_MODEL",
-                "TLS_EMBEDDING_MODEL": "TLS_EMBEDDING_MODEL",
             },
         )
 
@@ -78,7 +79,7 @@ def test_dspa_plain_ca_injection(
         timeout=tls_dspa_config["dspa_timeout"],
         namespace=namespace,
     )
-    from autox_tests.tls.utils.flows import (
+    from autox_tests.lib.tls.flows import (
         collect_run_evidence,
         write_evidence,
     )

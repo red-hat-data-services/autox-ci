@@ -8,7 +8,7 @@ from pathlib import Path
 
 from kubernetes import client
 
-from autox_tests.tls.utils.settings import CredentialValues, timeout_seconds
+from autox_tests.lib.tls.settings import CredentialValues, keep_resources, timeout_seconds
 
 PROBE_SOURCE = Path(__file__).with_name("probe.py").read_text()
 RESULT_PREFIX = "AUTOX_TLS_RESULT="
@@ -46,7 +46,7 @@ def parse_result(logs, case):
 
 def run_job(core, namespace, image, case, material, *, profile=None, timeout=None):
     """Run one isolated probe, always remove owned resources, persist sanitized evidence."""
-    timeout = timeout_seconds(180) if timeout is None else timeout
+    timeout = timeout_seconds(180, "RHOAI_NOTEBOOK_JOB_TIMEOUT") if timeout is None else timeout
     profile = profile or {}
     identifier = "autox-tls-" + uuid.uuid4().hex[:12]
     labels = {"app.kubernetes.io/part-of": "autox-tls", "autox-tls-session": identifier}
@@ -71,10 +71,9 @@ def run_job(core, namespace, image, case, material, *, profile=None, timeout=Non
                 value="/opt/autox-tls/material/service-ca.pem",
             )
         )
-    # Data selection can live in .env.tls without modifying a credentials Secret.
-    for name in ("TLS_S3_BUCKET", "TLS_S3_KEY"):
-        if name in profile.get("environment", {}):
-            env.append(client.V1EnvVar(name=name, value=profile["environment"][name]))
+    # Data selection can live in .env.rag without modifying a credentials Secret.
+    for name, value in profile.get("environment", {}).items():
+        env.append(client.V1EnvVar(name=name, value=value))
     volumes = [
         client.V1Volume(
             name="probe", config_map=client.V1ConfigMapVolumeSource(name=identifier)
@@ -186,7 +185,16 @@ def run_job(core, namespace, image, case, material, *, profile=None, timeout=Non
                 namespace, label_selector=f"job-name={identifier}"
             ).items
             status = batch.read_namespaced_job_status(identifier, namespace).status
-            if status.succeeded or status.failed:
+            job_failed = bool(status.failed) or any(
+                condition.type == "Failed" and condition.status == "True"
+                for condition in (status.conditions or [])
+            )
+            # The Job controller may not have accounted for a terminated pod
+            # yet (for example while processing job-tracking finalizers). Its
+            # counters must not hide the probe's actual terminal state.
+            if job_failed or any(
+                pod.status.phase in {"Succeeded", "Failed"} for pod in pods
+            ):
                 break
             time.sleep(3)
         else:
@@ -225,6 +233,9 @@ def run_job(core, namespace, image, case, material, *, profile=None, timeout=Non
                 ],
                 "namespace": namespace,
                 "pod": pod.metadata.name,
+                "pod_phase": pod.status.phase,
+                "job_succeeded": status.succeeded or 0,
+                "job_failed": status.failed or 0,
             }
         )
         destination = Path(os.environ.get("AUTOX_TLS_REPORT_DIR", "tls-results"))
@@ -233,10 +244,13 @@ def run_job(core, namespace, image, case, material, *, profile=None, timeout=Non
             json.dumps(result, indent=2, sort_keys=True)
         )
         parsed = parse_result(logs, case)
-        assert status.succeeded, "Probe report passed but Job did not succeed"
+        assert pod.status.phase == "Succeeded", (
+            f"Probe report passed but Pod did not succeed (phase={pod.status.phase})"
+        )
+        assert not job_failed, "Probe report passed but Job failed"
         return parsed
     finally:
-        if os.environ.get("AUTOX_TLS_KEEP_RESOURCES", "false").lower() != "true":
+        if not keep_resources():
             for kind in reversed(created):
                 try:
                     if kind == "job":

@@ -9,7 +9,7 @@ import json
 import os
 from pathlib import Path
 
-from autox_tests.tls.utils.settings import (
+from autox_tests.lib.tls.settings import (
     MissingTLSConfiguration,
     endpoint_credentials,
     service_ca,
@@ -35,7 +35,7 @@ def _read_catalog(kind):
 def _filter_by_tags(configs):
     requested = {
         tag.strip().lower()
-        for tag in os.environ.get("AUTOX_TLS_TESTS_TAGS", "").split(",")
+        for tag in os.environ.get("AUTORAG_FUNCTIONAL_TESTS_TAGS", "").split(",")
         if tag.strip()
     }
     return [c for c in configs if requested <= {tag.lower() for tag in c.tags}]
@@ -89,8 +89,8 @@ def get_runtime_configs(kind, *, filter_tags=True):
     return _filter_by_tags(configs) if filter_tags else configs
 
 
-def resolve_service_profile(test_config):
-    """Reuse an existing Secret or standard endpoint settings from .env.tls."""
+def resolve_service_profile(test_config, *, backend_secret=None, core=None, namespace=None):
+    """Reuse an existing Secret or standard endpoint settings from .env.rag."""
     local_certificate_fixture = test_config.engine in {
         "s3",
         "milvus",
@@ -101,23 +101,28 @@ def resolve_service_profile(test_config):
         secret, credentials, ca = None, {}, {}
     else:
         secret, credentials = endpoint_credentials(
-            test_config.engine, test_config.certificate
+            test_config.engine, test_config.certificate, backend_secret=backend_secret
         )
-        ca = service_ca(test_config.engine, test_config.certificate)
+        ca = service_ca(
+            test_config.engine, test_config.certificate,
+            backend_secret=backend_secret, core=core, namespace=namespace,
+        )
     environment = {
-        name: os.environ[name].strip()
-        for name in ("TLS_S3_BUCKET", "TLS_S3_KEY")
-        if test_config.engine == "s3" and os.environ.get(name, "").strip()
+        "INPUT_DATA_BUCKET_NAME": os.environ.get("INPUT_DATA_BUCKET_NAME", "").strip(),
     }
+    if test_config.engine != "s3":
+        environment = {}
     if local_s3_fixture:
-        environment = {"TLS_S3_BUCKET": "tls-fixture", "TLS_S3_KEY": "probe.txt"}
-    if test_config.engine == "s3" and not secret and not local_s3_fixture:
-        missing = {"TLS_S3_BUCKET", "TLS_S3_KEY"} - environment.keys()
+        environment = {"INPUT_DATA_BUCKET_NAME": "tls-fixture"}
+    if test_config.engine == "s3" and not local_s3_fixture:
+        missing = {
+            name for name, value in environment.items() if not value
+        }
         if missing:
             raise ValueError(
                 "Set "
                 + ", ".join(sorted(missing))
-                + " for an existing non-empty object"
+                + " for the automatically uploaded S3 probe object"
             )
     image = os.environ.get("AUTOX_TLS_AUTORAG_IMAGE", "").strip()
     if not image:
@@ -132,7 +137,8 @@ def resolve_service_profile(test_config):
         "credentials": credentials,
         **ca,
         "environment": environment,
-        "timeout": timeout_seconds(180),
+        "s3_key": "probe.txt" if local_s3_fixture else None,
+        "timeout": timeout_seconds(180, "RHOAI_NOTEBOOK_JOB_TIMEOUT"),
     }
 
 
@@ -163,7 +169,7 @@ def resolve_environment_values(value, secret_resolver=None, dataset_values=None)
         if not raw:
             if "default" in value:
                 return value["default"]
-            raise MissingTLSConfiguration(f"Set {name} in .env.tls")
+            raise MissingTLSConfiguration(f"Set {name} in .env.rag")
         if value.get("format") == "list":
             try:
                 result = json.loads(raw)
@@ -193,7 +199,7 @@ class TLSFlowConfig:
     definition: dict = field(repr=False)
 
     def resolve(self, secret_resolver=None, dataset_values=None):
-        from autox_tests.tls.utils.flows import validate_flows
+        from autox_tests.lib.tls.flows import validate_flows
 
         flow = resolve_environment_values(
             self.definition, secret_resolver, dataset_values

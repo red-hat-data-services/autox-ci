@@ -224,7 +224,6 @@ results/
 
 !**/.env.ml.example
 !**/.env.rag.example
-!**/.env.tls.example
 
 # Local documents and files
 local/

@@ -8,7 +8,7 @@ Two independent suites live here, each with its own env file, config JSON, and p
 |---|---|---|
 | **AutoML** | `automl/` | `.env.ml` |
 | **AutoRAG** | `autorag/` | `.env.rag` |
-| **TLS certificates** | `tls/` | `.env.tls`, tracked `tls/configs/` scenarios and tag filtering; see [certificate tests](tls/README.md) |
+| **TLS certificates (AutoRAG)** | `autorag/tls/` | `.env.rag`; see [certificate tests](autorag/tls/README.md) |
 
 ---
 

@@ -598,8 +598,8 @@ def maas_request(case, url, bundle):
                 "Mounted CA replaced public roots"
             )
         client.models.list()
-        model = os.environ.get("TLS_GENERATION_MODEL", "tls-model")
-        embedding = os.environ.get("TLS_EMBEDDING_MODEL", "tls-model")
+        model = case.get("generation_model", "tls-model")
+        embedding = case.get("embedding_model", "tls-model")
         client.embeddings.create(model=embedding, input="tls probe")
         client.chat.completions.create(
             model=model, messages=[{"role": "user", "content": "TLS probe"}]
@@ -659,15 +659,15 @@ def service_request(case, bundle, wrong, report=None):
             else {}
         )
         report["stage"] = "s3_client_initialization"
+        bucket, key = os.environ["INPUT_DATA_BUCKET_NAME"], case["s3_key"]
         client = create_s3_client(**kwargs)
-        bucket, key = os.environ["TLS_S3_BUCKET"], os.environ["TLS_S3_KEY"]
         try:
             report["stage"] = "s3_get_object"
             response = client.get_object(Bucket=bucket, Key=key)
             try:
                 report["stage"] = "s3_read_object"
                 assert response["Body"].read(1), (
-                    "TLS_S3_KEY must reference a non-empty object"
+                    "Automatically prepared S3 probe object must be non-empty"
                 )
             finally:
                 response["Body"].close()
@@ -852,12 +852,12 @@ def execute(case):
                             "AWS_SECRET_ACCESS_KEY": "tls-fixture-secret",
                             "AWS_DEFAULT_REGION": "us-east-1",
                             "AWS_SESSION_TOKEN": "",
-                            "TLS_S3_BUCKET": "tls-fixture",
-                            "TLS_S3_KEY": "probe.txt",
+                            "INPUT_DATA_BUCKET_NAME": "tls-fixture",
                             "NO_PROXY": "127.0.0.1,localhost",
                             "no_proxy": "127.0.0.1,localhost",
                         }
                     )
+                    case = {**case, "s3_key": "probe.txt"}
                     report["endpoint_fixture"] = "generated-loopback"
                 if case.get("local_milvus_fixture"):
                     if case["engine"] != "milvus" or case.get("certificate") not in {

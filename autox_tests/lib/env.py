@@ -14,7 +14,7 @@ _TESTS_DIR = Path(__file__).resolve().parents[1]
 
 
 def load_tests_env(
-    component: Literal["autorag", "automl", "tls"] | None = None,
+    component: Literal["autorag", "automl"] | None = None,
 ) -> None:
     """Load the suite's env file or ``autox_tests/.env`` if no suite is given."""
     try:
@@ -26,8 +26,6 @@ def load_tests_env(
         env_path = _TESTS_DIR / ".env.rag"
     elif component == "automl":
         env_path = _TESTS_DIR / ".env.ml"
-    elif component == "tls":
-        env_path = _TESTS_DIR / ".env.tls"
     else:
         env_path = _TESTS_DIR / ".env"
     load_dotenv(env_path, override=False)

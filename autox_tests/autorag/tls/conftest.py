@@ -1,19 +1,21 @@
 """TLS fixtures using existing platform settings and isolated test-owned credentials."""
 
 import os
+from contextlib import contextmanager
 
 import pytest
 
 from autox_tests.lib.env import load_tests_env
-from autox_tests.tls.configs.configs import (
+from autox_tests.autorag.tls.configs.configs import (
     MissingTLSConfiguration,
     resolve_service_profile,
 )
-from autox_tests.tls.utils.material import generate_material
-from autox_tests.tls.utils.resources import OwnedCredentialSecrets
-from autox_tests.tls.utils.settings import (
+from autox_tests.lib.tls.material import generate_material
+from autox_tests.lib.tls.resources import OwnedCredentialSecrets
+from autox_tests.lib.tls.settings import (
     flow_secret_credentials,
-    maas_credentials,
+    backend_secret_name,
+    model_id,
     timeout_seconds,
     endpoint_credentials,
     service_ca,
@@ -21,16 +23,12 @@ from autox_tests.tls.utils.settings import (
 )
 
 
-def pytest_configure(config):
-    """Load .env.tls before parametrized scenarios are collected."""
-    load_tests_env("tls")
-
-
 def pytest_collection_modifyitems(items):
     """Use the same positive/negative marker selection as AutoML and AutoRAG."""
     for item in items:
         if "/tls/" not in str(item.path):
             continue
+        item.add_marker(pytest.mark.autorag)
         callspec = getattr(item, "callspec", None)
         test_config = callspec.params.get("test_config") if callspec else None
         if test_config is not None and hasattr(test_config, "expected"):
@@ -39,11 +37,11 @@ def pytest_collection_modifyitems(items):
 
 
 def get_tls_environment_config():
-    """Build shared TLS settings from .env.tls without contacting any service."""
-    load_tests_env("tls")
+    """Build shared TLS settings from .env.rag without contacting any service."""
+    load_tests_env("autorag")
     return {
         "enabled": os.environ.get("AUTOX_TLS_ENABLED", "false").lower() == "true",
-        "namespace": os.environ.get("AUTOX_TLS_NAMESPACE", "").strip(),
+        "namespace": os.environ.get("RHOAI_PROJECT_NAME", "").strip(),
         "image": os.environ.get("AUTOX_TLS_AUTORAG_IMAGE", "").strip(),
         "dspa_enabled": os.environ.get("AUTOX_TLS_DSPA_ENABLED", "false").lower()
         == "true",
@@ -51,7 +49,7 @@ def get_tls_environment_config():
         == "true",
         "ca_dir": "/kfp/certs",
         "dspa_timeout": timeout_seconds(600),
-        "rhoai_kfp_url": os.environ.get("RHOAI_KFP_URL", "").strip(),
+        "rhoai_kfp_url": (os.environ.get("RHOAI_KFP_URL") or os.environ.get("KFP_HOST") or "").strip(),
         "rhoai_token": os.environ.get("RHOAI_TOKEN", "").strip(),
     }
 
@@ -76,7 +74,7 @@ def tls_cluster(tls_environment_config):
 
     namespace = tls_environment_config["namespace"]
     if not namespace:
-        pytest.fail("Set AUTOX_TLS_NAMESPACE to an existing test namespace")
+        pytest.fail("Set RHOAI_PROJECT_NAME to an existing test namespace")
     configuration = client.Configuration()
     config.load_kube_config(
         config_file=os.environ.get("KUBECONFIG"), client_configuration=configuration
@@ -102,9 +100,18 @@ def tls_image(tls_cluster, tls_environment_config):
 
 
 @pytest.fixture
-def service_profile(test_config):
+def service_profile(test_config, tls_cluster, request):
     try:
-        return resolve_service_profile(test_config)
+        existing = None
+        if test_config.engine in {"milvus", "pgvector", "neo4j"} and test_config.certificate == "server":
+            existing = backend_secret_name(test_config.engine, *tls_cluster)
+        profile = resolve_service_profile(
+            test_config, backend_secret=existing,
+            core=tls_cluster[0], namespace=tls_cluster[1],
+        )
+        if test_config.engine == "s3" and not profile["local_s3_fixture"]:
+            profile["s3_key"] = request.getfixturevalue("tls_runtime_s3_dataset")
+        return profile
     except MissingTLSConfiguration as exc:
         pytest.skip(str(exc))
     except ValueError as exc:
@@ -135,7 +142,9 @@ def tls_dspa_config(tls_environment_config):
     if not tls_environment_config["dspa_enabled"]:
         pytest.skip("Set AUTOX_TLS_DSPA_ENABLED=true for real DSPA injection coverage")
     try:
-        maas_credentials()
+        endpoint_credentials("maas")
+        model_id("GENERATION")
+        model_id("EMBEDDING")
     except ValueError as exc:
         pytest.fail(str(exc))
     return tls_environment_config
@@ -153,7 +162,7 @@ def tls_owned_credentials(tls_cluster):
 
 @pytest.fixture(scope="session")
 def tls_dspa_secret(tls_dspa_config, tls_owned_credentials):
-    return tls_owned_credentials.reference(*maas_credentials())
+    return tls_owned_credentials.reference(*endpoint_credentials("maas"))
 
 
 @pytest.fixture(scope="session")
@@ -175,7 +184,7 @@ def tls_flow(test_config, tls_environment_config, request):
                 None, values
             )
 
-        from autox_tests.tls.utils.datasets import build_dataset_plan
+        from autox_tests.lib.tls.datasets import build_dataset_plan
 
         uploader = request.getfixturevalue("tls_owned_datasets")
         plan = build_dataset_plan(test_config.definition, uploader.prefix)
@@ -228,7 +237,7 @@ def tls_pipeline_run_target(
 ):
     if not tls_flow.get("fault"):
         return tls_pipeline_source_target
-    from autox_tests.tls.utils.faults import prepare_maas_ca_fault
+    from autox_tests.lib.tls.faults import prepare_maas_ca_fault
 
     target, evidence = prepare_maas_ca_fault(
         kfp_client_tls,
@@ -240,60 +249,77 @@ def tls_pipeline_run_target(
     return target
 
 
-@pytest.fixture(scope="session")
-def tls_owned_datasets(tls_cluster, tmp_path_factory):
+@contextmanager
+def _owned_s3_datasets(tls_cluster, tmp_path_factory, data_kinds):
     import base64
     import boto3
-    from autox_tests.tls.utils.datasets import OwnedDatasets
+    from autox_tests.lib.tls.datasets import OwnedDatasets
 
     core, namespace = tls_cluster
-    existing, values = endpoint_credentials("s3")
-    if existing:
-        secret = core.read_namespaced_secret(existing, namespace)
-        values = CredentialValues(
-            {
-                key: base64.b64decode(value).decode()
-                for key, value in (secret.data or {}).items()
-                if key
-                in {
-                    "AWS_S3_ENDPOINT",
-                    "AWS_ACCESS_KEY_ID",
-                    "AWS_SECRET_ACCESS_KEY",
-                    "AWS_DEFAULT_REGION",
-                }
-            }
-        )
-    required = {"AWS_S3_ENDPOINT", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"}
-    if any(not values.get(name) for name in required):
-        pytest.fail(
-            "S3 dataset credentials must contain endpoint, access key and secret key"
-        )
-    if not values["AWS_S3_ENDPOINT"].startswith("https://"):
-        pytest.fail("TLS dataset endpoint must use HTTPS")
     ca = service_ca("s3")
     pem = ca.get("ca_pem")
     if pem is None:
         configmap = core.read_namespaced_config_map(ca["ca_configmap"], namespace)
         pem = (configmap.data or {}).get(ca["ca_key"])
         if not pem:
-            pytest.fail(
-                "S3 CA ConfigMap does not contain the configured certificate key"
-            )
+            pytest.fail("S3 CA ConfigMap does not contain the configured certificate key")
     ca_file = tmp_path_factory.mktemp("tls-s3-ca") / "ca.pem"
     ca_file.write_text(pem)
-    client = boto3.client(
-        "s3",
-        endpoint_url=values["AWS_S3_ENDPOINT"],
-        aws_access_key_id=values["AWS_ACCESS_KEY_ID"],
-        aws_secret_access_key=values["AWS_SECRET_ACCESS_KEY"],
-        region_name=values.get("AWS_DEFAULT_REGION") or "us-east-1",
-        verify=str(ca_file),
-    )
-    owned = OwnedDatasets(client)
+    clients = {}
+    owned = OwnedDatasets(clients)
     try:
+        for kind in data_kinds:
+            existing, values = endpoint_credentials("s3", data_kind=kind)
+            required = {"AWS_S3_ENDPOINT", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"}
+            if existing:
+                secret = core.read_namespaced_secret(existing, namespace)
+                values = CredentialValues({
+                    key: base64.b64decode(value).decode()
+                    for key, value in (secret.data or {}).items()
+                    if key in required | {"AWS_DEFAULT_REGION"}
+                })
+            if any(not values.get(name) for name in required):
+                pytest.fail("S3 dataset credentials must contain endpoint, access key and secret key")
+            if not values["AWS_S3_ENDPOINT"].startswith("https://"):
+                pytest.fail("TLS dataset endpoint must use HTTPS")
+            clients[kind + "_data_bucket_name"] = boto3.client(
+                "s3",
+                endpoint_url=values["AWS_S3_ENDPOINT"],
+                aws_access_key_id=values["AWS_ACCESS_KEY_ID"],
+                aws_secret_access_key=values["AWS_SECRET_ACCESS_KEY"],
+                region_name=values.get("AWS_DEFAULT_REGION") or "us-east-1",
+                verify=str(ca_file),
+            )
         yield owned
     finally:
         try:
             owned.close()
         finally:
-            client.close()
+            for client in clients.values():
+                client.close()
+
+
+@pytest.fixture(scope="session")
+def tls_owned_datasets(tls_cluster, tmp_path_factory):
+    with _owned_s3_datasets(tls_cluster, tmp_path_factory, ("input", "test")) as owned:
+        yield owned
+
+
+@pytest.fixture(scope="session")
+def tls_runtime_s3_dataset(tls_cluster, tmp_path_factory):
+    """Upload one small object once, only when a real S3 probe is selected."""
+    from autox_tests.lib.tls.datasets import DatasetObject, DatasetPlan
+
+    bucket = os.environ.get("INPUT_DATA_BUCKET_NAME", "").strip()
+    if not bucket:
+        pytest.fail("Set INPUT_DATA_BUCKET_NAME for S3 certificate tests")
+    with _owned_s3_datasets(tls_cluster, tmp_path_factory, ("input",)) as owned:
+        key = owned.prefix + "/runtime/probe.txt"
+        plan = DatasetPlan(
+            values={"s3_key": key},
+            objects=[DatasetObject(
+                "input_data_bucket_name", key, b"AutoX TLS S3 probe\n", "text/plain",
+            )],
+        )
+        owned.prepare({"arguments": {"input_data_bucket_name": bucket}}, plan)
+        yield key
