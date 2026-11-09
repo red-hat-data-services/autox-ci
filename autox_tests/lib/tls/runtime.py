@@ -215,9 +215,15 @@ def run_job(core, namespace, image, case, material, *, profile=None, timeout=Non
             )
         assert len(pods) == 1, "Expected exactly one probe pod"
         pod = pods[0]
-        logs = core.read_namespaced_pod_log(
-            pod.metadata.name, namespace, container="probe"
-        )
+        log_error_type = None
+        try:
+            logs = core.read_namespaced_pod_log(
+                pod.metadata.name, namespace, container="probe"
+            )
+        except Exception as exc:
+            # API errors and container messages can contain credentials.
+            logs = ""
+            log_error_type = type(exc).__name__
         # Store only structured evidence; raw SDK logs may contain credentials.
         lines = [line for line in logs.splitlines() if line.startswith(RESULT_PREFIX)]
         result = (
@@ -238,11 +244,42 @@ def run_job(core, namespace, image, case, material, *, profile=None, timeout=Non
                 "job_failed": status.failed or 0,
             }
         )
+        if log_error_type:
+            result.update(
+                {
+                    "outcome": "logs_unavailable",
+                    "passed": False,
+                    "log_error_type": log_error_type,
+                    "pod_conditions": [
+                        {"type": item.type, "status": item.status, "reason": item.reason}
+                        for item in (pod.status.conditions or [])
+                    ],
+                    "container_states": [
+                        {
+                            "name": item.name,
+                            "waiting_reason": item.state.waiting.reason
+                            if item.state and item.state.waiting else None,
+                            "terminated_reason": item.state.terminated.reason
+                            if item.state and item.state.terminated else None,
+                            "exit_code": item.state.terminated.exit_code
+                            if item.state and item.state.terminated else None,
+                        }
+                        for item in (
+                            (pod.status.init_container_statuses or [])
+                            + (pod.status.container_statuses or [])
+                        )
+                    ],
+                }
+            )
         destination = Path(os.environ.get("AUTOX_TLS_REPORT_DIR", "tls-results"))
         destination.mkdir(parents=True, exist_ok=True)
-        (destination / f"{identifier}.json").write_text(
-            json.dumps(result, indent=2, sort_keys=True)
-        )
+        report_path = destination / f"{identifier}.json"
+        report_path.write_text(json.dumps(result, indent=2, sort_keys=True))
+        if log_error_type:
+            raise AssertionError(
+                "Probe startup/result retrieval failed: logs unavailable; "
+                f"inspect sanitized report {report_path}"
+            ) from None
         parsed = parse_result(logs, case)
         assert pod.status.phase == "Succeeded", (
             f"Probe report passed but Pod did not succeed (phase={pod.status.phase})"
