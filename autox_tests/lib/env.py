@@ -13,9 +13,7 @@ from typing import Literal
 _TESTS_DIR = Path(__file__).resolve().parents[1]
 
 
-def load_tests_env(
-    component: Literal["autorag", "automl"] | None = None,
-) -> None:
+def load_tests_env(component: Literal["autorag", "automl"] | None = None) -> None:
     """Load the suite's env file or ``autox_tests/.env`` if no suite is given."""
     try:
         from dotenv import load_dotenv

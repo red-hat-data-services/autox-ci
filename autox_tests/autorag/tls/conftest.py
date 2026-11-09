@@ -235,8 +235,6 @@ def tls_pipeline_source_target(tls_flow, kfp_client_tls, tmp_path_factory):
 def tls_pipeline_run_target(
     tls_flow, tls_pipeline_source_target, kfp_client_tls, tmp_path_factory, request
 ):
-    if not tls_flow.get("fault"):
-        return tls_pipeline_source_target
     from autox_tests.lib.tls.faults import prepare_maas_ca_fault
 
     target, evidence = prepare_maas_ca_fault(

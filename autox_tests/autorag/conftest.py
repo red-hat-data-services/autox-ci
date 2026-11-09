@@ -1,6 +1,5 @@
 """Pytest fixtures for AutoRAG functional tests (Documents RAG Optimization)."""
 
-import json
 import logging
 import os
 from pathlib import Path
@@ -31,20 +30,6 @@ logger = logging.getLogger(__name__)
 def pytest_configure(config: pytest.Config) -> None:
     """Load env vars from ``.env.rag`` before collection."""
     load_tests_env("autorag")
-
-
-def _parse_json_list(env_name):
-    """Parse an env var as a JSON array; return None if unset, raise on invalid JSON."""
-    raw = os.environ.get(env_name)
-    if not raw:
-        return None
-    try:
-        value = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"{env_name} is not valid JSON: {exc}") from exc
-    if not isinstance(value, list):
-        raise ValueError(f"{env_name} must be a JSON array, got {type(value).__name__}")
-    return value
 
 
 def get_functional_config():

@@ -84,9 +84,9 @@ class TLSRuntimeConfig:
         return data
 
 
-def get_runtime_configs(kind, *, filter_tags=True):
+def get_runtime_configs(kind):
     configs = [TLSRuntimeConfig(**item) for item in _read_catalog(kind)]
-    return _filter_by_tags(configs) if filter_tags else configs
+    return _filter_by_tags(configs)
 
 
 def resolve_service_profile(test_config, *, backend_secret=None, core=None, namespace=None):
@@ -128,8 +128,6 @@ def resolve_service_profile(test_config, *, backend_secret=None, core=None, name
     if not image:
         raise ValueError("AUTOX_TLS_AUTORAG_IMAGE is required for runtime probes")
     return {
-        "id": test_config.engine + "-" + test_config.certificate,
-        "engine": test_config.engine,
         "local_s3_fixture": local_s3_fixture,
         "local_milvus_fixture": local_milvus_fixture,
         "image": image,
@@ -193,7 +191,6 @@ class TLSFlowConfig:
     __test__ = False
 
     id: str
-    family: str
     expected: str
     tags: list[str]
     definition: dict = field(repr=False)
@@ -208,7 +205,7 @@ class TLSFlowConfig:
         return flow
 
 
-def get_flow_configs(*, filter_tags=True):
+def get_flow_configs():
     configs = []
     for item in _read_catalog("flow"):
         if (
@@ -222,10 +219,10 @@ def get_flow_configs(*, filter_tags=True):
             [
                 "pipeline",
                 item["family"],
-                "positive" if item["expected"] == "success" else "negative",
+                "negative",
             ],
         )
         configs.append(
-            TLSFlowConfig(item["id"], item["family"], item["expected"], tags, item)
+            TLSFlowConfig(item["id"], item["expected"], tags, item)
         )
-    return _filter_by_tags(configs) if filter_tags else configs
+    return _filter_by_tags(configs)
