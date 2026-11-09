@@ -45,6 +45,7 @@ Options:
   -h, --help               Show this message and exit.
 
 Everything after "--" is forwarded to pytest verbatim.
+For --suite tls, pass marker expressions before "--"; extra pytest -m is rejected.
 
 Examples:
   # AutoML — all tests
@@ -181,6 +182,15 @@ fi
 # Run the TLS subsets separately so .env.ml and .env.rag cannot overwrite
 # each other's shared setting names. A product participates when it has tls/.
 if [[ "$SUITE" == "tls" ]]; then
+    for PYTEST_ARG in ${PYTEST_EXTRA_ARGS[@]+"${PYTEST_EXTRA_ARGS[@]}"}; do
+        [[ "$PYTEST_ARG" == -- ]] && break
+        case "$PYTEST_ARG" in
+            -m*)
+                echo 'error: --suite tls does not accept pytest -m after --; pass the marker expression before -- to combine it with tls' >&2
+                exit 1
+                ;;
+        esac
+    done
     TLS_ARGS=()
     for ENV_FILE in ${ENV_FILES[@]+"${ENV_FILES[@]}"}; do
         TLS_ARGS+=(--env-file "$ENV_FILE")
