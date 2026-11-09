@@ -22,6 +22,7 @@ dependencies = [
 [project.optional-dependencies]
 # Same runtime stack as `dependencies`; kept for `pip install -e ".[test_rhoai]"` compatibility.
 test_rhoai = []
+tls = ["cryptography>=42", "kfp-kubernetes>=2.16.1"]
 # AutoML and AutoRAG benchmarking orchestration + dataset generation
 benchmarks = [
   "pandas>=2.0",
@@ -54,8 +55,10 @@ packages = ["autox_tests", "autox_tests.lib"]
 testpaths = [
   "autox_tests/automl",
   "autox_tests/autorag",
+  "autox_tests/tls",
 ]
 markers = [
+  "tls: opt-in certificate runtime and pipeline integration tests",
   "integration: integration tests hitting live cluster/APIs",
   "openshift_ai: OpenShift AI / RHOAI scenarios",
   "pipeline_negative: tests that expect pipeline failure or rejection",

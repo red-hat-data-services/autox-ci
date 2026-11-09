@@ -45,5 +45,6 @@ def make_s3_client(config):
         aws_access_key_id=config["s3_access_key"],
         aws_secret_access_key=config["s3_secret_key"],
         region_name=config["s3_region"],
-        verify=verify_ssl,
+        verify=(os.environ.get("AWS_CA_BUNDLE", "").strip() or True)
+        if verify_ssl else False,
     )

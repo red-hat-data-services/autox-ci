@@ -1,4 +1,5 @@
 **/.env
+tls-results/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -219,9 +220,11 @@ results/
 .idea/
 **/.env.ml*
 **/.env.rag*
+**/.env.tls*
 
 !**/.env.ml.example
 !**/.env.rag.example
+!**/.env.tls.example
 
 # Local documents and files
 local/

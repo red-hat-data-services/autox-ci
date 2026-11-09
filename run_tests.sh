@@ -15,12 +15,13 @@ Arguments:
                            Omit to run all tests in the selected suite.
 
 Options:
-  -s, --suite SUITE        Test suite to run: automl | autorag | all.
+  -s, --suite SUITE        Test suite to run: automl | autorag | tls | all.
                            Sets the tags env var and test path.
   -t, --tags TAGS          Comma-separated tags for scenario filtering (matched
                            against the 'tags' field in test config JSON files).
                            Exported as AUTOML_FUNCTIONAL_TESTS_TAGS for automl,
-                           AUTORAG_FUNCTIONAL_TESTS_TAGS for autorag (both when
+                           AUTORAG_FUNCTIONAL_TESTS_TAGS for autorag,
+                           AUTOX_TLS_TESTS_TAGS for tls (AutoML/AutoRAG when
                            --suite all).
   --env-file FILE          Source a .env file before running. May be repeated to
                            source multiple files in order. Shell-exported vars
@@ -172,8 +173,8 @@ done
 
 # ── Validate suite ───────────────────────────────────────────────────────────
 
-if [[ -n "$SUITE" && "$SUITE" != "automl" && "$SUITE" != "autorag" && "$SUITE" != "all" ]]; then
-    echo "error: --suite must be 'automl', 'autorag', or 'all', got '$SUITE'" >&2
+if [[ -n "$SUITE" && "$SUITE" != "automl" && "$SUITE" != "autorag" && "$SUITE" != "tls" && "$SUITE" != "all" ]]; then
+    echo "error: --suite must be 'automl', 'autorag', 'tls', or 'all', got '$SUITE'" >&2
     exit 1
 fi
 
@@ -195,7 +196,10 @@ fi
 
 # ── DSPA auto-setup (default when RHOAI_KFP_URL is unset in .env) ───────────
 
-if [[ -z "${RHOAI_KFP_URL:-}" && -z "${KFP_HOST:-}" ]]; then
+if [[ "$SUITE" == "tls" ]]; then
+    export RHOAI_CREATE_DSPA=false
+    echo "cluster: TLS uses existing namespace/DSPA; automatic setup disabled"
+elif [[ -z "${RHOAI_KFP_URL:-}" && -z "${KFP_HOST:-}" ]]; then
     case "${RHOAI_CREATE_DSPA:-}" in
         false|0|no|off) ;;  # user explicitly disabled
         *) export RHOAI_CREATE_DSPA=true
@@ -212,8 +216,13 @@ elif [[ -n "${AUTOML_TABULAR_PIPELINE_PATH:-}" || -n "${AUTOML_TIMESERIES_PIPELI
     export RHOAI_USE_MANAGED_PIPELINES=false
     echo "pipeline: legacy package upload (pipeline path set in environment)"
 elif [[ -z "${RHOAI_USE_MANAGED_PIPELINES:-}" ]]; then
-    export RHOAI_USE_MANAGED_PIPELINES=true
-    echo "pipeline: DSPA managed pipelines (default; no pipeline.yaml required)"
+    if [[ "$SUITE" == "tls" ]]; then
+        # Let pytest load .env.tls before resolving the default pipeline source.
+        echo "pipeline: TLS resolves managed/YAML settings from .env.tls"
+    else
+        export RHOAI_USE_MANAGED_PIPELINES=true
+        echo "pipeline: DSPA managed pipelines (default; no pipeline.yaml required)"
+    fi
 fi
 if [[ -n "$TABULAR_PIPELINE" ]]; then
     export AUTOML_TABULAR_PIPELINE_PATH="$TABULAR_PIPELINE"
@@ -256,6 +265,11 @@ case "$SUITE" in
             export AUTORAG_FUNCTIONAL_TESTS_TAGS="$TESTS_TAGS"
         fi
         ;;
+    tls)
+        if [[ -n "$TESTS_TAGS" ]]; then
+            export AUTOX_TLS_TESTS_TAGS="$TESTS_TAGS"
+        fi
+        ;;
     all)
         if [[ -n "$TESTS_TAGS" ]]; then
             export AUTOML_FUNCTIONAL_TESTS_TAGS="$TESTS_TAGS"
@@ -266,12 +280,15 @@ case "$SUITE" in
 esac
 
 PYTEST_CMD=(uv run --project "$SCRIPT_DIR")
+if [[ "$SUITE" == "tls" ]]; then
+    PYTEST_CMD+=(--extra tls)
+fi
 
 PYTEST_CMD+=(pytest --rootdir "$SCRIPT_DIR")
 
 if [[ -n "$MARKER_EXPR" ]]; then
     PYTEST_CMD+=(-m "$MARKER_EXPR")
-elif [[ "$SUITE" == "automl" ]]; then
+elif [[ "$SUITE" == "automl" || "$SUITE" == "tls" ]]; then
     PYTEST_CMD+=(-m "not config")
 fi
 
@@ -279,6 +296,7 @@ fi
 case "$SUITE" in
     automl)  PYTEST_CMD+=(autox_tests/automl/) ;;
     autorag) PYTEST_CMD+=(autox_tests/autorag/) ;;
+    tls)     PYTEST_CMD+=(autox_tests/tls/) ;;
     all)     PYTEST_CMD+=(autox_tests/automl/ autox_tests/autorag/) ;;
 esac
 
@@ -294,6 +312,7 @@ DISPLAY_PREFIX=""
 if [[ -n "$TESTS_TAGS" ]]; then
     case "$SUITE" in
         automl)  DISPLAY_PREFIX="AUTOML_FUNCTIONAL_TESTS_TAGS=\"$TESTS_TAGS\" " ;;
+        tls)     DISPLAY_PREFIX="AUTOX_TLS_TESTS_TAGS=\"$TESTS_TAGS\" " ;;
         autorag) DISPLAY_PREFIX="AUTORAG_FUNCTIONAL_TESTS_TAGS=\"$TESTS_TAGS\" " ;;
         all)     DISPLAY_PREFIX="AUTOML_FUNCTIONAL_TESTS_TAGS=\"$TESTS_TAGS\" AUTORAG_FUNCTIONAL_TESTS_TAGS=\"$TESTS_TAGS\" " ;;
     esac
