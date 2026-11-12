@@ -6,8 +6,8 @@
     "timestamp_column": "Date",
     "known_covariates_names": ["Price_max"],
     "prediction_length": 7,
-    "top_n": 1,
-    "eval_metric": "WQL",
+    "top_n": 3,
+    "eval_metric": "mean_absolute_scaled_error",
     "train_data_file_key": "functional-test/timeseries/fruits_daily_price.csv",
     "tags": ["timeseries", "smoke", "renamed_schema", "covariate"],
     "run_notebook": true,
@@ -141,6 +141,24 @@
       { "timestamp": "2024-01-05 05:00:00", "sales": 36.7 },
       { "timestamp": "2024-01-05 06:00:00", "sales": 35.6 }
     ]
+  },
+  {
+    "id": "TC-B-5_timeseries_gaps_auto_frequency",
+    "target": "target",
+    "id_column": "item_id",
+    "timestamp_column": "timestamp",
+    "known_covariates_names": [],
+    "prediction_length": 7,
+    "top_n": 1,
+    "eval_metric": "MASE",
+    "train_data_file_key": "functional-test/timeseries/daily_panel_with_gaps.csv",
+    "tags": [
+      "timeseries",
+      "daily",
+      "irregular_frequency"
+    ],
+    "dataset_comment": "Synthetic panel: 3 series over 150 calendar days from 2024-01-01. For series i=0..2, omit days where (day+i)%11 is 4 or 5, or (day+2*i)%17 is 9. Each series has 1-, 2- and 3-day gaps, including selection and holdout data, with a strict majority of daily steps and weekend observations. Targets = 100+30*i+0.2*day+[0,3,5,2,-1,-4,-2][day%7].",
+    "expected_outcome": "Without an explicit freq, strict frequency inference fails on every series; automatic fallback resolves a shared D grid. Selection, refit and evaluation succeed and produce models, MASE metrics, leaderboard, test dataset and experiment notebook artifacts."
   },
   {
     "id": "TC-NB-1_invalid_target",
