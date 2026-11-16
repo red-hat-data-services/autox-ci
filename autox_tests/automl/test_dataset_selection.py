@@ -18,6 +18,19 @@ _CREDIT_TRAIN = _TABULAR + "classification_binary/german_credit_data_biased_trai
 _CREDIT_TEST = _TABULAR + "classification_binary/german_credit_data_biased_test.csv"
 _CASES_TRAIN = _TIMESERIES + "poland_daily_cases_03_03_2021.csv"
 _CASES_TEST = _TIMESERIES + "poland_daily_cases_03_04-28_2021.csv"
+_ENERGY_PARQUET = _TABULAR + "regression/energy_efficiency_regression_zstd.parquet"
+_CREDIT_DEFAULT_PARQUET = (
+    _TABULAR + "classification_binary/credit_default_binary_light_gzip.parquet"
+)
+_WINE_PARQUET = (
+    _TABULAR
+    + "classification_multiclass/wine_quality_multiclass_limited_classes_light_snappy.parquet"
+)
+_CREDIT_TRAIN_PARQUET = (
+    _TABULAR + "classification_binary/german_credit_data_biased_train_uncompressed.parquet"
+)
+_M4_PARQUET = _TIMESERIES + "m4_hourly_subset_train_ultra_light_brotli.parquet"
+_CASES_TEST_PARQUET = _TIMESERIES + "poland_daily_cases_03_04-28_2021_snappy.parquet"
 
 
 @pytest.mark.parametrize(
@@ -27,15 +40,14 @@ _CASES_TEST = _TIMESERIES + "poland_daily_cases_03_04-28_2021.csv"
             [], "", True,
             [
                 _TITANIC, _HOUSING, _CREDIT_TRAIN, _CREDIT_TEST,
-                _TABULAR + "classification_binary/credit_default_binary_light.csv",
                 _TABULAR + "classification_binary/german_credit_data_biased_test_missing_features.csv",
                 _TABULAR + "classification_multiclass/car_rental_training_data_light.csv",
-                _TABULAR + "classification_multiclass/wine_quality_multiclass_limited_classes_light.csv",
-                _TABULAR + "regression/energy_efficiency_regression.csv",
                 _TIMESERIES + "fruits_daily_price.csv",
                 _TIMESERIES + "m4_hourly_subset_train_ultra_light.csv",
                 _CASES_TRAIN, _CASES_TEST,
                 _TIMESERIES + "demand_single_item.csv",
+                _ENERGY_PARQUET, _CREDIT_DEFAULT_PARQUET, _WINE_PARQUET,
+                _CREDIT_TRAIN_PARQUET, _M4_PARQUET, _CASES_TEST_PARQUET,
             ],
             [
                 "functional-test/neg/tc-na-4/does-not-exist-00000000.csv",
@@ -43,7 +55,7 @@ _CASES_TEST = _TIMESERIES + "poland_daily_cases_03_04-28_2021.csv"
                 "functional-test/neg/tc-nb-3/does-not-exist-00000000.csv",
                 "functional-test/neg/tc-nb-6/does-not-exist-user-test.csv",
             ],
-            27,
+            29,
         ),
         (
             [], "smoke", True,
@@ -61,7 +73,11 @@ _CASES_TEST = _TIMESERIES + "poland_daily_cases_03_04-28_2021.csv"
             ["-k", "TC-A-7 or TC-B-3"], "", True,
             [_CREDIT_TRAIN, _CREDIT_TEST, _CASES_TRAIN, _CASES_TEST], [], 2,
         ),
-        (["-k", "TC-A-1 or TC-NA-1"], "", True, [_HOUSING], [], 2),
+        (
+            # Full scenario IDs: a bare "TC-A-1" would substring-match TC-A-11 too.
+            ["-k", "TC-A-1_regression or TC-NA-1_invalid_task_type"], "", True,
+            [_HOUSING], [], 2,
+        ),
         (
             ["-k", "TC-NA-7 or TC-NB-6"], "", True,
             [_CREDIT_TRAIN, _CASES_TRAIN],
@@ -75,11 +91,12 @@ _CASES_TEST = _TIMESERIES + "poland_daily_cases_03_04-28_2021.csv"
             ["-m", "timeseries and positive"], "", True,
             [
                 _TIMESERIES + "fruits_daily_price.csv",
-                _TIMESERIES + "m4_hourly_subset_train_ultra_light.csv",
+                _M4_PARQUET,
                 _CASES_TRAIN, _CASES_TEST,
                 _TIMESERIES + "demand_single_item.csv",
+                _CASES_TEST_PARQUET,
             ],
-            [], 4,
+            [], 5,
         ),
         (
             ["-k", "TC-A-2 or TC-B-3", "-m", "timeseries and positive"],

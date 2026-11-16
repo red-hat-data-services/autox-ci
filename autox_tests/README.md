@@ -222,6 +222,9 @@ pytest autox_tests/automl/ -k "TC-A-1_regression" -v
 
 # User-provided test dataset scenarios (requires IR with test_data_bucket_name + test_data_file_key)
 AUTOML_FUNCTIONAL_TESTS_TAGS=user_test_data pytest autox_tests/automl/ -v
+
+# Parquet input-format scenarios (per-codec train data + mixed-format user test data)
+AUTOML_FUNCTIONAL_TESTS_TAGS=parquet pytest autox_tests/automl/ -v
 ```
 
 ### Test scenarios
@@ -233,10 +236,11 @@ AUTOML_FUNCTIONAL_TESTS_TAGS=user_test_data pytest autox_tests/automl/ -v
 | TC-A-1_regression | regression | housing pricing | `price` | 1 | smoke |
 | TC-A-2_binary_classification | binary | Titanic | `Survived` | 3 | smoke |
 | TC-A-3_multiclass | multiclass | car rental | `Action` | 2 | — |
-| TC-A-4_energy_regression | regression | UCI Energy Efficiency | `Heating.Load` | 5 | — |
-| TC-A-5_credit_default_binary | binary | UCI Credit Default | `default.payment.next.month` | 3 | — |
-| TC-A-6_wine_multiclass | multiclass | UCI Wine Quality (red+white) | `quality` | 1 | — |
+| TC-A-4_energy_regression | regression | UCI Energy Efficiency (Parquet, zstd) | `Heating.Load` | 5 | parquet |
+| TC-A-5_credit_default_binary | binary | UCI Credit Default (Parquet, gzip) | `default.payment.next.month` | 3 | parquet |
+| TC-A-6_wine_multiclass | multiclass | UCI Wine Quality (red+white) (Parquet, snappy) | `quality` | 1 | parquet |
 | TC-A-7_user_provided_test_data | binary | German credit (biased) train + test | `Risk` | 1 | user_test_data |
+| TC-A-11_user_test_data_parquet_train_csv_test | binary | German credit (biased): Parquet train + CSV test | `Risk` | 1 | parquet, user_test_data, mixed_format |
 | TC-NA-1_invalid_task_type | — | — | — | — | negative, validation |
 | TC-NA-2_invalid_top_n_zero | — | — | — | — | negative, validation |
 | TC-NA-3_label_column_absent | — | — | — | — | negative, data |
@@ -251,8 +255,10 @@ AUTOML_FUNCTIONAL_TESTS_TAGS=user_test_data pytest autox_tests/automl/ -v
 | ID | Frequency | Dataset | Tags |
 |---|---|---|---|
 | TC-B-1_timeseries_fruits_with_covariate | daily | fruits daily price (with covariate) | smoke, renamed_schema, covariate |
-| TC-B-2_timeseries_m4_hourly | hourly | M4 hourly subset | hourly, standard_schema |
+| TC-B-2_timeseries_m4_hourly | hourly | M4 hourly subset (Parquet, brotli) | hourly, standard_schema, parquet |
 | TC-B-3_user_provided_test_data | daily | Poland COVID-19 cases train + test | user_test_data |
+| TC-B-4_timeseries_two_column_synthetic_id | hourly | single-item demand (two-column) | smoke, two_column, synthetic_id |
+| TC-B-6_user_test_data_csv_train_parquet_test | daily | Poland COVID-19 cases: CSV train + Parquet test | parquet, user_test_data, mixed_format |
 | TC-NB-1_invalid_target | — | — | negative, data |
 | TC-NB-2_invalid_prediction_length | — | — | negative, validation |
 | TC-NB-3_missing_s3_object | — | — | negative, storage |
@@ -263,7 +269,7 @@ AUTOML_FUNCTIONAL_TESTS_TAGS=user_test_data pytest autox_tests/automl/ -v
 
 ### Test data sources
 
-Training datasets used by the positive scenarios are stored in the S3 bucket defined by `RHOAI_TRAIN_DATA_BUCKET`. The files for the original scenarios ship in `automl/data/` for local reference; the three datasets added for RHAIENG-4179 pairwise coverage are described below.
+Training datasets used by the positive scenarios are stored in the S3 bucket defined by `RHOAI_TRAIN_DATA_BUCKET`. The files for the original scenarios ship in `automl/data/` for local reference; the three datasets added for RHAIENG-4179 pairwise coverage are described below, along with the Parquet variants used by the `parquet`-tagged scenarios.
 
 #### User-provided test datasets
 
@@ -280,9 +286,34 @@ These `user_test_data` scenarios require compiled AutoML pipeline IR that declar
 
 | Scenario | S3 key | Origin | Preparation |
 |---|---|---|---|
-| TC-A-4 | `functional-test/tabular/regression/energy_efficiency_regression.csv` | [UCI Energy Efficiency](https://archive.ics.uci.edu/dataset/242/energy+efficiency) — Tsanas & Xifara (2012) | Exported from the original `.xlsx`; columns renamed with dot notation: `X1`→`Relative.Compactness`, `Y1`→`Heating.Load`, etc. Target is `Heating.Load`; `Cooling.Load` is retained as a feature. Source file: `automl/data/regression/energy_efficiency_regression.xlsx`. |
-| TC-A-5 | `functional-test/tabular/classification_binary/credit_default_binary.csv` | [UCI Default of Credit Card Clients](https://archive.ics.uci.edu/dataset/350/default+of+credit+card+clients) — Yeh & Lien (2009) | Read with `header=1` to skip the secondary `X1…X24` header row present in the original XLS. Label column renamed from `default payment next month` (spaces) to `default.payment.next.month` (dots) to exercise the dot-style label path. Source file: `automl/data/regression/default of credit card clients.xls`. |
-| TC-A-6 | `functional-test/tabular/classification_multiclass/wine_quality_multiclass_limited_classes.csv` | [UCI Wine Quality](https://archive.ics.uci.edu/dataset/186/wine+quality) — Cortez et al. (2009) | Red (`winequality-red.csv`) and white (`winequality-white.csv`) files merged with `pd.concat`. Classes with fewer than 50 samples removed (`quality=3` with 30 rows, `quality=9` with 5 rows) to avoid NaN pseudo-labels during AutoGluon's stacking full-refit. Final dataset: 6,462 rows, classes 4–8. Source files: `automl/data/classification_multi/winequality-red.csv`, `automl/data/classification_multi/winequality-white.csv`. |
+| TC-A-4 | `functional-test/tabular/regression/energy_efficiency_regression_zstd.parquet` | [UCI Energy Efficiency](https://archive.ics.uci.edu/dataset/242/energy+efficiency) — Tsanas & Xifara (2012) | Exported from the original `.xlsx`; columns renamed with dot notation: `X1`→`Relative.Compactness`, `Y1`→`Heating.Load`, etc. Target is `Heating.Load`; `Cooling.Load` is retained as a feature. Source file: `automl/data/regression/energy_efficiency_regression.xlsx`. Scenario input is the Parquet (zstd) conversion — see [Parquet datasets](#parquet-datasets). |
+| TC-A-5 | `functional-test/tabular/classification_binary/credit_default_binary_light_gzip.parquet` | [UCI Default of Credit Card Clients](https://archive.ics.uci.edu/dataset/350/default+of+credit+card+clients) — Yeh & Lien (2009) | Read with `header=1` to skip the secondary `X1…X24` header row present in the original XLS. Label column renamed from `default payment next month` (spaces) to `default.payment.next.month` (dots) to exercise the dot-style label path. Source file: `automl/data/regression/default of credit card clients.xls`. Scenario input is the Parquet (gzip) conversion of the 2000-row light subset — see [Parquet datasets](#parquet-datasets). |
+| TC-A-6 | `functional-test/tabular/classification_multiclass/wine_quality_multiclass_limited_classes_light_snappy.parquet` | [UCI Wine Quality](https://archive.ics.uci.edu/dataset/186/wine+quality) — Cortez et al. (2009) | Red (`winequality-red.csv`) and white (`winequality-white.csv`) files merged with `pd.concat`. Classes with fewer than 50 samples removed (`quality=3` with 30 rows, `quality=9` with 5 rows) to avoid NaN pseudo-labels during AutoGluon's stacking full-refit. Final dataset: 6,462 rows, classes 4–8. Source files: `automl/data/classification_multi/winequality-red.csv`, `automl/data/classification_multi/winequality-white.csv`. Scenario input is the Parquet (snappy) conversion of the 2000-row light subset — see [Parquet datasets](#parquet-datasets). |
+
+#### Parquet datasets
+
+The `parquet`-tagged scenarios verify that the AutoML pipelines accept Parquet input in addition to CSV. Instead of adding scenarios, four existing ones were switched to Parquet train data (TC-A-4, TC-A-5, TC-A-6, TC-B-2), so the suite's run count grows only by the two mixed-format `user_test_data` scenarios. CSV coverage is retained where it matters — the smoke scenarios (TC-A-1, TC-A-2, TC-B-1), one CSV scenario per tabular problem type (TC-A-1/2/3), the pure CSV user-test scenarios (TC-A-7, TC-B-3), and every negative/fault scenario stay on CSV.
+
+Each Parquet file is a schema-faithful conversion of the corresponding CSV — same columns, order, and values; numeric columns keep the types pandas infers and date-like strings stay strings — so the input format is the only variable under test. The compression codec is part of the filename, and the scenarios together cover snappy, gzip, zstd, brotli and uncompressed Parquet:
+
+| Scenario | S3 key | Codec | Source CSV |
+|---|---|---|---|
+| TC-A-4 | `functional-test/tabular/regression/energy_efficiency_regression_zstd.parquet` | zstd | `energy_efficiency_regression.csv` |
+| TC-A-5 | `functional-test/tabular/classification_binary/credit_default_binary_light_gzip.parquet` | gzip | `credit_default_binary_light.csv` |
+| TC-A-6 | `functional-test/tabular/classification_multiclass/wine_quality_multiclass_limited_classes_light_snappy.parquet` | snappy | `wine_quality_multiclass_limited_classes_light.csv` |
+| TC-A-11 | `functional-test/tabular/classification_binary/german_credit_data_biased_train_uncompressed.parquet` | none (uncompressed) | `german_credit_data_biased_train.csv` |
+| TC-B-2 | `functional-test/timeseries/m4_hourly_subset_train_ultra_light_brotli.parquet` | brotli | `m4_hourly_subset_train_ultra_light.csv` |
+| TC-B-6 | `functional-test/timeseries/poland_daily_cases_03_04-28_2021_snappy.parquet` | snappy | `poland_daily_cases_03_04-28_2021.csv` |
+
+TC-A-11 and TC-B-6 are mixed-format `user_test_data` scenarios — TC-A-11 trains on Parquet with a CSV user test set, TC-B-6 trains on CSV with a Parquet user test set — so both directions of format mixing between `train_data_file_key` and `test_data_file_key` are covered. The mixed pairing is deliberately the harder case: Parquet delivers typed columns while CSV forces type inference, so the loader must reconcile types across differently-typed sources. Like the other `user_test_data` scenarios, they require IR with `test_data_bucket_name` / `test_data_file_key` inputs.
+
+Regenerate the Parquet files after changing any source CSV:
+
+```bash
+uv run --extra benchmarks python autox_tests/scripts/generate_parquet_datasets.py
+```
+
+The script round-trip checks every file (the Parquet must deserialize to the source data) and verifies the requested codec is applied to all column chunks. Source CSVs stay in `automl/data/` even when no scenario uploads them anymore — they are the generation inputs. Run only the Parquet scenarios with `AUTOML_FUNCTIONAL_TESTS_TAGS=parquet`.
 
 #### `inference_sample` format
 

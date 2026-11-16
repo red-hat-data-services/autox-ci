@@ -1539,9 +1539,10 @@ def upload_test_datasets(
     local_data_dir: Path,
     optional_keys: list[str] | None = None,
 ) -> list[str]:
-    """Upload local CSV files to S3 for each key in s3_keys that has a matching local file.
+    """Upload local CSV/Parquet dataset files to S3 for each key in s3_keys with a local match.
 
-    Matching is done by filename only (basename), so local directory layout does not need
+    Matching is done by filename only (basename, extension included — ``data.csv`` and
+    ``data.parquet`` are distinct files), so local directory layout does not need
     to mirror the S3 key prefix structure. Only keys listed in ``optional_keys`` — the
     intentionally absent ones behind missing-object faults — may go unmatched; any other
     key without a local file, or whose upload fails, raises. A fixture that silently never
@@ -1557,15 +1558,16 @@ def upload_test_datasets(
     optional = set(optional_keys or ())
 
     local_index: dict[str, Path] = {}
-    for f in local_data_dir.rglob("*.csv"):
-        if f.name in local_index:
-            logger.warning(
-                "Duplicate local filename %r: %s shadows %s — using the latter",
-                f.name,
-                local_index[f.name],
-                f,
-            )
-        local_index[f.name] = f
+    for pattern in ("*.csv", "*.parquet"):
+        for f in local_data_dir.rglob(pattern):
+            if f.name in local_index:
+                logger.warning(
+                    "Duplicate local filename %r: %s shadows %s — using the latter",
+                    f.name,
+                    local_index[f.name],
+                    f,
+                )
+            local_index[f.name] = f
 
     uploaded_keys: list[str] = []
     unmatched: list[str] = []
@@ -1595,7 +1597,7 @@ def upload_test_datasets(
         problems = []
         if unmatched:
             problems.append(
-                f"no local CSV found under {local_data_dir} for: {unmatched} "
+                f"no local CSV/Parquet file found under {local_data_dir} for: {unmatched} "
                 "(matching is by filename only; add the file, or declare the key in "
                 "missing_object_keys if its absence is the injected fault)"
             )

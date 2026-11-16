@@ -2,6 +2,7 @@
 
 from datetime import datetime, timedelta
 from io import BytesIO
+from pathlib import Path
 
 import pytest
 import pyarrow as pa
@@ -16,6 +17,7 @@ from autox_tests.automl import utils
 from autox_tests.automl.utils import (
     assert_sampled_test_dataset,
     find_test_dataset_artifact,
+    upload_test_datasets,
 )
 
 pytestmark = pytest.mark.config
@@ -83,6 +85,113 @@ def test_user_test_keys_are_included_for_s3_upload() -> None:
     assert any(k.endswith("german_credit_data_biased_test_missing_features.csv") for k in keys)
     assert any(k.endswith("poland_daily_cases_03_03_2021.csv") for k in keys)
     assert any(k.endswith("poland_daily_cases_03_04-28_2021.csv") for k in keys)
+
+
+def test_switched_scenarios_use_parquet_train_keys() -> None:
+    tabular = {c.id: c for c in get_tabular_configs_for_run("positive")}
+    switched = {
+        "TC-A-4_energy_regression": "energy_efficiency_regression_zstd.parquet",
+        "TC-A-5_credit_default_binary": "credit_default_binary_light_gzip.parquet",
+        "TC-A-6_wine_multiclass": (
+            "wine_quality_multiclass_limited_classes_light_snappy.parquet"
+        ),
+    }
+    for scenario_id, filename in switched.items():
+        cfg = tabular[scenario_id]
+        assert cfg.train_data_file_key.endswith(filename), scenario_id
+        assert "parquet" in cfg.tags, scenario_id
+
+    timeseries = {c.id: c for c in get_timeseries_configs_for_run("positive")}
+    cfg = timeseries["TC-B-2_timeseries_m4_hourly"]
+    assert cfg.train_data_file_key.endswith(
+        "m4_hourly_subset_train_ultra_light_brotli.parquet"
+    )
+    assert "parquet" in cfg.tags
+
+
+def test_csv_scenarios_keep_csv_train_keys_after_parquet_switch() -> None:
+    """The parquet switch must not leave a problem type without CSV coverage."""
+    tabular = {
+        "TC-A-1_regression": "housing_pricing.csv",
+        "TC-A-2_binary_classification": "titanic.csv",
+        "TC-A-3_multiclass": "car_rental_training_data_light.csv",
+    }
+    for scenario_id, filename in tabular.items():
+        cfg = next(
+            c
+            for c in get_tabular_configs_for_run("positive")
+            if c.id == scenario_id
+        )
+        assert cfg.train_data_file_key.endswith(filename), scenario_id
+        assert "parquet" not in cfg.tags, scenario_id
+
+
+def test_tabular_mixed_format_scenario_parquet_train_csv_test() -> None:
+    cfg = next(
+        c
+        for c in get_tabular_configs_for_run("positive")
+        if c.id == "TC-A-11_user_test_data_parquet_train_csv_test"
+    )
+    args = cfg.get_pipeline_arguments(_BASE)
+    assert args["train_data_file_key"].endswith(
+        "german_credit_data_biased_train_uncompressed.parquet"
+    )
+    assert args["test_data_file_key"].endswith("german_credit_data_biased_test.csv")
+    assert args["test_data_bucket_name"] == "train-bucket"
+    assert "test_data_secret_name" not in args
+    assert cfg.expected_test_dataset_rows == 400
+
+
+def test_timeseries_mixed_format_scenario_csv_train_parquet_test() -> None:
+    cfg = next(
+        c
+        for c in get_timeseries_configs_for_run("positive")
+        if c.id == "TC-B-6_user_test_data_csv_train_parquet_test"
+    )
+    args = cfg.get_pipeline_arguments(_BASE)
+    assert args["train_data_file_key"].endswith("poland_daily_cases_03_03_2021.csv")
+    assert args["test_data_file_key"].endswith(
+        "poland_daily_cases_03_04-28_2021_snappy.parquet"
+    )
+    assert args["test_data_bucket_name"] == "train-bucket"
+    assert "test_data_secret_name" not in args
+    assert cfg.expected_test_dataset_rows == 25
+    assert cfg.expected_test_dataset_contains == "2021-03-28"
+
+
+def test_parquet_keys_are_included_for_s3_upload() -> None:
+    keys = get_all_train_data_file_keys()
+    for filename in (
+        "energy_efficiency_regression_zstd.parquet",
+        "credit_default_binary_light_gzip.parquet",
+        "wine_quality_multiclass_limited_classes_light_snappy.parquet",
+        "german_credit_data_biased_train_uncompressed.parquet",
+        "m4_hourly_subset_train_ultra_light_brotli.parquet",
+        "poland_daily_cases_03_04-28_2021_snappy.parquet",
+    ):
+        assert any(k.endswith(filename) for k in keys), filename
+
+
+def test_upload_test_datasets_matches_parquet_by_filename(tmp_path) -> None:
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    parquet_file = data_dir / "energy_efficiency_regression_zstd.parquet"
+    parquet_file.write_bytes(b"PAR1")  # content is irrelevant — upload is pass-through
+    (data_dir / "unrelated.txt").write_text("not a dataset")
+
+    class _FakeS3:
+        def __init__(self) -> None:
+            self.uploads: list[tuple[str, str]] = []
+
+        def upload_file(self, filename: str, bucket: str, key: str) -> None:
+            assert Path(filename) == parquet_file
+            self.uploads.append((bucket, key))
+
+    client = _FakeS3()
+    key = "functional-test/tabular/regression/energy_efficiency_regression_zstd.parquet"
+    uploaded = upload_test_datasets(client, "train-bucket", [key], data_dir)
+    assert uploaded == [key]
+    assert client.uploads == [("train-bucket", key)]
 
 
 def test_assert_sampled_test_dataset_accepts_matching_csv() -> None:
