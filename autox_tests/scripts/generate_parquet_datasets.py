@@ -9,7 +9,10 @@ the CSV scenarios see and the input format is the only variable under test.
 
 The compression codec is part of the filename (``*_snappy.parquet``, ``*_gzip.parquet``,
 ...) so a failing scenario can be traced to its codec from the S3 key alone. The suite
-covers snappy, gzip, zstd, brotli and uncompressed Parquet — see the "Parquet datasets"
+covers snappy, gzip, zstd and uncompressed Parquet — the codecs the pipeline image's
+pyarrow build supports. Brotli is deliberately not covered: the pyarrow build in the
+odh-automl image is compiled without the brotli codec, so brotli-compressed Parquet
+cannot be read by the pipelines (known product limitation) — see the "Parquet datasets"
 section in autox_tests/README.md. Source CSVs stay in ``automl/data/`` even when no
 scenario uploads them anymore: they are the generation inputs for these Parquet files.
 
@@ -57,8 +60,8 @@ CONVERSIONS: list[tuple[str, str, str | None]] = [
     # Time series — TC-B-2_timeseries_m4_hourly (switched from CSV)
     (
         "timeseries/m4_hourly_subset_train_ultra_light.csv",
-        "timeseries/m4_hourly_subset_train_ultra_light_brotli.parquet",
-        "brotli",
+        "timeseries/m4_hourly_subset_train_ultra_light_zstd.parquet",
+        "zstd",
     ),
     # Time series, user test data: CSV train + Parquet test —
     # TC-B-5_user_test_data_csv_train_parquet_test

@@ -59,7 +59,7 @@
     "known_covariates_names": [],
     "prediction_length": 24,
     "top_n": 2,
-    "train_data_file_key": "functional-test/timeseries/m4_hourly_subset_train_ultra_light_brotli.parquet",
+    "train_data_file_key": "functional-test/timeseries/m4_hourly_subset_train_ultra_light_zstd.parquet",
     "tags": ["timeseries", "hourly", "standard_schema", "parquet"],
     "run_notebook": false,
     "deploy": true,

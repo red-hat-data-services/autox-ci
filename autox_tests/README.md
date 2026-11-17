@@ -255,7 +255,7 @@ AUTOML_FUNCTIONAL_TESTS_TAGS=parquet pytest autox_tests/automl/ -v
 | ID | Frequency | Dataset | Tags |
 |---|---|---|---|
 | TC-B-1_timeseries_fruits_with_covariate | daily | fruits daily price (with covariate) | smoke, renamed_schema, covariate |
-| TC-B-2_timeseries_m4_hourly | hourly | M4 hourly subset (Parquet, brotli) | hourly, standard_schema, parquet |
+| TC-B-2_timeseries_m4_hourly | hourly | M4 hourly subset (Parquet, zstd) | hourly, standard_schema, parquet |
 | TC-B-3_user_provided_test_data | daily | Poland COVID-19 cases train + test | user_test_data |
 | TC-B-4_timeseries_two_column_synthetic_id | hourly | single-item demand (two-column) | smoke, two_column, synthetic_id |
 | TC-B-5_user_test_data_csv_train_parquet_test | daily | Poland COVID-19 cases: CSV train + Parquet test | parquet, user_test_data, mixed_format |
@@ -294,7 +294,7 @@ These `user_test_data` scenarios require compiled AutoML pipeline IR that declar
 
 The `parquet`-tagged scenarios verify that the AutoML pipelines accept Parquet input in addition to CSV. Instead of adding scenarios, four existing ones were switched to Parquet train data (TC-A-4, TC-A-5, TC-A-6, TC-B-2), so the suite's run count grows only by the two mixed-format `user_test_data` scenarios. CSV coverage is retained where it matters — the smoke scenarios (TC-A-1, TC-A-2, TC-B-1), one CSV scenario per tabular problem type (TC-A-1/2/3), the pure CSV user-test scenarios (TC-A-7, TC-B-3), and every negative/fault scenario stay on CSV.
 
-Each Parquet file is a schema-faithful conversion of the corresponding CSV — same columns, order, and values; numeric columns keep the types pandas infers and date-like strings stay strings — so the input format is the only variable under test. The compression codec is part of the filename, and the scenarios together cover snappy, gzip, zstd, brotli and uncompressed Parquet:
+Each Parquet file is a schema-faithful conversion of the corresponding CSV — same columns, order, and values; numeric columns keep the types pandas infers and date-like strings stay strings — so the input format is the only variable under test. The compression codec is part of the filename, and the scenarios together cover snappy, gzip, zstd and uncompressed Parquet:
 
 | Scenario | S3 key | Codec | Source CSV |
 |---|---|---|---|
@@ -302,8 +302,10 @@ Each Parquet file is a schema-faithful conversion of the corresponding CSV — s
 | TC-A-5 | `functional-test/tabular/classification_binary/credit_default_binary_light_gzip.parquet` | gzip | `credit_default_binary_light.csv` |
 | TC-A-6 | `functional-test/tabular/classification_multiclass/wine_quality_multiclass_limited_classes_light_snappy.parquet` | snappy | `wine_quality_multiclass_limited_classes_light.csv` |
 | TC-A-8 | `functional-test/tabular/classification_binary/german_credit_data_biased_train_uncompressed.parquet` | none (uncompressed) | `german_credit_data_biased_train.csv` |
-| TC-B-2 | `functional-test/timeseries/m4_hourly_subset_train_ultra_light_brotli.parquet` | brotli | `m4_hourly_subset_train_ultra_light.csv` |
+| TC-B-2 | `functional-test/timeseries/m4_hourly_subset_train_ultra_light_zstd.parquet` | zstd | `m4_hourly_subset_train_ultra_light.csv` |
 | TC-B-5 | `functional-test/timeseries/poland_daily_cases_03_04-28_2021_snappy.parquet` | snappy | `poland_daily_cases_03_04-28_2021.csv` |
+
+Brotli-compressed Parquet is **not covered — known product limitation**: the pyarrow build in the `odh-automl-rhel9` pipeline image is compiled without the brotli codec (`pyarrow.lib.ArrowNotImplementedError: Support for codec 'brotli' not built`; upstream pyarrow 20.0.0 wheels do include it — only the image build differs), so the data loaders cannot read brotli-compressed Parquet and the codec is excluded from the matrix above.
 
 TC-A-8 and TC-B-5 are mixed-format `user_test_data` scenarios — TC-A-8 trains on Parquet with a CSV user test set, TC-B-5 trains on CSV with a Parquet user test set — so both directions of format mixing between `train_data_file_key` and `test_data_file_key` are covered. The mixed pairing is deliberately the harder case: Parquet delivers typed columns while CSV forces type inference, so the loader must reconcile types across differently-typed sources. Like the other `user_test_data` scenarios, they require IR with `test_data_bucket_name` / `test_data_file_key` inputs.
 

@@ -29,7 +29,7 @@ _WINE_PARQUET = (
 _CREDIT_TRAIN_PARQUET = (
     _TABULAR + "classification_binary/german_credit_data_biased_train_uncompressed.parquet"
 )
-_M4_PARQUET = _TIMESERIES + "m4_hourly_subset_train_ultra_light_brotli.parquet"
+_M4_PARQUET = _TIMESERIES + "m4_hourly_subset_train_ultra_light_zstd.parquet"
 _CASES_TEST_PARQUET = _TIMESERIES + "poland_daily_cases_03_04-28_2021_snappy.parquet"
 
 

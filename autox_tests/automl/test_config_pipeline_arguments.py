@@ -104,7 +104,7 @@ def test_switched_scenarios_use_parquet_train_keys() -> None:
     timeseries = {c.id: c for c in get_timeseries_configs_for_run("positive")}
     cfg = timeseries["TC-B-2_timeseries_m4_hourly"]
     assert cfg.train_data_file_key.endswith(
-        "m4_hourly_subset_train_ultra_light_brotli.parquet"
+        "m4_hourly_subset_train_ultra_light_zstd.parquet"
     )
     assert "parquet" in cfg.tags
 
@@ -166,7 +166,7 @@ def test_parquet_keys_are_included_for_s3_upload() -> None:
         "credit_default_binary_light_gzip.parquet",
         "wine_quality_multiclass_limited_classes_light_snappy.parquet",
         "german_credit_data_biased_train_uncompressed.parquet",
-        "m4_hourly_subset_train_ultra_light_brotli.parquet",
+        "m4_hourly_subset_train_ultra_light_zstd.parquet",
         "poland_daily_cases_03_04-28_2021_snappy.parquet",
     ):
         assert any(k.endswith(filename) for k in keys), filename
