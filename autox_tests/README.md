@@ -52,7 +52,7 @@ podman run --rm -it -v "$(pwd):/workspace:z" -w /workspace \
 
 ### Pipeline source selection
 
-Managed pipelines are the default. To upload a compiled YAML package instead, set `RHOAI_USE_MANAGED_PIPELINES=false` and provide the suite's pipeline-path variable, or use `./run_tests.sh --legacy-pipeline-yaml`. The wrapper sources the selected `.env` files before pytest starts and then resolves the pipeline mode.
+Managed pipelines are the default. To upload a compiled YAML package instead, set `RHOAI_USE_MANAGED_PIPELINES=false` and provide the suite's pipeline-path variable. Files passed with `--env-file` override shell exports; when multiple files set a variable, the last file wins. Pytest then loads the suite's default `.env` file without overriding existing variables. An unset or empty `RHOAI_USE_MANAGED_PIPELINES` defaults to `true`.
 
 For AutoML, package mode requires `AUTOML_TABULAR_PIPELINE_PATH` and/or `AUTOML_TIMESERIES_PIPELINE_PATH`. For AutoRAG optimization, it requires `AUTORAG_PIPELINE_PATH`. AutoRAG indexing selects package mode independently when `AUTORAG_INDEXING_PIPELINE_PATH` is set.
 
@@ -431,7 +431,7 @@ cp autox_tests/.env.rag.example autox_tests/.env.rag
 
 #### Pipeline package mode
 
-Managed AutoRAG pipelines are used by default. `AUTORAG_PIPELINE_PATH` is required only when package mode is selected with `RHOAI_USE_MANAGED_PIPELINES=false` or `./run_tests.sh --legacy-pipeline-yaml`. Indexing does not use that switch: set `AUTORAG_INDEXING_PIPELINE_PATH` to use a compiled indexing YAML, otherwise its managed pipeline is used.
+Managed AutoRAG pipelines are used by default. `AUTORAG_PIPELINE_PATH` is required only when package mode is selected with `RHOAI_USE_MANAGED_PIPELINES=false`. Indexing does not use that switch: set `AUTORAG_INDEXING_PIPELINE_PATH` to use a compiled indexing YAML, otherwise its managed pipeline is used.
 
 #### Notebook execution (optimization only)
 

@@ -34,6 +34,31 @@ logger = logging.getLogger(__name__)
 def pytest_configure(config: pytest.Config) -> None:
     """Load env vars from ``.env.ml`` before collection."""
     load_tests_env("automl")
+    try:
+        use_managed_pipelines_from_env()
+    except ValueError as exc:
+        raise pytest.UsageError(str(exc)) from exc
+
+
+@pytest.hookimpl(trylast=True)
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    """Require YAML paths only for pipeline fixtures in the selected tests."""
+    if use_managed_pipelines_from_env():
+        return
+    missing_paths = [
+        env_var
+        for fixture_name, env_var in (
+            ("tabular_pipeline_run_target", PIPELINE_YAML_TABULAR_ENV),
+            ("timeseries_pipeline_run_target", PIPELINE_YAML_TIMESERIES_ENV),
+        )
+        if any(fixture_name in item.fixturenames for item in items)
+        and not (os.environ.get(env_var) or "").strip()
+    ]
+    if missing_paths:
+        raise pytest.UsageError(
+            "RHOAI_USE_MANAGED_PIPELINES=false requires pipeline YAML paths. "
+            f"Set {', '.join(missing_paths)} to local file paths or URLs."
+        )
 
 
 def get_automl_functional_config():
@@ -65,12 +90,6 @@ def get_automl_functional_config():
     train_bucket = train_data_bucket or test_data_bucket or legacy_train_bucket
     if not train_secret or not train_bucket:
         return None
-
-    if not use_managed_pipelines_from_env():
-        if not (os.environ.get(PIPELINE_YAML_TABULAR_ENV) or "").strip():
-            return None
-        if not (os.environ.get(PIPELINE_YAML_TIMESERIES_ENV) or "").strip():
-            return None
 
     bucket_artifacts = (
         os.environ.get("RHOAI_TEST_ARTIFACTS_BUCKET") or train_bucket

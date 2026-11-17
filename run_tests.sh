@@ -23,14 +23,12 @@ Options:
                            AUTORAG_FUNCTIONAL_TESTS_TAGS for autorag (both when
                            --suite all).
   --env-file FILE          Source a .env file before running. May be repeated to
-                           source multiple files in order. Shell-exported vars
-                           take precedence (dotenv override=False semantics).
-  --legacy-pipeline-yaml   Upload pipeline.yaml per run (sets RHOAI_USE_MANAGED_PIPELINES=false).
-                           Default: use pipelines from DSPA managedPipelines (no YAML paths).
-  --tabular-pipeline PATH  With --legacy-pipeline-yaml: tabular package path
+                           source multiple files in order. Values override shell
+                           exports; the last file setting a variable wins.
+  --tabular-pipeline PATH  With RHOAI_USE_MANAGED_PIPELINES=false: tabular package path
                            (sets AUTOML_TABULAR_PIPELINE_PATH).
   --timeseries-pipeline PATH
-                           With --legacy-pipeline-yaml: timeseries package path
+                           With RHOAI_USE_MANAGED_PIPELINES=false: timeseries package path
                            (sets AUTOML_TIMESERIES_PIPELINE_PATH).
                            AutoRAG legacy: AUTORAG_PIPELINE_PATH in the env file.
   --rag-configs PATH       Custom test_configs.json for AutoRAG scenarios
@@ -90,7 +88,6 @@ ENV_FILES=()
 DRY_RUN=false
 MARKER_EXPR=""
 TESTS_TAGS=""
-LEGACY_PIPELINE_YAML=false
 TABULAR_PIPELINE=""
 TIMESERIES_PIPELINE=""
 RAG_CONFIGS=""
@@ -115,10 +112,6 @@ while [[ $# -gt 0 ]]; do
         --env-file)
             ENV_FILES+=("$2")
             shift 2
-            ;;
-        --legacy-pipeline-yaml)
-            LEGACY_PIPELINE_YAML=true
-            shift
             ;;
         --managed-pipelines)
             echo "warning: --managed-pipelines is deprecated (managed mode is the default)" >&2
@@ -205,23 +198,12 @@ fi
 
 # ── Pipeline source: managed KFP (default) vs legacy YAML paths ───────────────
 
-if [[ "$LEGACY_PIPELINE_YAML" == true ]]; then
-    export RHOAI_USE_MANAGED_PIPELINES=false
-    echo "pipeline: legacy package upload (RHOAI_USE_MANAGED_PIPELINES=false)"
-elif [[ -n "${AUTOML_TABULAR_PIPELINE_PATH:-}" || -n "${AUTOML_TIMESERIES_PIPELINE_PATH:-}" || -n "${AUTORAG_PIPELINE_PATH:-}" ]]; then
-    export RHOAI_USE_MANAGED_PIPELINES=false
-    echo "pipeline: legacy package upload (pipeline path set in environment)"
-elif [[ -z "${RHOAI_USE_MANAGED_PIPELINES:-}" ]]; then
-    export RHOAI_USE_MANAGED_PIPELINES=true
-    echo "pipeline: DSPA managed pipelines (default; no pipeline.yaml required)"
-fi
+# Python resolves the default after loading the suite's .env file.
 if [[ -n "$TABULAR_PIPELINE" ]]; then
     export AUTOML_TABULAR_PIPELINE_PATH="$TABULAR_PIPELINE"
-    export RHOAI_USE_MANAGED_PIPELINES=false
 fi
 if [[ -n "$TIMESERIES_PIPELINE" ]]; then
     export AUTOML_TIMESERIES_PIPELINE_PATH="$TIMESERIES_PIPELINE"
-    export RHOAI_USE_MANAGED_PIPELINES=false
 fi
 
 # ── Apply custom test config overrides ───────────────────────────────────────
