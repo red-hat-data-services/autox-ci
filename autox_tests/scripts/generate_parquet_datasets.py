@@ -48,7 +48,7 @@ CONVERSIONS: list[tuple[str, str, str | None]] = [
         "snappy",
     ),
     # Tabular binary, user test data: Parquet train + CSV test —
-    # TC-A-11_user_test_data_parquet_train_csv_test
+    # TC-A-8_user_test_data_parquet_train_csv_test
     (
         "classification_binary/german_credit_data_biased_train.csv",
         "classification_binary/german_credit_data_biased_train_uncompressed.parquet",
@@ -61,7 +61,7 @@ CONVERSIONS: list[tuple[str, str, str | None]] = [
         "brotli",
     ),
     # Time series, user test data: CSV train + Parquet test —
-    # TC-B-6_user_test_data_csv_train_parquet_test
+    # TC-B-5_user_test_data_csv_train_parquet_test
     (
         "timeseries/poland_daily_cases_03_04-28_2021.csv",
         "timeseries/poland_daily_cases_03_04-28_2021_snappy.parquet",

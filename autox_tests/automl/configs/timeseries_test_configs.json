@@ -143,7 +143,7 @@
     ]
   },
   {
-    "id": "TC-B-6_user_test_data_csv_train_parquet_test",
+    "id": "TC-B-5_user_test_data_csv_train_parquet_test",
     "target": "daily_cases",
     "id_column": "",
     "timestamp_column": "date",

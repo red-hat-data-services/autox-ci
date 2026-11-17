@@ -130,7 +130,7 @@ def test_tabular_mixed_format_scenario_parquet_train_csv_test() -> None:
     cfg = next(
         c
         for c in get_tabular_configs_for_run("positive")
-        if c.id == "TC-A-11_user_test_data_parquet_train_csv_test"
+        if c.id == "TC-A-8_user_test_data_parquet_train_csv_test"
     )
     args = cfg.get_pipeline_arguments(_BASE)
     assert args["train_data_file_key"].endswith(
@@ -146,7 +146,7 @@ def test_timeseries_mixed_format_scenario_csv_train_parquet_test() -> None:
     cfg = next(
         c
         for c in get_timeseries_configs_for_run("positive")
-        if c.id == "TC-B-6_user_test_data_csv_train_parquet_test"
+        if c.id == "TC-B-5_user_test_data_csv_train_parquet_test"
     )
     args = cfg.get_pipeline_arguments(_BASE)
     assert args["train_data_file_key"].endswith("poland_daily_cases_03_03_2021.csv")

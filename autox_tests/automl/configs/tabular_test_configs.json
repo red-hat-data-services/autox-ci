@@ -197,7 +197,7 @@
     ]
   },
   {
-    "id": "TC-A-11_user_test_data_parquet_train_csv_test",
+    "id": "TC-A-8_user_test_data_parquet_train_csv_test",
     "label_column": "Risk",
     "task_type": "binary",
     "top_n": 1,

@@ -240,7 +240,7 @@ AUTOML_FUNCTIONAL_TESTS_TAGS=parquet pytest autox_tests/automl/ -v
 | TC-A-5_credit_default_binary | binary | UCI Credit Default (Parquet, gzip) | `default.payment.next.month` | 3 | parquet |
 | TC-A-6_wine_multiclass | multiclass | UCI Wine Quality (red+white) (Parquet, snappy) | `quality` | 1 | parquet |
 | TC-A-7_user_provided_test_data | binary | German credit (biased) train + test | `Risk` | 1 | user_test_data |
-| TC-A-11_user_test_data_parquet_train_csv_test | binary | German credit (biased): Parquet train + CSV test | `Risk` | 1 | parquet, user_test_data, mixed_format |
+| TC-A-8_user_test_data_parquet_train_csv_test | binary | German credit (biased): Parquet train + CSV test | `Risk` | 1 | parquet, user_test_data, mixed_format |
 | TC-NA-1_invalid_task_type | — | — | — | — | negative, validation |
 | TC-NA-2_invalid_top_n_zero | — | — | — | — | negative, validation |
 | TC-NA-3_label_column_absent | — | — | — | — | negative, data |
@@ -258,7 +258,7 @@ AUTOML_FUNCTIONAL_TESTS_TAGS=parquet pytest autox_tests/automl/ -v
 | TC-B-2_timeseries_m4_hourly | hourly | M4 hourly subset (Parquet, brotli) | hourly, standard_schema, parquet |
 | TC-B-3_user_provided_test_data | daily | Poland COVID-19 cases train + test | user_test_data |
 | TC-B-4_timeseries_two_column_synthetic_id | hourly | single-item demand (two-column) | smoke, two_column, synthetic_id |
-| TC-B-6_user_test_data_csv_train_parquet_test | daily | Poland COVID-19 cases: CSV train + Parquet test | parquet, user_test_data, mixed_format |
+| TC-B-5_user_test_data_csv_train_parquet_test | daily | Poland COVID-19 cases: CSV train + Parquet test | parquet, user_test_data, mixed_format |
 | TC-NB-1_invalid_target | — | — | negative, data |
 | TC-NB-2_invalid_prediction_length | — | — | negative, validation |
 | TC-NB-3_missing_s3_object | — | — | negative, storage |
@@ -301,11 +301,11 @@ Each Parquet file is a schema-faithful conversion of the corresponding CSV — s
 | TC-A-4 | `functional-test/tabular/regression/energy_efficiency_regression_zstd.parquet` | zstd | `energy_efficiency_regression.csv` |
 | TC-A-5 | `functional-test/tabular/classification_binary/credit_default_binary_light_gzip.parquet` | gzip | `credit_default_binary_light.csv` |
 | TC-A-6 | `functional-test/tabular/classification_multiclass/wine_quality_multiclass_limited_classes_light_snappy.parquet` | snappy | `wine_quality_multiclass_limited_classes_light.csv` |
-| TC-A-11 | `functional-test/tabular/classification_binary/german_credit_data_biased_train_uncompressed.parquet` | none (uncompressed) | `german_credit_data_biased_train.csv` |
+| TC-A-8 | `functional-test/tabular/classification_binary/german_credit_data_biased_train_uncompressed.parquet` | none (uncompressed) | `german_credit_data_biased_train.csv` |
 | TC-B-2 | `functional-test/timeseries/m4_hourly_subset_train_ultra_light_brotli.parquet` | brotli | `m4_hourly_subset_train_ultra_light.csv` |
-| TC-B-6 | `functional-test/timeseries/poland_daily_cases_03_04-28_2021_snappy.parquet` | snappy | `poland_daily_cases_03_04-28_2021.csv` |
+| TC-B-5 | `functional-test/timeseries/poland_daily_cases_03_04-28_2021_snappy.parquet` | snappy | `poland_daily_cases_03_04-28_2021.csv` |
 
-TC-A-11 and TC-B-6 are mixed-format `user_test_data` scenarios — TC-A-11 trains on Parquet with a CSV user test set, TC-B-6 trains on CSV with a Parquet user test set — so both directions of format mixing between `train_data_file_key` and `test_data_file_key` are covered. The mixed pairing is deliberately the harder case: Parquet delivers typed columns while CSV forces type inference, so the loader must reconcile types across differently-typed sources. Like the other `user_test_data` scenarios, they require IR with `test_data_bucket_name` / `test_data_file_key` inputs.
+TC-A-8 and TC-B-5 are mixed-format `user_test_data` scenarios — TC-A-8 trains on Parquet with a CSV user test set, TC-B-5 trains on CSV with a Parquet user test set — so both directions of format mixing between `train_data_file_key` and `test_data_file_key` are covered. The mixed pairing is deliberately the harder case: Parquet delivers typed columns while CSV forces type inference, so the loader must reconcile types across differently-typed sources. Like the other `user_test_data` scenarios, they require IR with `test_data_bucket_name` / `test_data_file_key` inputs.
 
 Regenerate the Parquet files after changing any source CSV:
 

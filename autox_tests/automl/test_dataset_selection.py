@@ -74,7 +74,7 @@ _CASES_TEST_PARQUET = _TIMESERIES + "poland_daily_cases_03_04-28_2021_snappy.par
             [_CREDIT_TRAIN, _CREDIT_TEST, _CASES_TRAIN, _CASES_TEST], [], 2,
         ),
         (
-            # Full scenario IDs: a bare "TC-A-1" would substring-match TC-A-11 too.
+            # Full scenario IDs: a bare "TC-A-1" would substring-match any future TC-A-1x id.
             ["-k", "TC-A-1_regression or TC-NA-1_invalid_task_type"], "", True,
             [_HOUSING], [], 2,
         ),
