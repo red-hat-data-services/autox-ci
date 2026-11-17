@@ -315,47 +315,13 @@ def resolve_indexing_pipeline_target(
     *,
     cache_dir: Any,
 ) -> PipelineRunTarget:
-    """Resolve a :class:`PipelineRunTarget` for the documents-indexing-pipeline.
-
-    Works the same way as :func:`resolve_managed_pipeline_target` for the optimization
-    pipeline: mode is determined by ``AUTORAG_INDEXING_PIPELINE_PATH``.
-
-    * Set → legacy package upload from that path (local file or URL).
-    * Unset → managed KFP pipeline (default).
-
-    Uses its own path env var rather than :func:`use_managed_pipelines_from_env` so
-    that providing ``AUTORAG_PIPELINE_PATH`` for the optimization pipeline does not
-    change the indexing pipeline's mode.
-    """
-    artifact_prefix = get_pipeline_artifact_prefix("autorag-indexing")
-
-    if (os.environ.get(PIPELINE_YAML_AUTORAG_INDEXING_ENV) or "").strip():
-        package_path = resolve_precompiled_pipeline_yaml(
-            path_env_var=PIPELINE_YAML_AUTORAG_INDEXING_ENV,
-            cache_dir=cache_dir,
-            cache_file_name="documents-indexing-pipeline.yaml",
-        )
-        return PipelineRunTarget(
-            mode="package",
-            artifact_prefix=artifact_prefix,
-            package_path=package_path,
-        )
-
-    kfp_name = get_managed_kfp_pipeline_name("autorag-indexing")
-    wait_timeout = parse_timeout_seconds_from_env(
-        RHOAI_MANAGED_PIPELINE_WAIT_TIMEOUT_ENV, 300, max_seconds=600
-    )
-    pipeline_id, version_id = wait_for_managed_pipeline(
+    """Resolve the indexing target using the shared managed/package mode switch."""
+    return resolve_managed_pipeline_target(
         client,
-        kfp_name,
-        timeout_seconds=wait_timeout,
-    )
-    return PipelineRunTarget(
-        mode="managed",
-        artifact_prefix=artifact_prefix,
-        pipeline_id=pipeline_id,
-        pipeline_version_id=version_id,
-        kfp_pipeline_name=kfp_name,
+        kind="autorag-indexing",
+        path_env_var=PIPELINE_YAML_AUTORAG_INDEXING_ENV,
+        cache_dir=cache_dir,
+        cache_file_name="documents-indexing-pipeline.yaml",
     )
 
 

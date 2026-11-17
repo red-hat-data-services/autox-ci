@@ -18,6 +18,7 @@ from autox_tests.lib.managed_pipelines import (
 )
 from autox_tests.lib.pipeline_yaml_sources import (
     PIPELINE_YAML_AUTORAG_ENV,
+    PIPELINE_YAML_AUTORAG_INDEXING_ENV,
 )
 from autox_tests.lib.s3_data import S3CleanupTracker
 from autox_tests.lib.settings import (
@@ -31,6 +32,31 @@ logger = logging.getLogger(__name__)
 def pytest_configure(config: pytest.Config) -> None:
     """Load env vars from ``.env.rag`` before collection."""
     load_tests_env("autorag")
+    try:
+        use_managed_pipelines_from_env()
+    except ValueError as exc:
+        raise pytest.UsageError(str(exc)) from exc
+
+
+@pytest.hookimpl(trylast=True)
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    """Require YAML paths only for pipeline fixtures in the selected tests."""
+    if use_managed_pipelines_from_env():
+        return
+    missing_paths = [
+        env_var
+        for fixture_name, env_var in (
+            ("autorag_pipeline_run_target", PIPELINE_YAML_AUTORAG_ENV),
+            ("indexing_pipeline_run_target", PIPELINE_YAML_AUTORAG_INDEXING_ENV),
+        )
+        if any(fixture_name in item.fixturenames for item in items)
+        and not (os.environ.get(env_var) or "").strip()
+    ]
+    if missing_paths:
+        raise pytest.UsageError(
+            "RHOAI_USE_MANAGED_PIPELINES=false requires pipeline YAML paths. "
+            f"Set {', '.join(missing_paths)} to local file paths or URLs."
+        )
 
 
 def _parse_json_list(env_name):
@@ -85,10 +111,6 @@ def get_functional_config():
         ]
     ):
         return None
-
-    if not use_managed_pipelines_from_env():
-        if not (os.environ.get(PIPELINE_YAML_AUTORAG_ENV) or "").strip():
-            return None
 
     endpoint = (os.environ.get("ARTIFACTS_AWS_S3_ENDPOINT") or "").strip() or base.get(
         "s3_endpoint"
