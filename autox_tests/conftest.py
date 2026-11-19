@@ -18,6 +18,7 @@ from autox_tests.lib.dspa_support import (
     wait_for_dspa_ready,
 )
 from autox_tests.lib.kfp_retry import install_kfp_api_retries
+from autox_tests.lib.k8s_utils import proxy_for_url
 from autox_tests.lib.rhoai_support import (
     build_temp_kubeconfig,
     ensure_rhoai_project_and_s3_secret,
@@ -271,6 +272,9 @@ def make_kfp_client_for_session(
     }
     if not get_rhoai_integration_https_verify():
         client_kw["verify_ssl"] = False
+    proxy = proxy_for_url(host)
+    if proxy:
+        client_kw["proxy"] = proxy
     client = kfp.Client(**client_kw)
 
     install_kfp_api_retries(client)

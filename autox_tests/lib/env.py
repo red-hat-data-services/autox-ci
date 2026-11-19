@@ -18,12 +18,16 @@ def load_tests_env(component: Literal["autorag", "automl"] | None = None) -> Non
     try:
         from dotenv import load_dotenv
     except ImportError:
-        return
-
-    if component == "autorag":
-        env_path = _TESTS_DIR / ".env.rag"
-    elif component == "automl":
-        env_path = _TESTS_DIR / ".env.ml"
+        pass
     else:
-        env_path = _TESTS_DIR / ".env"
-    load_dotenv(env_path, override=False)
+        if component == "autorag":
+            env_path = _TESTS_DIR / ".env.rag"
+        elif component == "automl":
+            env_path = _TESTS_DIR / ".env.ml"
+        else:
+            env_path = _TESTS_DIR / ".env"
+        load_dotenv(env_path, override=False)
+
+    from autox_tests.lib.k8s_utils import normalize_proxy_environment
+
+    normalize_proxy_environment()
