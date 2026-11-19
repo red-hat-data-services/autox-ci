@@ -45,10 +45,15 @@ def test_apply_env_proxy_populates_configuration(monkeypatch) -> None:
 
     assert k8s_utils.apply_env_proxy(configuration) is True
     assert configuration.proxy == "http://squid.corp.redhat.com:3128"
-    entries = configuration.no_proxy.split(",")
-    assert ".rhai-wx.com" in entries
-    assert "example.internal" in entries
-    assert "localhost" in entries
+    assert configuration.no_proxy.split(",") == [
+        ".rhai-wx.com",
+        "example.internal",
+        "localhost",
+        "127.0.0.1",
+        "::1",
+        ".svc",
+        ".cluster.local",
+    ]
 
 
 def test_apply_env_proxy_adds_scheme_to_bare_host_port(monkeypatch) -> None:
@@ -114,8 +119,14 @@ def test_normalize_proxy_environment_rewrites_bare_proxy(monkeypatch) -> None:
 
     assert k8s_utils.normalize_proxy_environment() is True
     assert os.environ["HTTPS_PROXY"] == "http://squid.corp.redhat.com:3128"
-    assert ".rhai-wx.com" in os.environ["NO_PROXY"]
-    assert "localhost" in os.environ["NO_PROXY"]
+    assert os.environ["NO_PROXY"].split(",") == [
+        ".rhai-wx.com",
+        "localhost",
+        "127.0.0.1",
+        "::1",
+        ".svc",
+        ".cluster.local",
+    ]
 
 
 def test_normalize_proxy_environment_sets_default_no_proxy(monkeypatch) -> None:
@@ -124,9 +135,13 @@ def test_normalize_proxy_environment_sets_default_no_proxy(monkeypatch) -> None:
 
     assert k8s_utils.normalize_proxy_environment() is True
     assert os.environ["https_proxy"] == "http://squid.corp.redhat.com:3128"
-    entries = os.environ["NO_PROXY"].split(",")
-    assert "localhost" in entries
-    assert ".svc" in entries
+    assert os.environ["NO_PROXY"].split(",") == [
+        "localhost",
+        "127.0.0.1",
+        "::1",
+        ".svc",
+        ".cluster.local",
+    ]
 
 
 def test_requests_honors_normalized_wildcard_no_proxy(monkeypatch) -> None:
