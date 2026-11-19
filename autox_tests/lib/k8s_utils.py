@@ -15,6 +15,157 @@ _CRASH_REASONS = frozenset({"CrashLoopBackOff", "Error", "OOMKilled"})
 # Tekton PipelineRun wrapper tasks end with a random 5-char suffix.
 _PIPELINE_RUN_WRAPPER_RE = re.compile(r"-[a-z0-9]{5}$", re.IGNORECASE)
 
+# The kubernetes Python client only proxies when ``Configuration.proxy`` is set;
+# it does not read these variables itself (unlike ``oc`` or boto3).
+PROXY_ENV_VARS = ("HTTPS_PROXY", "https_proxy")
+NO_PROXY_ENV_VARS = ("NO_PROXY", "no_proxy")
+# Never proxy local or in-cluster API endpoints, even when NO_PROXY is unset.
+_DEFAULT_NO_PROXY = ("localhost", "127.0.0.1", "::1", ".svc", ".cluster.local")
+
+# The kubernetes client defaults to ``_request_timeout=None`` (OS TCP timeout,
+# minutes on a dropped route) and urllib3 retries three times, so a single
+# unreachable API host can stall session setup for ~25 minutes. Bound every
+# request instead; override with the env vars when a slow cluster needs it.
+K8S_CONNECT_TIMEOUT_ENV = "RHOAI_K8S_CONNECT_TIMEOUT"
+K8S_READ_TIMEOUT_ENV = "RHOAI_K8S_READ_TIMEOUT"
+_DEFAULT_K8S_CONNECT_TIMEOUT = 10.0
+_DEFAULT_K8S_READ_TIMEOUT = 60.0
+
+
+def _first_env(names: tuple[str, ...]) -> str:
+    for name in names:
+        value = (os.environ.get(name) or "").strip()
+        if value:
+            return value
+    return ""
+
+
+def _env_timeout(name: str, default: float) -> float:
+    raw = (os.environ.get(name) or "").strip()
+    if not raw:
+        return default
+    try:
+        value = float(raw)
+    except ValueError:
+        return default
+    return value if value > 0 else default
+
+
+def k8s_request_timeout() -> tuple[float, float]:
+    """Return a bounded ``(connect, read)`` timeout for kubernetes API calls."""
+    return (
+        _env_timeout(K8S_CONNECT_TIMEOUT_ENV, _DEFAULT_K8S_CONNECT_TIMEOUT),
+        _env_timeout(K8S_READ_TIMEOUT_ENV, _DEFAULT_K8S_READ_TIMEOUT),
+    )
+
+
+def normalize_proxy_url(value: str) -> str:
+    """Return a proxy URL with an explicit scheme.
+
+    ``HTTPS_PROXY=squid.corp.redhat.com:3128`` is common but urllib3 rejects a
+    schemeless proxy URL, so default to ``http://`` (the scheme of the proxy
+    itself, not of the target).
+    """
+    proxy = (value or "").strip()
+    if proxy and "://" not in proxy:
+        proxy = "http://" + proxy
+    return proxy
+
+
+def normalize_no_proxy(value: str) -> str:
+    """Return NO_PROXY entries in the form ``requests`` matches.
+
+    ``requests`` matches entries by suffix and does not understand a leading
+    ``*``, so ``*.example.com`` is rewritten to ``.example.com``.
+    """
+    entries: list[str] = []
+    for raw in (value or "").split(","):
+        entry = raw.strip()
+        if not entry:
+            continue
+        if entry.startswith("*."):
+            entry = entry[1:]
+        entries.append(entry)
+    return ",".join(entries)
+
+
+def effective_no_proxy(value: str | None = None) -> str:
+    """Return normalized NO_PROXY entries plus local/in-cluster bypasses."""
+    raw_value = _first_env(NO_PROXY_ENV_VARS) if value is None else value
+    entries: list[str] = []
+    for raw in normalize_no_proxy(raw_value).split(","):
+        entry = raw.strip()
+        if entry and entry not in entries:
+            entries.append(entry)
+    for host in _DEFAULT_NO_PROXY:
+        if host not in entries:
+            entries.append(host)
+    return ",".join(entries)
+
+
+def normalize_proxy_environment() -> bool:
+    """Normalize proxy variables in ``os.environ`` so every HTTP stack agrees.
+
+    ``requests``, boto3, and ``oc`` read the environment directly, while the
+    kubernetes and KFP clients need explicit configuration. Rewriting the values
+    in place makes scheme-less proxies and ``*.domain`` NO_PROXY entries behave
+    consistently across all of them.
+    """
+    proxy_set = False
+    for name in PROXY_ENV_VARS:
+        value = os.environ.get(name)
+        if value:
+            os.environ[name] = normalize_proxy_url(value)
+            proxy_set = True
+    for name in NO_PROXY_ENV_VARS:
+        value = os.environ.get(name)
+        if value:
+            os.environ[name] = effective_no_proxy(value)
+    if proxy_set and not _first_env(NO_PROXY_ENV_VARS):
+        os.environ["NO_PROXY"] = effective_no_proxy()
+    return proxy_set
+
+
+def proxy_for_url(url: str) -> str | None:
+    """Return the proxy to use for ``url``, or None when it must connect directly."""
+    proxy = normalize_proxy_url(_first_env(PROXY_ENV_VARS))
+    if not proxy:
+        return None
+
+    # Match the bypass rules used by ``kubernetes.client.rest``.
+    from requests.utils import should_bypass_proxies
+
+    if should_bypass_proxies(url, no_proxy=effective_no_proxy()):
+        return None
+    return proxy
+
+
+def apply_env_proxy(configuration: Any) -> bool:
+    """Copy ``HTTPS_PROXY``/``NO_PROXY`` into a kubernetes ``Configuration``.
+
+    Agents behind a corporate egress proxy (for example Jenkins pods with
+    ``HTTPS_PROXY=http://squid...``) otherwise connect to the API directly and
+    time out. Returns True when a proxy was applied.
+    """
+    proxy = normalize_proxy_url(_first_env(PROXY_ENV_VARS))
+    if not proxy:
+        return False
+    configuration.proxy = proxy
+    configuration.no_proxy = effective_no_proxy()
+    return True
+
+
+def configure_env_proxy() -> bool:
+    """Apply env proxy settings to the default kubernetes ``Configuration``."""
+    from kubernetes import client as k8s_client
+
+    normalize_proxy_environment()
+    configuration = k8s_client.Configuration.get_default_copy()
+    if not apply_env_proxy(configuration):
+        return False
+    k8s_client.Configuration.set_default(configuration)
+    return True
+
 
 def pod_log_tail_lines() -> int | None:
     """Return tail line count for failed-pod logs (default 30).
@@ -90,6 +241,7 @@ def make_k8s_core_api(token: str, kfp_url: str):
     configuration.host = api_url
     configuration.api_key = {"authorization": f"Bearer {token}"}
     configuration.verify_ssl = verify_ssl
+    apply_env_proxy(configuration)
     if not verify_ssl:
         import urllib3
 
@@ -124,6 +276,7 @@ def load_k8s_config(kubeconfig_path: str | None) -> None:
             config.load_kube_config()
     except Exception:
         config.load_incluster_config()
+    configure_env_proxy()
 
 
 def make_k8s_core_api_from_config(config: dict[str, Any]):
@@ -141,6 +294,8 @@ def make_k8s_core_api_from_config(config: dict[str, Any]):
         k8s_config.load_kube_config(
             config_file=temp_kubeconfig_path, client_configuration=configuration
         )
+
+        apply_env_proxy(configuration)
 
         verify_ssl = os.environ.get("KFP_VERIFY_SSL", "true").strip().lower()
         configuration.verify_ssl = verify_ssl not in ("0", "false", "no")

@@ -123,6 +123,16 @@ cp autox_tests/.env.ml.example autox_tests/.env.ml
 | `RHOAI_TRAIN_DATA_BUCKET` | S3 bucket containing training CSVs (passed to the pipeline as `train_data_bucket_name`) |
 | `RHOAI_TRAIN_S3_SECRET_NAME` | Kubernetes secret name with S3 credentials (passed to the pipeline as `train_data_secret_name`; default: `s3-connection`) |
 
+#### Corporate proxy
+
+The kubernetes Python client and the KFP SDK do not read `HTTPS_PROXY`/`NO_PROXY` from the environment on their own, so they connect directly and time out on agents that require an egress proxy. At session start the harness normalizes the proxy variables process-wide and then copies them into the kubernetes and KFP client configurations.
+
+- Prefer an explicit scheme: `HTTPS_PROXY=http://squid.corp.redhat.com:3128`. A scheme-less value such as `HTTPS_PROXY=squid.corp.redhat.com:3128` is accepted and rewritten to `http://...` before any client uses it.
+- `NO_PROXY`/`no_proxy` entries such as `*.rhai-wx.com` are normalized to `.rhai-wx.com`, the suffix form understood by `requests`, boto3, and the kubernetes client.
+- `localhost`, `127.0.0.1`, `::1`, `.svc`, and `.cluster.local` are always bypassed so in-cluster runs keep working.
+- When `HTTPS_PROXY` is set and `NO_PROXY` is unset, the bypass defaults above are added automatically.
+- Kubernetes API calls use a bounded `(connect, read)` timeout of 10 s / 60 s instead of the OS TCP timeout, so a blocked route fails in seconds rather than stalling session setup for ~25 minutes. Tune with `RHOAI_K8S_CONNECT_TIMEOUT` and `RHOAI_K8S_READ_TIMEOUT` (seconds).
+
 #### S3 artifact validation
 
 | Variable | Purpose |
@@ -353,6 +363,7 @@ S3 keys whose *absence* is the injected fault. Dataset setup uses only scenarios
 ### Troubleshooting
 
 - **Tests skip with "AutoML functional test env not set"** — one of the required variables is missing; check `.env.ml` against `.env.ml.example`.
+- **Session setup fails with `MaxRetryError` / `Connection to api.<domain> timed out`** — the OpenShift API was unreachable from the test runner. First check whether the runner needs an egress proxy and that `HTTPS_PROXY` uses an explicit scheme; the harness normalizes it and configures the kubernetes and KFP clients automatically (see [Corporate proxy](#corporate-proxy)). If it still fails, verify DNS, firewall/VPN, and load-balancer health from the runner with `curl -k https://api.<domain>:6443/version`. This is infrastructure connectivity, not an AutoML/AutoRAG test failure.
 - **HardwareProfile 404** — `RHOAI_HARDWARE_PROFILE_NAME` does not exist on the cluster. Run `oc get hardwareprofile -n redhat-ods-applications` to find the correct name, or set `RHOAI_HARDWARE_PROFILE_RESOURCE_VERSION` to skip the live fetch.
 - **InferenceService OOMKilled** — increase `RHOAI_PREDICTOR_MEMORY` (default `4Gi`; AutoGluon models can be large).
 - **Scoring HTTP 500** — check pod logs; the test captures and prints them automatically on failure.
@@ -416,6 +427,8 @@ cp autox_tests/.env.rag.example autox_tests/.env.rag
 | `MAAS_SECRET_NAME` | Kubernetes secret with MaaS inference settings (`MAAS_BASE_URL`, `MAAS_API_KEY`) |
 | `VECTOR_DB_SECRET_NAME` | Kubernetes secret with the standard scenarios' vector DB connection (`MILVUS_*` or `PGVECTOR_*` keys) |
 | `NEO4J_DB_SECRET_NAME` | Kubernetes secret with `NEO4J_URI`, `NEO4J_USERNAME`, and `NEO4J_PASSWORD`; required for the `neo4j` scenario |
+
+The [Corporate proxy](#corporate-proxy) settings (`HTTPS_PROXY` and `NO_PROXY`) apply to AutoRAG as well.
 
 #### S3 artifact validation (optional)
 
