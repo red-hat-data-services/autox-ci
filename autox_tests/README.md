@@ -125,7 +125,12 @@ cp autox_tests/.env.ml.example autox_tests/.env.ml
 
 #### Corporate proxy
 
-The kubernetes Python client does not read `HTTPS_PROXY`/`NO_PROXY` on its own (unlike `oc` and boto3), so it connects directly and times out on agents that require an egress proxy. Session setup copies `HTTPS_PROXY` (or `https_proxy`) into the client and passes `NO_PROXY`/`no_proxy` through. Entries such as `*.rhai-wx.com` are normalized to `.rhai-wx.com`, which is what the underlying `requests` matcher understands, and a scheme-less proxy such as `squid.corp.redhat.com:3128` is accepted as `http://squid.corp.redhat.com:3128`. `localhost`, `127.0.0.1`, `::1`, `.svc`, and `.cluster.local` are always bypassed so in-cluster runs keep working.
+The kubernetes Python client and the KFP SDK do not read `HTTPS_PROXY`/`NO_PROXY` from the environment on their own, so they connect directly and time out on agents that require an egress proxy. At session start the harness normalizes the proxy variables process-wide and then copies them into the kubernetes and KFP client configurations.
+
+- Prefer an explicit scheme: `HTTPS_PROXY=http://squid.corp.redhat.com:3128`. A scheme-less value such as `HTTPS_PROXY=squid.corp.redhat.com:3128` is accepted and rewritten to `http://...` before any client uses it.
+- `NO_PROXY`/`no_proxy` entries such as `*.rhai-wx.com` are normalized to `.rhai-wx.com`, the suffix form understood by `requests`, boto3, and the kubernetes client.
+- `localhost`, `127.0.0.1`, `::1`, `.svc`, and `.cluster.local` are always bypassed so in-cluster runs keep working.
+- When `HTTPS_PROXY` is set and `NO_PROXY` is unset, the bypass defaults above are added automatically.
 
 #### S3 artifact validation
 
@@ -357,7 +362,7 @@ S3 keys whose *absence* is the injected fault. Dataset setup uses only scenarios
 ### Troubleshooting
 
 - **Tests skip with "AutoML functional test env not set"** — one of the required variables is missing; check `.env.ml` against `.env.ml.example`.
-- **Session setup fails with `MaxRetryError` / `Connection to api.<domain> timed out`** — the OpenShift API was unreachable from the test runner. First check whether the runner needs an egress proxy: `oc` and boto3 honor `HTTPS_PROXY`, but the kubernetes client only does so after the fixtures copy it into the client (see [Corporate proxy](#corporate-proxy)). If it still fails, verify DNS, firewall/VPN, and load-balancer health from the runner with `curl -k https://api.<domain>:6443/version`. This is infrastructure connectivity, not an AutoML/AutoRAG test failure.
+- **Session setup fails with `MaxRetryError` / `Connection to api.<domain> timed out`** — the OpenShift API was unreachable from the test runner. First check whether the runner needs an egress proxy and that `HTTPS_PROXY` uses an explicit scheme; the harness normalizes it and configures the kubernetes and KFP clients automatically (see [Corporate proxy](#corporate-proxy)). If it still fails, verify DNS, firewall/VPN, and load-balancer health from the runner with `curl -k https://api.<domain>:6443/version`. This is infrastructure connectivity, not an AutoML/AutoRAG test failure.
 - **HardwareProfile 404** — `RHOAI_HARDWARE_PROFILE_NAME` does not exist on the cluster. Run `oc get hardwareprofile -n redhat-ods-applications` to find the correct name, or set `RHOAI_HARDWARE_PROFILE_RESOURCE_VERSION` to skip the live fetch.
 - **InferenceService OOMKilled** — increase `RHOAI_PREDICTOR_MEMORY` (default `4Gi`; AutoGluon models can be large).
 - **Scoring HTTP 500** — check pod logs; the test captures and prints them automatically on failure.

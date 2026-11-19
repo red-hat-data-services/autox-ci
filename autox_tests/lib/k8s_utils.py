@@ -61,6 +61,57 @@ def normalize_no_proxy(value: str) -> str:
     return ",".join(entries)
 
 
+def effective_no_proxy(value: str | None = None) -> str:
+    """Return normalized NO_PROXY entries plus local/in-cluster bypasses."""
+    raw_value = _first_env(NO_PROXY_ENV_VARS) if value is None else value
+    entries: list[str] = []
+    for raw in normalize_no_proxy(raw_value).split(","):
+        entry = raw.strip()
+        if entry and entry not in entries:
+            entries.append(entry)
+    for host in _DEFAULT_NO_PROXY:
+        if host not in entries:
+            entries.append(host)
+    return ",".join(entries)
+
+
+def normalize_proxy_environment() -> bool:
+    """Normalize proxy variables in ``os.environ`` so every HTTP stack agrees.
+
+    ``requests``, boto3, and ``oc`` read the environment directly, while the
+    kubernetes and KFP clients need explicit configuration. Rewriting the values
+    in place makes scheme-less proxies and ``*.domain`` NO_PROXY entries behave
+    consistently across all of them.
+    """
+    proxy_set = False
+    for name in PROXY_ENV_VARS:
+        value = os.environ.get(name)
+        if value:
+            os.environ[name] = normalize_proxy_url(value)
+            proxy_set = True
+    for name in NO_PROXY_ENV_VARS:
+        value = os.environ.get(name)
+        if value:
+            os.environ[name] = effective_no_proxy(value)
+    if proxy_set and not _first_env(NO_PROXY_ENV_VARS):
+        os.environ["NO_PROXY"] = effective_no_proxy()
+    return proxy_set
+
+
+def proxy_for_url(url: str) -> str | None:
+    """Return the proxy to use for ``url``, or None when it must connect directly."""
+    proxy = normalize_proxy_url(_first_env(PROXY_ENV_VARS))
+    if not proxy:
+        return None
+
+    # Match the bypass rules used by ``kubernetes.client.rest``.
+    from requests.utils import should_bypass_proxies
+
+    if should_bypass_proxies(url, no_proxy=effective_no_proxy()):
+        return None
+    return proxy
+
+
 def apply_env_proxy(configuration: Any) -> bool:
     """Copy ``HTTPS_PROXY``/``NO_PROXY`` into a kubernetes ``Configuration``.
 
@@ -71,13 +122,8 @@ def apply_env_proxy(configuration: Any) -> bool:
     proxy = normalize_proxy_url(_first_env(PROXY_ENV_VARS))
     if not proxy:
         return False
-    no_proxy = normalize_no_proxy(_first_env(NO_PROXY_ENV_VARS))
-    entries = [entry for entry in no_proxy.split(",") if entry]
-    for host in _DEFAULT_NO_PROXY:
-        if host not in entries:
-            entries.append(host)
     configuration.proxy = proxy
-    configuration.no_proxy = ",".join(entries)
+    configuration.no_proxy = effective_no_proxy()
     return True
 
 
@@ -85,6 +131,7 @@ def configure_env_proxy() -> bool:
     """Apply env proxy settings to the default kubernetes ``Configuration``."""
     from kubernetes import client as k8s_client
 
+    normalize_proxy_environment()
     configuration = k8s_client.Configuration.get_default_copy()
     if not apply_env_proxy(configuration):
         return False
