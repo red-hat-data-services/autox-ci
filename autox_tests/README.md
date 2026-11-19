@@ -123,6 +123,10 @@ cp autox_tests/.env.ml.example autox_tests/.env.ml
 | `RHOAI_TRAIN_DATA_BUCKET` | S3 bucket containing training CSVs (passed to the pipeline as `train_data_bucket_name`) |
 | `RHOAI_TRAIN_S3_SECRET_NAME` | Kubernetes secret name with S3 credentials (passed to the pipeline as `train_data_secret_name`; default: `s3-connection`) |
 
+#### Corporate proxy
+
+The kubernetes Python client does not read `HTTPS_PROXY`/`NO_PROXY` on its own (unlike `oc` and boto3), so it connects directly and times out on agents that require an egress proxy. Session setup copies `HTTPS_PROXY` (or `https_proxy`) into the client and passes `NO_PROXY`/`no_proxy` through. Entries such as `*.rhai-wx.com` are normalized to `.rhai-wx.com`, which is what the underlying `requests` matcher understands, and a scheme-less proxy such as `squid.corp.redhat.com:3128` is accepted as `http://squid.corp.redhat.com:3128`. `localhost`, `127.0.0.1`, `::1`, `.svc`, and `.cluster.local` are always bypassed so in-cluster runs keep working.
+
 #### S3 artifact validation
 
 | Variable | Purpose |
@@ -353,6 +357,7 @@ S3 keys whose *absence* is the injected fault. Dataset setup uses only scenarios
 ### Troubleshooting
 
 - **Tests skip with "AutoML functional test env not set"** — one of the required variables is missing; check `.env.ml` against `.env.ml.example`.
+- **Session setup fails with `MaxRetryError` / `Connection to api.<domain> timed out`** — the OpenShift API was unreachable from the test runner. First check whether the runner needs an egress proxy: `oc` and boto3 honor `HTTPS_PROXY`, but the kubernetes client only does so after the fixtures copy it into the client (see [Corporate proxy](#corporate-proxy)). If it still fails, verify DNS, firewall/VPN, and load-balancer health from the runner with `curl -k https://api.<domain>:6443/version`. This is infrastructure connectivity, not an AutoML/AutoRAG test failure.
 - **HardwareProfile 404** — `RHOAI_HARDWARE_PROFILE_NAME` does not exist on the cluster. Run `oc get hardwareprofile -n redhat-ods-applications` to find the correct name, or set `RHOAI_HARDWARE_PROFILE_RESOURCE_VERSION` to skip the live fetch.
 - **InferenceService OOMKilled** — increase `RHOAI_PREDICTOR_MEMORY` (default `4Gi`; AutoGluon models can be large).
 - **Scoring HTTP 500** — check pod logs; the test captures and prints them automatically on failure.
@@ -418,6 +423,8 @@ cp autox_tests/.env.rag.example autox_tests/.env.rag
 | `MAAS_SECRET_NAME` | Kubernetes secret with MaaS inference settings (`MAAS_BASE_URL`, `MAAS_API_KEY`) |
 | `VECTOR_DB_SECRET_NAME` | Kubernetes secret with the standard scenarios' vector DB connection (`MILVUS_*` or `PGVECTOR_*` keys) |
 | `NEO4J_DB_SECRET_NAME` | Kubernetes secret with `NEO4J_URI`, `NEO4J_USERNAME`, and `NEO4J_PASSWORD`; required for the `neo4j` scenario |
+
+The [Corporate proxy](#corporate-proxy) settings (`HTTPS_PROXY` and `NO_PROXY`) apply to AutoRAG as well.
 
 #### S3 artifact validation (optional)
 

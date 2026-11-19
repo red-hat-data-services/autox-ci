@@ -12,6 +12,8 @@ from urllib.parse import urlparse
 from kubernetes import client, config
 from kubernetes.client.rest import ApiException
 
+from autox_tests.lib.k8s_utils import configure_env_proxy
+
 logger = logging.getLogger(__name__)
 
 _ROUTE_GROUP = "route.openshift.io"
@@ -104,6 +106,7 @@ def create_datascience_pipelines_application(
                 None,
                 f"Could not load kubeconfig or in-cluster config: {e!r}; in-cluster: {e2!r}",
             )
+    configure_env_proxy()
 
     if object_storage_secret_name and object_storage_bucket and object_storage_endpoint:
         # Validate endpoint is not empty before parsing
@@ -268,6 +271,7 @@ def wait_for_dspa_ready(
             config.load_incluster_config()
         except Exception:
             return False
+    configure_env_proxy()
     co = client.CustomObjectsApi()
     start = time.monotonic()
     deadline = start + timeout_seconds
@@ -329,6 +333,7 @@ def get_dspa_route_kfp_base_url(
             config.load_incluster_config()
         except Exception:
             return None
+    configure_env_proxy()
     co = client.CustomObjectsApi()
     deadline = time.monotonic() + timeout_seconds
     while time.monotonic() < deadline:

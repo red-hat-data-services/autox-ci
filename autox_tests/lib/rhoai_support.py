@@ -9,6 +9,7 @@ import tempfile
 
 import pytest
 
+from autox_tests.lib.k8s_utils import configure_env_proxy
 from autox_tests.lib.settings import (
     should_overwrite_s3_secret_keys,
     should_skip_s3_secret_setup,
@@ -222,6 +223,10 @@ def ensure_rhoai_project_and_s3_secret(
                 "Could not load kubeconfig (see RHOAI_URL / temp kubeconfig) or in-cluster config. "
                 "For local runs, set RHOAI_URL and RHOAI_TOKEN so a kubeconfig can be built."
             )
+
+    # The Python client ignores HTTPS_PROXY/NO_PROXY unless they are copied into
+    # the Configuration; required on agents behind a corporate egress proxy.
+    configure_env_proxy()
 
     v1 = client.CoreV1Api()
     rbac_v1 = client.RbacAuthorizationV1Api()
