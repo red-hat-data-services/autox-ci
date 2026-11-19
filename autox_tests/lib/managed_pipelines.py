@@ -24,10 +24,7 @@ except ImportError:
 from autox_tests.lib.env import load_tests_env
 from autox_tests.lib.settings import parse_timeout_seconds_from_env
 from autox_tests.lib.pipeline_yaml_sources import (
-    PIPELINE_YAML_AUTORAG_ENV,
     PIPELINE_YAML_AUTORAG_INDEXING_ENV,
-    PIPELINE_YAML_TABULAR_ENV,
-    PIPELINE_YAML_TIMESERIES_ENV,
     resolve_precompiled_pipeline_yaml,
 )
 
@@ -53,39 +50,27 @@ _PIPELINE_DEFAULT_NAMES: dict[str, str] = {
     "autorag-indexing": "documents-indexing-pipeline",
 }
 
-_LEGACY_PACKAGE_PATH_ENVS = (
-    PIPELINE_YAML_TABULAR_ENV,
-    PIPELINE_YAML_TIMESERIES_ENV,
-    PIPELINE_YAML_AUTORAG_ENV,
-)
-
 _FALSE_VALUES = frozenset({"0", "false", "no", "off"})
 _TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
-
-
-def _legacy_pipeline_package_configured() -> bool:
-    """Return True when any legacy ``*_PIPELINE_PATH`` env var is set."""
-    return any(
-        (os.environ.get(name) or "").strip() for name in _LEGACY_PACKAGE_PATH_ENVS
-    )
 
 
 def use_managed_pipelines_from_env() -> bool:
     """Return whether tests submit runs from KFP-managed pipelines.
 
     Default is **managed** (no ``pipeline.yaml`` required). Set
-    ``RHOAI_USE_MANAGED_PIPELINES=false`` or provide ``AUTOML_*`` / ``AUTORAG_PIPELINE_PATH``
-    for legacy package upload mode.
+    ``RHOAI_USE_MANAGED_PIPELINES=false`` for legacy package upload mode.
+    Pipeline paths do not select the mode.
     """
     load_tests_env()
     raw = (os.environ.get(RHOAI_USE_MANAGED_PIPELINES_ENV) or "").strip().lower()
     if raw in _FALSE_VALUES:
         return False
-    if raw in _TRUE_VALUES:
+    if not raw or raw in _TRUE_VALUES:
         return True
-    if _legacy_pipeline_package_configured():
-        return False
-    return True
+    raise ValueError(
+        f"{RHOAI_USE_MANAGED_PIPELINES_ENV}={raw!r}: "
+        "expected true/false, 1/0, yes/no, or on/off"
+    )
 
 
 def _env_or_default(env_var: str, default: str) -> str:
@@ -330,47 +315,13 @@ def resolve_indexing_pipeline_target(
     *,
     cache_dir: Any,
 ) -> PipelineRunTarget:
-    """Resolve a :class:`PipelineRunTarget` for the documents-indexing-pipeline.
-
-    Works the same way as :func:`resolve_managed_pipeline_target` for the optimization
-    pipeline: mode is determined by ``AUTORAG_INDEXING_PIPELINE_PATH``.
-
-    * Set → legacy package upload from that path (local file or URL).
-    * Unset → managed KFP pipeline (default).
-
-    Uses its own path env var rather than :func:`use_managed_pipelines_from_env` so
-    that providing ``AUTORAG_PIPELINE_PATH`` for the optimization pipeline does not
-    change the indexing pipeline's mode.
-    """
-    artifact_prefix = get_pipeline_artifact_prefix("autorag-indexing")
-
-    if (os.environ.get(PIPELINE_YAML_AUTORAG_INDEXING_ENV) or "").strip():
-        package_path = resolve_precompiled_pipeline_yaml(
-            path_env_var=PIPELINE_YAML_AUTORAG_INDEXING_ENV,
-            cache_dir=cache_dir,
-            cache_file_name="documents-indexing-pipeline.yaml",
-        )
-        return PipelineRunTarget(
-            mode="package",
-            artifact_prefix=artifact_prefix,
-            package_path=package_path,
-        )
-
-    kfp_name = get_managed_kfp_pipeline_name("autorag-indexing")
-    wait_timeout = parse_timeout_seconds_from_env(
-        RHOAI_MANAGED_PIPELINE_WAIT_TIMEOUT_ENV, 300, max_seconds=600
-    )
-    pipeline_id, version_id = wait_for_managed_pipeline(
+    """Resolve the indexing target using the shared managed/package mode switch."""
+    return resolve_managed_pipeline_target(
         client,
-        kfp_name,
-        timeout_seconds=wait_timeout,
-    )
-    return PipelineRunTarget(
-        mode="managed",
-        artifact_prefix=artifact_prefix,
-        pipeline_id=pipeline_id,
-        pipeline_version_id=version_id,
-        kfp_pipeline_name=kfp_name,
+        kind="autorag-indexing",
+        path_env_var=PIPELINE_YAML_AUTORAG_INDEXING_ENV,
+        cache_dir=cache_dir,
+        cache_file_name="documents-indexing-pipeline.yaml",
     )
 
 
