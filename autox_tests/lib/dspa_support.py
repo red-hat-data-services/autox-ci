@@ -12,7 +12,7 @@ from urllib.parse import urlparse
 from kubernetes import client, config
 from kubernetes.client.rest import ApiException
 
-from autox_tests.lib.k8s_utils import configure_env_proxy
+from autox_tests.lib.k8s_utils import configure_env_proxy, k8s_request_timeout
 
 logger = logging.getLogger(__name__)
 
@@ -194,6 +194,7 @@ def create_datascience_pipelines_application(
     }
     # Create API client once and reuse for create and potential get
     co = client.CustomObjectsApi()
+    request_timeout = k8s_request_timeout()
 
     try:
         if progress:
@@ -204,6 +205,7 @@ def create_datascience_pipelines_application(
             namespace=namespace,
             plural=dspa_cfg["plural"],
             body=body,
+            _request_timeout=request_timeout,
         )
         if progress:
             progress(
@@ -221,6 +223,7 @@ def create_datascience_pipelines_application(
                     namespace=namespace,
                     plural=dspa_cfg["plural"],
                     name=dspa_name,
+                    _request_timeout=request_timeout,
                 )
                 if progress:
                     progress("Using existing DataSciencePipelinesApplication.")
@@ -273,6 +276,7 @@ def wait_for_dspa_ready(
             return False
     configure_env_proxy()
     co = client.CustomObjectsApi()
+    request_timeout = k8s_request_timeout()
     start = time.monotonic()
     deadline = start + timeout_seconds
     last_progress = start - progress_interval_seconds
@@ -286,6 +290,7 @@ def wait_for_dspa_ready(
                 namespace=namespace,
                 plural=dspa_cfg["plural"],
                 name=dspa_name,
+                _request_timeout=request_timeout,
             )
         except ApiException:
             now = time.monotonic()
@@ -335,6 +340,7 @@ def get_dspa_route_kfp_base_url(
             return None
     configure_env_proxy()
     co = client.CustomObjectsApi()
+    request_timeout = k8s_request_timeout()
     deadline = time.monotonic() + timeout_seconds
     while time.monotonic() < deadline:
         try:
@@ -343,6 +349,7 @@ def get_dspa_route_kfp_base_url(
                 version=_ROUTE_VERSION,
                 namespace=namespace,
                 plural=_ROUTE_PLURAL,
+                _request_timeout=request_timeout,
             )
         except ApiException:
             time.sleep(5)

@@ -131,6 +131,7 @@ The kubernetes Python client and the KFP SDK do not read `HTTPS_PROXY`/`NO_PROXY
 - `NO_PROXY`/`no_proxy` entries such as `*.rhai-wx.com` are normalized to `.rhai-wx.com`, the suffix form understood by `requests`, boto3, and the kubernetes client.
 - `localhost`, `127.0.0.1`, `::1`, `.svc`, and `.cluster.local` are always bypassed so in-cluster runs keep working.
 - When `HTTPS_PROXY` is set and `NO_PROXY` is unset, the bypass defaults above are added automatically.
+- Kubernetes API calls use a bounded `(connect, read)` timeout of 10 s / 60 s instead of the OS TCP timeout, so a blocked route fails in seconds rather than stalling session setup for ~25 minutes. Tune with `RHOAI_K8S_CONNECT_TIMEOUT` and `RHOAI_K8S_READ_TIMEOUT` (seconds).
 
 #### S3 artifact validation
 

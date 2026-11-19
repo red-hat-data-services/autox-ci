@@ -9,7 +9,7 @@ import tempfile
 
 import pytest
 
-from autox_tests.lib.k8s_utils import configure_env_proxy
+from autox_tests.lib.k8s_utils import configure_env_proxy, k8s_request_timeout
 from autox_tests.lib.settings import (
     should_overwrite_s3_secret_keys,
     should_skip_s3_secret_setup,
@@ -131,6 +131,8 @@ def _ensure_admin_role_for_sa_in_namespace(
     from kubernetes import client
     from kubernetes.client.rest import ApiException
 
+    request_timeout = k8s_request_timeout()
+
     role_ref = client.V1RoleRef(
         api_group="rbac.authorization.k8s.io",
         kind="ClusterRole",
@@ -149,10 +151,12 @@ def _ensure_admin_role_for_sa_in_namespace(
         subjects=[subject],
     )
     try:
-        rbac_v1.create_namespaced_role_binding(namespace, body)
+        rbac_v1.create_namespaced_role_binding(namespace, body, _request_timeout=request_timeout)
     except ApiException as e:
         if e.status == 409:
-            rbac_v1.replace_namespaced_role_binding(binding_name, namespace, body)
+            rbac_v1.replace_namespaced_role_binding(
+                binding_name, namespace, body, _request_timeout=request_timeout
+            )
         else:
             raise
 
@@ -227,6 +231,7 @@ def ensure_rhoai_project_and_s3_secret(
     # The Python client ignores HTTPS_PROXY/NO_PROXY unless they are copied into
     # the Configuration; required on agents behind a corporate egress proxy.
     configure_env_proxy()
+    request_timeout = k8s_request_timeout()
 
     v1 = client.CoreV1Api()
     rbac_v1 = client.RbacAuthorizationV1Api()
@@ -247,6 +252,7 @@ def ensure_rhoai_project_and_s3_secret(
             version=project_request_version,
             plural=project_request_plural,
             body=body,
+            _request_timeout=request_timeout,
         )
         project_just_created = True
     except ApiException as e:
@@ -257,7 +263,7 @@ def ensure_rhoai_project_and_s3_secret(
                 metadata=client.V1ObjectMeta(name=project_name)
             )
             try:
-                v1.create_namespace(namespace)
+                v1.create_namespace(namespace, _request_timeout=request_timeout)
                 project_just_created = True
             except ApiException as e2:
                 if e2.status != 409:
@@ -270,7 +276,9 @@ def ensure_rhoai_project_and_s3_secret(
 
     existing_meta = None
     try:
-        existing_meta = v1.read_namespaced_secret(secret_name, project_name).metadata
+        existing_meta = v1.read_namespaced_secret(
+            secret_name, project_name, _request_timeout=request_timeout
+        ).metadata
     except ApiException as e:
         if e.status != 404:
             raise
@@ -305,21 +313,38 @@ def ensure_rhoai_project_and_s3_secret(
         if existing_meta is not None:
             # Secret exists - either replace with new credentials or patch metadata only
             if should_overwrite:
-                v1.replace_namespaced_secret(secret_name, project_name, secret)
+                v1.replace_namespaced_secret(
+                    secret_name, project_name, secret, _request_timeout=request_timeout
+                )
             else:
                 # Patch labels/annotations only; keep existing credentials from UI/dashboard
-                v1.patch_namespaced_secret(secret_name, project_name, _metadata_patch_body())
+                v1.patch_namespaced_secret(
+                    secret_name,
+                    project_name,
+                    _metadata_patch_body(),
+                    _request_timeout=request_timeout,
+                )
         else:
             # Secret doesn't exist - create it
             try:
-                v1.create_namespaced_secret(project_name, secret)
+                v1.create_namespaced_secret(project_name, secret, _request_timeout=request_timeout)
             except ApiException as e:
                 if e.status == 409:
                     # Race condition: another process created it between our read and create
                     if should_overwrite:
-                        v1.replace_namespaced_secret(secret_name, project_name, secret)
+                        v1.replace_namespaced_secret(
+                            secret_name,
+                            project_name,
+                            secret,
+                            _request_timeout=request_timeout,
+                        )
                     else:
-                        v1.patch_namespaced_secret(secret_name, project_name, _metadata_patch_body())
+                        v1.patch_namespaced_secret(
+                            secret_name,
+                            project_name,
+                            _metadata_patch_body(),
+                            _request_timeout=request_timeout,
+                        )
                 else:
                     raise
 

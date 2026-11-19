@@ -25,6 +25,34 @@ def _clear_proxy_env(monkeypatch) -> None:
         monkeypatch.delenv(name, raising=False)
 
 
+def test_k8s_request_timeout_has_finite_defaults(monkeypatch) -> None:
+    """An unreachable API host must not wait for the OS TCP timeout (~6.5 min)."""
+    monkeypatch.delenv(k8s_utils.K8S_CONNECT_TIMEOUT_ENV, raising=False)
+    monkeypatch.delenv(k8s_utils.K8S_READ_TIMEOUT_ENV, raising=False)
+
+    connect, read = k8s_utils.k8s_request_timeout()
+
+    assert 0 < connect <= 30
+    assert 0 < read <= 120
+
+
+def test_k8s_request_timeout_env_override(monkeypatch) -> None:
+    monkeypatch.setenv(k8s_utils.K8S_CONNECT_TIMEOUT_ENV, "2")
+    monkeypatch.setenv(k8s_utils.K8S_READ_TIMEOUT_ENV, "15")
+
+    assert k8s_utils.k8s_request_timeout() == (2.0, 15.0)
+
+
+def test_k8s_request_timeout_ignores_invalid_values(monkeypatch) -> None:
+    monkeypatch.setenv(k8s_utils.K8S_CONNECT_TIMEOUT_ENV, "not-a-number")
+    monkeypatch.setenv(k8s_utils.K8S_READ_TIMEOUT_ENV, "-5")
+
+    connect, read = k8s_utils.k8s_request_timeout()
+
+    assert connect == 10.0
+    assert read == 60.0
+
+
 def _blank_configuration():
     from kubernetes import client
 

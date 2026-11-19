@@ -22,6 +22,15 @@ NO_PROXY_ENV_VARS = ("NO_PROXY", "no_proxy")
 # Never proxy local or in-cluster API endpoints, even when NO_PROXY is unset.
 _DEFAULT_NO_PROXY = ("localhost", "127.0.0.1", "::1", ".svc", ".cluster.local")
 
+# The kubernetes client defaults to ``_request_timeout=None`` (OS TCP timeout,
+# minutes on a dropped route) and urllib3 retries three times, so a single
+# unreachable API host can stall session setup for ~25 minutes. Bound every
+# request instead; override with the env vars when a slow cluster needs it.
+K8S_CONNECT_TIMEOUT_ENV = "RHOAI_K8S_CONNECT_TIMEOUT"
+K8S_READ_TIMEOUT_ENV = "RHOAI_K8S_READ_TIMEOUT"
+_DEFAULT_K8S_CONNECT_TIMEOUT = 10.0
+_DEFAULT_K8S_READ_TIMEOUT = 60.0
+
 
 def _first_env(names: tuple[str, ...]) -> str:
     for name in names:
@@ -29,6 +38,25 @@ def _first_env(names: tuple[str, ...]) -> str:
         if value:
             return value
     return ""
+
+
+def _env_timeout(name: str, default: float) -> float:
+    raw = (os.environ.get(name) or "").strip()
+    if not raw:
+        return default
+    try:
+        value = float(raw)
+    except ValueError:
+        return default
+    return value if value > 0 else default
+
+
+def k8s_request_timeout() -> tuple[float, float]:
+    """Return a bounded ``(connect, read)`` timeout for kubernetes API calls."""
+    return (
+        _env_timeout(K8S_CONNECT_TIMEOUT_ENV, _DEFAULT_K8S_CONNECT_TIMEOUT),
+        _env_timeout(K8S_READ_TIMEOUT_ENV, _DEFAULT_K8S_READ_TIMEOUT),
+    )
 
 
 def normalize_proxy_url(value: str) -> str:
