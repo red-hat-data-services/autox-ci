@@ -168,6 +168,61 @@ def _common_prefix_len(a: str, b: str) -> int:
     return min(len(a), len(b))
 
 
+def _select_local_candidate(s3_key: str, candidates: list[Path], kind: str) -> Path | None:
+    """Return the local dataset that *s3_key* points at, or ``None`` to skip it.
+
+    A key is only provisioned from a local file or directory whose parent name
+    resembles the key's parent component. Without that resemblance the match is
+    arbitrary, and for an intentionally non-existent negative-test prefix it would
+    silently create the very data the test expects to be missing.
+
+    Parameters
+    ----------
+    s3_key : str
+        Object key (file) or prefix (directory) being provisioned.
+    candidates : list[Path]
+        Local files or directories whose basename matches the key's basename.
+    kind : str
+        Human-readable candidate kind for log messages (``file`` or ``directory``).
+
+    Returns
+    -------
+    Path | None
+        The chosen local path, or ``None`` when the key must not be uploaded.
+    """
+    if not candidates:
+        logger.debug("No local %s for key %r — skipping upload", kind, s3_key)
+        return None
+
+    key_path = Path(s3_key)
+    parent_hint = key_path.parent.name
+    scores = [_common_prefix_len(candidate.parent.name, parent_hint) for candidate in candidates]
+    best_score = max(scores)
+
+    if parent_hint and best_score == 0:
+        logger.warning(
+            "No local %s resembles the parent of key %r (candidates: %s) — skipping upload; "
+            "input prefixes for negative scenarios must stay absent",
+            kind,
+            s3_key,
+            ", ".join(str(candidate) for candidate in candidates),
+        )
+        return None
+
+    if len(candidates) > 1:
+        if best_score == 0:
+            logger.warning(
+                "Cannot discriminate among %d candidates for key %r — picking %s",
+                len(candidates), s3_key, candidates[0],
+            )
+        else:
+            logger.warning(
+                "Multiple local %ss named %r; picking best match for parent %r",
+                kind, key_path.name, parent_hint,
+            )
+    return candidates[scores.index(best_score)]
+
+
 def upload_test_datasets(
     s3_client,
     bucket: str,
@@ -184,7 +239,10 @@ def upload_test_datasets(
 
     When multiple local files or directories share the same name, the one whose parent
     directory name shares the longest common prefix with the S3 key's parent component
-    is chosen. Keys with no local match are skipped (covers intentional negative-test keys).
+    is chosen. Keys with no local match are skipped, and so are keys whose parent
+    component does not resemble any same-named local dataset -- uploading those would
+    fabricate data for intentional negative-test prefixes such as
+    ``non/existing/path/to/documents`` that happen to end with a real dataset name.
 
     Returns the list of S3 keys that were actually uploaded. When supplied,
     ``uploaded_keys`` records successful uploads even if a later upload fails,
@@ -209,28 +267,14 @@ def upload_test_datasets(
 
     for s3_key in sorted(set(s3_keys)):
         key_path = Path(s3_key)
-        parent_hint = key_path.parent.name
         leaf = key_path.name
 
         if key_path.suffix:
-            candidates = sorted(local_files.get(leaf, []))
-            if not candidates:
-                logger.debug("No local file for key %r — skipping upload", s3_key)
+            local_path = _select_local_candidate(
+                s3_key, sorted(local_files.get(leaf, [])), "file"
+            )
+            if local_path is None:
                 continue
-            scores = [_common_prefix_len(p.parent.name, parent_hint) for p in candidates]
-            best_score = max(scores)
-            if len(candidates) > 1:
-                if best_score == 0:
-                    logger.warning(
-                        "Cannot discriminate among %d candidates for key %r — picking %s",
-                        len(candidates), s3_key, candidates[0],
-                    )
-                else:
-                    logger.warning(
-                        "Multiple local files named %r; picking best match for parent %r",
-                        leaf, parent_hint,
-                    )
-            local_path = candidates[scores.index(best_score)]
             try:
                 logger.info("Uploading %s → s3://%s/%s", local_path, bucket, s3_key)
                 upload_file_to_s3(s3_client, bucket=bucket, key=s3_key, local_path=local_path)
@@ -241,24 +285,11 @@ def upload_test_datasets(
                 )
                 failed_uploads.append(s3_key)
         else:
-            candidates = sorted(local_dirs.get(leaf, []))
-            if not candidates:
-                logger.debug("No local directory for key %r — skipping upload", s3_key)
+            local_dir = _select_local_candidate(
+                s3_key, sorted(local_dirs.get(leaf, [])), "directory"
+            )
+            if local_dir is None:
                 continue
-            scores = [_common_prefix_len(d.parent.name, parent_hint) for d in candidates]
-            best_score = max(scores)
-            if len(candidates) > 1:
-                if best_score == 0:
-                    logger.warning(
-                        "Cannot discriminate among %d candidates for key %r — picking %s",
-                        len(candidates), s3_key, candidates[0],
-                    )
-                else:
-                    logger.warning(
-                        "Multiple local directories named %r; picking best match for parent %r",
-                        leaf, parent_hint,
-                    )
-            local_dir = candidates[scores.index(best_score)]
             for f in sorted(local_dir.rglob("*")):
                 if not f.is_file():
                     continue
