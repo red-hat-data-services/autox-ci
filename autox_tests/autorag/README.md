@@ -45,7 +45,7 @@ cp autox_tests/.env.rag.example autox_tests/.env.rag
 
 Tests are automatically skipped when required environment variables are missing.
 
-Datasets required by the selected optimization and indexing scenarios are always uploaded from `data/` before the tests and deleted at session teardown, including after setup or test failures. Document inputs use `INPUT_DATA_BUCKET_NAME`; optimization benchmarks use `TEST_DATA_BUCKET_NAME`. Shared keys are uploaded once per bucket. `AUTORAG_FUNCTIONAL_TEST_KEEP_ARTIFACTS` only preserves generated pipeline artifacts.
+Datasets required by the selected optimization and indexing scenarios are always uploaded from `data/` before the tests and deleted at session teardown, including after setup or test failures. Document inputs use `INPUT_DATA_BUCKET_NAME`; optimization benchmarks use `TEST_DATA_BUCKET_NAME`. Shared keys are uploaded once per bucket. A key resolves to a local file or directory only when both its basename and parent component match exactly (for example `datasets/rag/rh_summit_2026/documents` maps onto `data/rh_summit_2026/documents`). Keys that a negative scenario expects to be absent (for example `non/existing/path/to/documents`) are declared in the scenario's `s3_upload_absent_keys` upload-only allowlist and are never created in the bucket. Any other key without a local match fails setup instead of being silently skipped. `AUTORAG_FUNCTIONAL_TEST_KEEP_ARTIFACTS` only preserves generated pipeline artifacts.
 
 ## Test scenarios
 

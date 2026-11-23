@@ -6,6 +6,7 @@
         "expected_result": "fail",
         "embedding_model_id": "env",
         "input_data_keys": ["non/existing/path/to/documents"],
+        "s3_upload_absent_keys": ["non/existing/path/to/documents"],
         "expected_failing_task": ["documents-discovery"]
     },
     {

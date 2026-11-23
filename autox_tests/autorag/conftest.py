@@ -408,6 +408,7 @@ def upload_datasets(request: pytest.FixtureRequest):
             configs.extend(callspec.params.values())
 
     datasets: dict[str, tuple[Any, set[str]]] = {}
+    s3_upload_absent_keys_by_bucket: dict[str, set[str]] = {}
     for config_type, env_fixture, client_fixture in (
         (AutoRAGTestConfig, "functional_env_config", "s3_client_functional"),
         (IndexingTestConfig, "indexing_functional_env_config", "s3_client_indexing_functional"),
@@ -423,9 +424,10 @@ def upload_datasets(request: pytest.FixtureRequest):
         if client is None:
             pytest.skip("S3 client is required to upload AutoRAG datasets — set AWS_* env vars")
 
+        input_bucket = env_config["input_data_bucket_name"]
         bucket_keys = [
             (
-                env_config["input_data_bucket_name"],
+                input_bucket,
                 {key for config in selected for key in (config.input_data_keys or [])},
             )
         ]
@@ -439,6 +441,12 @@ def upload_datasets(request: pytest.FixtureRequest):
         for bucket, keys in bucket_keys:
             if keys:
                 datasets.setdefault(bucket, (client, set()))[1].update(keys)
+
+        declared_absent = {
+            key for config in selected for key in (config.s3_upload_absent_keys or [])
+        }
+        if declared_absent:
+            s3_upload_absent_keys_by_bucket.setdefault(input_bucket, set()).update(declared_absent)
 
     for bucket, (client, keys) in datasets.items():
         uploaded_keys: list[str] = []
@@ -460,6 +468,7 @@ def upload_datasets(request: pytest.FixtureRequest):
         upload_test_datasets(
             client, bucket, list(keys), Path(__file__).parent / "data",
             uploaded_keys=uploaded_keys,
+            s3_upload_absent_keys=s3_upload_absent_keys_by_bucket.get(bucket, set()),
         )
 
 

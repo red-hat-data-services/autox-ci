@@ -160,12 +160,83 @@ def _validate_artifacts_in_s3(s3_client, bucket, prefix):
     return result
 
 
-def _common_prefix_len(a: str, b: str) -> int:
-    """Length of the longest common prefix of two strings."""
-    for i, (ca, cb) in enumerate(zip(a, b)):
-        if ca != cb:
-            return i
-    return min(len(a), len(b))
+def _plural(kind: str) -> str:
+    """Return the plural form of a candidate kind for log messages."""
+    return "directories" if kind == "directory" else f"{kind}s"
+
+
+def _match_by_parent(candidates: list[Path], parent: str) -> list[Path]:
+    """Return candidates whose parent directory name equals *parent*, sorted."""
+    return sorted(candidate for candidate in candidates if candidate.parent.name == parent)
+
+
+def _select_local_candidate(s3_key: str, candidates: list[Path], kind: str) -> Path | None:
+    """Return the local dataset that *s3_key* points at, or ``None`` if none matches.
+
+    A key is provisioned only from a local file or directory whose basename equals the
+    key's basename *and* whose parent directory name equals the key's parent component.
+    Exact matching keeps provisioning deterministic: the previous "longest common
+    prefix" heuristic could both pick the wrong same-named dataset and fabricate data
+    for an intentionally absent negative-test prefix such as
+    ``non/existing/path/to/documents``.
+
+    Local directory names must mirror the bucket key components -- for example the key
+    ``datasets/rag/rh_summit_2026/documents`` maps onto the local
+    ``data/rh_summit_2026/documents``.
+
+    Parameters
+    ----------
+    s3_key : str
+        Object key (file) or prefix (directory) being provisioned.
+    candidates : list[Path]
+        Local files or directories whose basename matches the key's basename.
+    kind : str
+        Human-readable candidate kind for log messages (``file`` or ``directory``).
+
+    Returns
+    -------
+    Path | None
+        The chosen local path, or ``None`` when no candidate matches exactly.
+    """
+    if not candidates:
+        logger.debug("No local %s for key %r", kind, s3_key)
+        return None
+
+    key_path = Path(s3_key)
+    parent_hint = key_path.parent.name
+
+    if not parent_hint:
+        if len(candidates) == 1:
+            return candidates[0]
+        logger.warning(
+            "Key %r has no parent component and %d local %s are named %r — "
+            "cannot choose deterministically",
+            s3_key,
+            len(candidates),
+            _plural(kind),
+            key_path.name,
+        )
+        return None
+
+    matches = _match_by_parent(candidates, parent_hint)
+    if not matches:
+        logger.debug(
+            "No local %s for key %r has parent %r (candidates: %s)",
+            kind,
+            s3_key,
+            parent_hint,
+            ", ".join(str(candidate) for candidate in candidates),
+        )
+        return None
+    if len(matches) > 1:
+        logger.warning(
+            "Multiple local %s named %r under a parent named %r; picking %s",
+            _plural(kind),
+            key_path.name,
+            parent_hint,
+            matches[0],
+        )
+    return matches[0]
 
 
 def upload_test_datasets(
@@ -175,6 +246,7 @@ def upload_test_datasets(
     local_data_dir: Path,
     *,
     uploaded_keys: list[str] | None = None,
+    s3_upload_absent_keys: set[str] | None = None,
 ) -> list[str]:
     """Upload local files or directories to S3 for each key in s3_keys.
 
@@ -182,13 +254,24 @@ def upload_test_datasets(
     extension are treated as S3 directory prefixes: the matching local directory is found
     by its name, and all files within it are uploaded under that prefix.
 
-    When multiple local files or directories share the same name, the one whose parent
-    directory name shares the longest common prefix with the S3 key's parent component
-    is chosen. Keys with no local match are skipped (covers intentional negative-test keys).
+    Matching is exact: a key resolves to a local file or directory only when both the
+    basename and the parent directory name match the key's trailing components. This
+    keeps provisioning deterministic and stops same-named datasets from being uploaded
+    to a prefix they do not belong to.
+
+    Keys that intentionally must not exist in the bucket (negative scenarios such as
+    ``non/existing/path/to/documents``) must be declared through
+    ``s3_upload_absent_keys`` and are skipped during upload. Any other key without a
+    local match is an error: silently skipping it would hide a renamed/moved dataset
+    behind a confusing downstream pipeline failure.
 
     Returns the list of S3 keys that were actually uploaded. When supplied,
     ``uploaded_keys`` records successful uploads even if a later upload fails,
     so the caller can clean up partial setup.
+
+    Raises:
+        FileNotFoundError: When ``local_data_dir`` does not exist.
+        RuntimeError: When a key matches no local dataset and is not declared absent.
     """
     if not local_data_dir.is_dir():
         raise FileNotFoundError(
@@ -203,34 +286,45 @@ def upload_test_datasets(
         elif entry.is_dir():
             local_dirs.setdefault(entry.name, []).append(entry)
 
+    declared_absent = set(s3_upload_absent_keys or ())
+    resolved: list[tuple[str, Path, bool]] = []
+    unmatched: list[str] = []
+
+    for s3_key in sorted(set(s3_keys)):
+        if s3_key in declared_absent:
+            logger.debug("Key %r is declared absent — skipping upload", s3_key)
+            continue
+        key_path = Path(s3_key)
+        leaf = key_path.name
+        if key_path.suffix:
+            local_path = _select_local_candidate(
+                s3_key, sorted(local_files.get(leaf, [])), "file"
+            )
+            if local_path is None:
+                unmatched.append(s3_key)
+                continue
+            resolved.append((s3_key, local_path, True))
+        else:
+            local_dir = _select_local_candidate(
+                s3_key, sorted(local_dirs.get(leaf, [])), "directory"
+            )
+            if local_dir is None:
+                unmatched.append(s3_key)
+                continue
+            resolved.append((s3_key, local_dir, False))
+
+    if unmatched:
+        raise RuntimeError(
+            "No local dataset matches these keys under "
+            f"{local_data_dir}, and they are not declared in 's3_upload_absent_keys': {unmatched}"
+        )
+
     if uploaded_keys is None:
         uploaded_keys = []
     failed_uploads: list[str] = []
 
-    for s3_key in sorted(set(s3_keys)):
-        key_path = Path(s3_key)
-        parent_hint = key_path.parent.name
-        leaf = key_path.name
-
-        if key_path.suffix:
-            candidates = sorted(local_files.get(leaf, []))
-            if not candidates:
-                logger.debug("No local file for key %r — skipping upload", s3_key)
-                continue
-            scores = [_common_prefix_len(p.parent.name, parent_hint) for p in candidates]
-            best_score = max(scores)
-            if len(candidates) > 1:
-                if best_score == 0:
-                    logger.warning(
-                        "Cannot discriminate among %d candidates for key %r — picking %s",
-                        len(candidates), s3_key, candidates[0],
-                    )
-                else:
-                    logger.warning(
-                        "Multiple local files named %r; picking best match for parent %r",
-                        leaf, parent_hint,
-                    )
-            local_path = candidates[scores.index(best_score)]
+    for s3_key, local_path, is_file in resolved:
+        if is_file:
             try:
                 logger.info("Uploading %s → s3://%s/%s", local_path, bucket, s3_key)
                 upload_file_to_s3(s3_client, bucket=bucket, key=s3_key, local_path=local_path)
@@ -240,39 +334,21 @@ def upload_test_datasets(
                     "Failed to upload %s → s3://%s/%s: %s", local_path, bucket, s3_key, exc
                 )
                 failed_uploads.append(s3_key)
-        else:
-            candidates = sorted(local_dirs.get(leaf, []))
-            if not candidates:
-                logger.debug("No local directory for key %r — skipping upload", s3_key)
+            continue
+        for f in sorted(local_path.rglob("*")):
+            if not f.is_file():
                 continue
-            scores = [_common_prefix_len(d.parent.name, parent_hint) for d in candidates]
-            best_score = max(scores)
-            if len(candidates) > 1:
-                if best_score == 0:
-                    logger.warning(
-                        "Cannot discriminate among %d candidates for key %r — picking %s",
-                        len(candidates), s3_key, candidates[0],
-                    )
-                else:
-                    logger.warning(
-                        "Multiple local directories named %r; picking best match for parent %r",
-                        leaf, parent_hint,
-                    )
-            local_dir = candidates[scores.index(best_score)]
-            for f in sorted(local_dir.rglob("*")):
-                if not f.is_file():
-                    continue
-                rel = f.relative_to(local_dir)
-                file_s3_key = f"{s3_key}/{rel}"
-                try:
-                    logger.info("Uploading %s → s3://%s/%s", f, bucket, file_s3_key)
-                    upload_file_to_s3(s3_client, bucket=bucket, key=file_s3_key, local_path=f)
-                    uploaded_keys.append(file_s3_key)
-                except Exception as exc:
-                    logger.error(
-                        "Failed to upload %s → s3://%s/%s: %s", f, bucket, file_s3_key, exc
-                    )
-                    failed_uploads.append(file_s3_key)
+            rel = f.relative_to(local_path)
+            file_s3_key = f"{s3_key}/{rel}"
+            try:
+                logger.info("Uploading %s → s3://%s/%s", f, bucket, file_s3_key)
+                upload_file_to_s3(s3_client, bucket=bucket, key=file_s3_key, local_path=f)
+                uploaded_keys.append(file_s3_key)
+            except Exception as exc:
+                logger.error(
+                    "Failed to upload %s → s3://%s/%s: %s", f, bucket, file_s3_key, exc
+                )
+                failed_uploads.append(file_s3_key)
 
     logger.info(
         "Dataset upload complete: %d file(s) uploaded to s3://%s",
