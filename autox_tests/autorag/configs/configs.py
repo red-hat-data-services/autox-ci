@@ -94,6 +94,9 @@ class AutoRAGTestConfig:
         input_data_keys: Paths to the input document folders within the bucket.
             The pipeline discovers the union of all entries; an empty or unset
             list makes document discovery scan the whole bucket.
+        s3_upload_absent_keys: S3-upload-only list of ``input_data_keys`` that must stay
+            absent from the bucket (negative scenarios). Those keys are not uploaded even
+            when a same-named local dataset exists; they are still passed to the pipeline.
         test_data_key: Path to the benchmark JSON within the test-data bucket.
         optimization_metric: Metric to optimize (e.g. "faithfulness").
         run_notebook: Whether to execute the generated notebooks in Kubernetes Jobs.
@@ -114,6 +117,7 @@ class AutoRAGTestConfig:
     generation_models: str | list[str] | None = None
     optimization_max_rag_patterns: int | None = None
     input_data_keys: list[str] | None = None
+    s3_upload_absent_keys: list[str] | None = None
     test_data_key: str | None = None
     optimization_metric: str | None = None
     run_notebook: bool = False
@@ -227,6 +231,9 @@ class IndexingTestConfig:
         input_data_keys: Paths to folders with input documents within the bucket.
             The pipeline discovers the union of all entries; an empty or unset
             list makes document discovery scan the whole bucket.
+        s3_upload_absent_keys: S3-upload-only list of ``input_data_keys`` that must stay
+            absent from the bucket (negative scenarios). Those keys are not uploaded even
+            when a same-named local dataset exists; they are still passed to the pipeline.
         collection_name: Vector store collection to reuse. Omit to create a new one.
         chunking_method: Chunking method (default: "recursive").
         chunk_size: Maximum chunk size in tokens (default: 1024).
@@ -251,6 +258,7 @@ class IndexingTestConfig:
     foundation_model_id: str | None = None
     graph_extraction_config: dict[str, Any] | None = None
     input_data_keys: list[str] | None = None
+    s3_upload_absent_keys: list[str] | None = None
     collection_name: str | None = None
     chunking_method: str | None = None
     chunk_size: int | None = None
