@@ -173,6 +173,41 @@ def test_log_record_exc_info_is_redacted(monkeypatch) -> None:
     assert REDACTED in rendered
 
 
+class _SkipStubReport:
+    """Mimics a skipped ``TestReport``: longrepr is ``(path, lineno, reason)``."""
+
+    def __init__(self, secret: str) -> None:
+        self.longrepr = ("autox_tests/test_x.py", 12, f"skipped: token {secret}")
+        self.sections: list[tuple[str, str]] = []
+
+
+def test_redact_report_preserves_skip_tuple_shape(monkeypatch) -> None:
+    """The JUnit writer and ``-rs`` summary require the 3-tuple, not a string."""
+    monkeypatch.setenv("RHOAI_TOKEN", SECRET)
+    report = _SkipStubReport(SECRET)
+
+    redact_report(report)
+
+    assert isinstance(report.longrepr, tuple)
+    assert len(report.longrepr) == 3
+    path, lineno, reason = report.longrepr
+    assert path == "autox_tests/test_x.py"
+    assert lineno == 12
+    assert SECRET not in reason
+    assert REDACTED in reason
+
+
+def test_redact_report_leaves_clean_skip_reason_untouched(monkeypatch) -> None:
+    monkeypatch.setenv("RHOAI_TOKEN", SECRET)
+    report = _SkipStubReport("benign")
+    original = report.longrepr
+
+    redact_report(report)
+
+    assert report.longrepr == original
+    assert isinstance(report.longrepr, tuple)
+
+
 def test_redact_text_redacts_escaped_repr(monkeypatch) -> None:
     """``repr`` doubles backslashes; the escaped form must be scrubbed too."""
     secret = "p@ss\\word!"

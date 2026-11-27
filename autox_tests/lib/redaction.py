@@ -107,9 +107,21 @@ def redact_report(report: Any) -> None:
     terminal output and the JUnit XML while leaving the rest untouched.
     ``longreprtext``/``capstdout``/``capstderr``/``caplog`` are derived from
     ``longrepr`` and ``sections`` on access, so scrubbing those covers them too.
+    Skipped reports store ``longrepr`` as a ``(path, lineno, reason)`` tuple that
+    the JUnit writer and the ``-rs`` summary assert on, so only the reason is
+    redacted there and the tuple shape is preserved.
     """
     longrepr = getattr(report, "longrepr", None)
-    if longrepr is not None:
+    if (
+        isinstance(longrepr, tuple)
+        and len(longrepr) == 3
+        and isinstance(longrepr[2], str)
+    ):
+        path, lineno, reason = longrepr
+        redacted_reason = redact_text(reason)
+        if redacted_reason != reason:
+            report.longrepr = (path, lineno, redacted_reason)
+    elif longrepr is not None:
         text = longrepr if isinstance(longrepr, str) else str(longrepr)
         redacted = redact_text(text)
         if redacted != text:
