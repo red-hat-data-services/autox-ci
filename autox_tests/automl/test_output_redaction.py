@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import logging
+import os
+import subprocess
 import sys
+from pathlib import Path
 
 from autox_tests.lib.redaction import (
     REDACTED,
@@ -230,6 +233,60 @@ def test_redact_text_keeps_raw_value_redaction(monkeypatch) -> None:
 
     assert secret not in redacted
     assert REDACTED in redacted
+
+
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def test_collection_error_redacted_in_terminal_and_junit(
+    tmp_path: Path,
+) -> None:
+    """Import errors must be masked before the JUnit plugin captures them.
+
+    The JUnit plugin stringifies ``report.longrepr`` inside its own
+    ``pytest_collectreport`` hook, so this guards the ``tryfirst`` ordering in
+    ``autox_tests/conftest.py`` by checking the terminal *and* the XML.
+    """
+    secret = "sha256~subprocess-collect-secret-9f3a"
+    test_file = tmp_path / "test_collect_secret.py"
+    test_file.write_text(
+        "import os\n\n"
+        'raise RuntimeError("import boom " + os.environ["RHOAI_TOKEN"])\n',
+        encoding="utf-8",
+    )
+    junit = tmp_path / "junit.xml"
+    env = {**os.environ, "RHOAI_TOKEN": secret, "PYTHONPATH": str(_REPO_ROOT)}
+    env.pop("PYTEST_ADDOPTS", None)
+    env.pop("PYTEST_CURRENT_TEST", None)
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            str(test_file),
+            "-p",
+            "autox_tests.conftest",
+            "-q",
+            "-p",
+            "no:cacheprovider",
+            f"--junitxml={junit}",
+        ],
+        cwd=_REPO_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    combined = result.stdout + result.stderr
+    assert result.returncode != 0
+    assert secret not in combined, combined
+    assert REDACTED in combined
+
+    xml = junit.read_text(encoding="utf-8")
+    assert secret not in xml, xml
+    assert REDACTED in xml
 
 
 def test_restore_log_redaction_uninstalls_factory() -> None:

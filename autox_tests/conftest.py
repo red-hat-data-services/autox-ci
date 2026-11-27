@@ -60,8 +60,14 @@ def pytest_runtest_makereport(
     redact_report(outcome.get_result())
 
 
+@pytest.hookimpl(tryfirst=True)
 def pytest_collectreport(report: pytest.CollectReport) -> None:
-    """Scrub credentials from collection/import error reports too."""
+    """Scrub credentials from collection/import error reports too.
+
+    ``tryfirst`` is required: pytest's JUnit plugin stringifies
+    ``report.longrepr`` in its own ``pytest_collectreport`` hook, so without
+    this our redaction could run after the XML already captured the token.
+    """
     redact_report(report)
 
 
