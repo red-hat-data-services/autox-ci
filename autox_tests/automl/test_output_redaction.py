@@ -173,6 +173,30 @@ def test_log_record_exc_info_is_redacted(monkeypatch) -> None:
     assert REDACTED in rendered
 
 
+def test_redact_text_redacts_escaped_repr(monkeypatch) -> None:
+    """``repr`` doubles backslashes; the escaped form must be scrubbed too."""
+    secret = "p@ss\\word!"
+    monkeypatch.setenv("NEO4J_PASSWORD", secret)
+    escaped = f"password={secret!r}"
+    assert "\\\\" in escaped  # sanity: repr doubled the backslash
+
+    redacted = redact_text(escaped)
+
+    assert secret not in redacted
+    assert secret.replace("\\", "\\\\") not in redacted
+    assert REDACTED in redacted
+
+
+def test_redact_text_keeps_raw_value_redaction(monkeypatch) -> None:
+    secret = "p@ss\\word!"
+    monkeypatch.setenv("NEO4J_PASSWORD", secret)
+
+    redacted = redact_text(f"password={secret}")
+
+    assert secret not in redacted
+    assert REDACTED in redacted
+
+
 def test_restore_log_redaction_uninstalls_factory() -> None:
     install_log_redaction()
     assert getattr(logging.getLogRecordFactory(), "_autox_secret_redaction", False)

@@ -97,7 +97,8 @@ Combine markers with `and` / `or` / `not` in the marker expression:
 environment-provided credentials never appear in pytest output: tracebacks,
 function arguments, captured stdout/stderr, log sections, live logs, and the
 JUnit XML are sanitized (`autox_tests/lib/redaction.py`). Redaction also
-handles truncated values that pytest prints as `head...` or `head...tail`.
+handles truncated values that pytest prints as `head...` or `head...tail`, and
+escaped spellings such as the doubled backslashes `repr()` emits.
 Credentials kept in functional-test config dicts are wrapped in `SecretStr`,
 whose `repr()` is masked while `str()` still returns the real value (needed by
 boto3/kubernetes). JUnit XML is sanitized when produced with `--junitxml`.

@@ -49,9 +49,29 @@ def known_secrets() -> tuple[str, ...]:
     return tuple(sorted(values, key=len, reverse=True))
 
 
+def _escaped_variants(secret: str) -> tuple[str, ...]:
+    """Return repr-style escaped spellings of ``secret`` drawn from output.
+
+    ``repr`` (and ``print(repr(...))``) renders characters like backslashes as
+    doubled sequences, so a raw ``p@ss\\word!`` shows up as ``p@ss\\\\word!``.
+    The escaped text no longer contains the raw value, so it must be scrubbed
+    separately.
+    """
+    variants: list[str] = []
+    repr_body = repr(secret)[1:-1]
+    if repr_body != secret:
+        variants.append(repr_body)
+    doubled = secret.replace("\\", "\\\\")
+    if doubled != secret and doubled not in variants:
+        variants.append(doubled)
+    return tuple(variants)
+
+
 def _redact_secret(text: str, secret: str) -> str:
     """Replace ``secret`` and any recognizable partial form of it in ``text``."""
     text = text.replace(secret, REDACTED)
+    for variant in _escaped_variants(secret):
+        text = text.replace(variant, REDACTED)
     if len(secret) <= MIN_PARTIAL_LENGTH:
         return text
 
