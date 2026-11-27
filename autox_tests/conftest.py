@@ -19,6 +19,7 @@ from autox_tests.lib.dspa_support import (
 )
 from autox_tests.lib.kfp_retry import install_kfp_api_retries
 from autox_tests.lib.k8s_utils import proxy_for_url
+from autox_tests.lib.redaction import install_log_redaction, redact_report
 from autox_tests.lib.rhoai_support import (
     build_temp_kubeconfig,
     ensure_rhoai_project_and_s3_secret,
@@ -34,6 +35,20 @@ from autox_tests.lib.settings import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    """Keep credentials out of live log lines emitted during the run."""
+    install_log_redaction()
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(
+    item: pytest.Item, call: pytest.CallInfo
+) -> Generator[None, None, None]:
+    """Scrub credentials from tracebacks, captured output, and JUnit XML."""
+    outcome = yield
+    redact_report(outcome.get_result())
 
 
 def _ensure_datascience_pipelines_application(

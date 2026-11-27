@@ -49,7 +49,7 @@ def build_temp_kubeconfig(
                 "cluster": cluster,
             }
         ],
-        "users": [{"name": "rhoai", "user": {"token": token or ""}}],
+        "users": [{"name": "rhoai", "user": {"token": str(token or "")}}],
         "contexts": [
             {
                 "name": "rhoai",

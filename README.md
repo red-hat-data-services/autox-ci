@@ -91,6 +91,15 @@ Combine markers with `and` / `or` / `not` in the marker expression:
 ./run_tests.sh "autorag and positive and not integration"
 ```
 
+## Credential redaction
+
+`RHOAI_TOKEN`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and other
+environment-provided credentials never appear in pytest output: tracebacks,
+function arguments, captured stdout/stderr, log sections, live logs, and the
+JUnit XML are sanitized (`autox_tests/lib/redaction.py`). Credentials kept in
+functional-test config dicts are wrapped in `SecretStr`, whose `repr()` is
+masked while `str()` still returns the real value.
+
 ## Submodule usage
 
 This repo can be embedded as a git submodule:

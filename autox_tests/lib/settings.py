@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from autox_tests.lib.env import load_tests_env
+from autox_tests.lib.redaction import SecretStr, register_secret
 
 logger = logging.getLogger(__name__)
 
@@ -268,13 +269,15 @@ def get_rhoai_namespace_setup_config() -> dict[str, Any] | None:
     if not all([token, endpoint, access, secret]):
         return None
     insecure, ca_b64 = _kube_tls_for_namespace_config()
+    for credential in (token, access, secret):
+        register_secret(credential)
     return {
         "rhoai_url": url.rstrip("/") if url else None,
-        "rhoai_token": token.strip(),
+        "rhoai_token": SecretStr(token.strip()),
         "rhoai_project": (project or "kfp-integration-test").strip(),
         "s3_endpoint": endpoint,
-        "s3_access_key": access,
-        "s3_secret_key": secret,
+        "s3_access_key": SecretStr(access),
+        "s3_secret_key": SecretStr(secret),
         "s3_region": region,
         "s3_secret_name": secret_name,
         "kube_insecure_skip_tls": insecure,

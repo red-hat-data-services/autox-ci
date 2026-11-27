@@ -20,6 +20,7 @@ from autox_tests.lib.pipeline_yaml_sources import (
     PIPELINE_YAML_AUTORAG_ENV,
     PIPELINE_YAML_AUTORAG_INDEXING_ENV,
 )
+from autox_tests.lib.redaction import SecretStr
 from autox_tests.lib.s3_data import S3CleanupTracker
 from autox_tests.lib.settings import (
     get_rhoai_namespace_setup_config,
@@ -138,8 +139,8 @@ def get_functional_config():
         "maas_secret_name": maas_secret,
         "vector_db_secret_name": vector_db_secret,
         "s3_endpoint": endpoint,
-        "s3_access_key": access,
-        "s3_secret_key": secret,
+        "s3_access_key": SecretStr(access),
+        "s3_secret_key": SecretStr(secret),
         "s3_region": region,
         "s3_bucket_artifacts": bucket_artifacts or None,
     }
@@ -249,8 +250,8 @@ def get_indexing_functional_config():
         "maas_secret_name": maas_secret,
         "vector_db_secret_name": vector_db_secret,
         "s3_endpoint": endpoint,
-        "s3_access_key": access,
-        "s3_secret_key": secret,
+        "s3_access_key": SecretStr(access),
+        "s3_secret_key": SecretStr(secret),
         "s3_region": region,
         "s3_bucket_artifacts": bucket_artifacts or None,
     }
