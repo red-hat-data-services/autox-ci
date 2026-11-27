@@ -49,7 +49,7 @@ def build_temp_kubeconfig(
                 "cluster": cluster,
             }
         ],
-        "users": [{"name": "rhoai", "user": {"token": token or ""}}],
+        "users": [{"name": "rhoai", "user": {"token": str(token or "")}}],
         "contexts": [
             {
                 "name": "rhoai",
@@ -66,7 +66,7 @@ def build_temp_kubeconfig(
     os.close(fd)
     try:
         with open(path, "w", encoding="utf-8") as f:
-            yaml.dump(cfg, f, default_flow_style=False, sort_keys=False)
+            yaml.safe_dump(cfg, f, default_flow_style=False, sort_keys=False)
     except Exception:
         # Clean up temp file on write failure
         try:

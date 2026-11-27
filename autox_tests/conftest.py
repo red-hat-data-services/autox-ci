@@ -19,6 +19,11 @@ from autox_tests.lib.dspa_support import (
 )
 from autox_tests.lib.kfp_retry import install_kfp_api_retries
 from autox_tests.lib.k8s_utils import proxy_for_url
+from autox_tests.lib.redaction import (
+    install_log_redaction,
+    redact_report,
+    restore_log_redaction,
+)
 from autox_tests.lib.rhoai_support import (
     build_temp_kubeconfig,
     ensure_rhoai_project_and_s3_secret,
@@ -34,6 +39,36 @@ from autox_tests.lib.settings import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    """Keep credentials out of live log lines emitted during the run."""
+    install_log_redaction()
+
+
+def pytest_unconfigure(config: pytest.Config) -> None:
+    """Restore the previous log-record factory once the session ends."""
+    restore_log_redaction()
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(
+    item: pytest.Item, call: pytest.CallInfo
+) -> Generator[None, None, None]:
+    """Scrub credentials from tracebacks, captured output, and JUnit XML."""
+    outcome = yield
+    redact_report(outcome.get_result())
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_collectreport(report: pytest.CollectReport) -> None:
+    """Scrub credentials from collection/import error reports too.
+
+    ``tryfirst`` is required: pytest's JUnit plugin stringifies
+    ``report.longrepr`` in its own ``pytest_collectreport`` hook, so without
+    this our redaction could run after the XML already captured the token.
+    """
+    redact_report(report)
 
 
 def _ensure_datascience_pipelines_application(
