@@ -19,7 +19,11 @@ from autox_tests.lib.dspa_support import (
 )
 from autox_tests.lib.kfp_retry import install_kfp_api_retries
 from autox_tests.lib.k8s_utils import proxy_for_url
-from autox_tests.lib.redaction import install_log_redaction, redact_report
+from autox_tests.lib.redaction import (
+    install_log_redaction,
+    redact_report,
+    restore_log_redaction,
+)
 from autox_tests.lib.rhoai_support import (
     build_temp_kubeconfig,
     ensure_rhoai_project_and_s3_secret,
@@ -42,6 +46,11 @@ def pytest_configure(config: pytest.Config) -> None:
     install_log_redaction()
 
 
+def pytest_unconfigure(config: pytest.Config) -> None:
+    """Restore the previous log-record factory once the session ends."""
+    restore_log_redaction()
+
+
 @pytest.hookimpl(hookwrapper=True)
 def pytest_runtest_makereport(
     item: pytest.Item, call: pytest.CallInfo
@@ -49,6 +58,11 @@ def pytest_runtest_makereport(
     """Scrub credentials from tracebacks, captured output, and JUnit XML."""
     outcome = yield
     redact_report(outcome.get_result())
+
+
+def pytest_collectreport(report: pytest.CollectReport) -> None:
+    """Scrub credentials from collection/import error reports too."""
+    redact_report(report)
 
 
 def _ensure_datascience_pipelines_application(

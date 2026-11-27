@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import sys
 
 from autox_tests.lib.redaction import (
     REDACTED,
@@ -11,6 +12,7 @@ from autox_tests.lib.redaction import (
     redact_report,
     redact_text,
     register_secret,
+    restore_log_redaction,
 )
 
 SECRET = "sha256~unit-test-secret-value"
@@ -29,7 +31,9 @@ class _StubReport:
     @property
     def capstdout(self) -> str:
         return "".join(
-            content for title, content in self.sections if title == "Captured stdout call"
+            content
+            for title, content in self.sections
+            if title == "Captured stdout call"
         )
 
     @property
@@ -112,3 +116,69 @@ def test_install_log_redaction_scrubs_new_records(monkeypatch) -> None:
 
     assert SECRET not in record.getMessage()
     assert REDACTED in record.getMessage()
+
+
+def test_redact_text_handles_head_only_truncation(monkeypatch) -> None:
+    """pytest prints long fixture values as ``head...`` and drops the tail."""
+    monkeypatch.setenv("RHOAI_TOKEN", SECRET)
+    leaked = f"{{'rhoai_token': '{SECRET[:20]}...'}}"
+
+    redacted = redact_text(leaked)
+
+    assert SECRET[:20] not in redacted
+    assert SECRET[:12] not in redacted
+    assert REDACTED in redacted
+
+
+def test_redact_text_preserves_unrelated_text(monkeypatch) -> None:
+    monkeypatch.setenv("RHOAI_TOKEN", SECRET)
+    text = f"head={SECRET[:16]} KEEP_THIS_MIDDLE_MESSAGE tail={SECRET[-16:]}"
+
+    redacted = redact_text(text)
+
+    assert "KEEP_THIS_MIDDLE_MESSAGE" in redacted
+    assert SECRET[:16] not in redacted
+    assert SECRET[-16:] not in redacted
+
+
+def test_redact_report_scrubs_truncated_config_repr(monkeypatch) -> None:
+    """Reproduces the leaking ``automl_functional_config = {...}`` failure line."""
+    monkeypatch.setenv("RHOAI_TOKEN", SECRET)
+    report = _StubReport(SECRET)
+    report.longrepr = (
+        "automl_functional_config = {'rhoai_url': 'https://api', "
+        f"'rhoai_token': '{SECRET[:20]}...', "
+        "'rhoai_project': 'automl-integration-test'}}"
+    )
+
+    redact_report(report)
+
+    assert SECRET[:12] not in report.longrepr
+    assert "automl-integration-test" in report.longrepr
+
+
+def test_log_record_exc_info_is_redacted(monkeypatch) -> None:
+    monkeypatch.setenv("RHOAI_TOKEN", SECRET)
+    install_log_redaction()
+    try:
+        raise ValueError(f"auth failed token={SECRET}")
+    except ValueError:
+        record = logging.getLogRecordFactory()(
+            "test", logging.ERROR, __file__, 1, "task failed", (), sys.exc_info()
+        )
+
+    rendered = logging.Formatter("%(message)s").format(record)
+
+    assert SECRET not in rendered
+    assert REDACTED in rendered
+
+
+def test_restore_log_redaction_uninstalls_factory() -> None:
+    install_log_redaction()
+    assert getattr(logging.getLogRecordFactory(), "_autox_secret_redaction", False)
+
+    restore_log_redaction()
+    assert not getattr(logging.getLogRecordFactory(), "_autox_secret_redaction", False)
+
+    # Leave the session-wide redaction installed for the remaining tests.
+    install_log_redaction()

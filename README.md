@@ -96,9 +96,11 @@ Combine markers with `and` / `or` / `not` in the marker expression:
 `RHOAI_TOKEN`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and other
 environment-provided credentials never appear in pytest output: tracebacks,
 function arguments, captured stdout/stderr, log sections, live logs, and the
-JUnit XML are sanitized (`autox_tests/lib/redaction.py`). Credentials kept in
-functional-test config dicts are wrapped in `SecretStr`, whose `repr()` is
-masked while `str()` still returns the real value.
+JUnit XML are sanitized (`autox_tests/lib/redaction.py`). Redaction also
+handles truncated values that pytest prints as `head...` or `head...tail`.
+Credentials kept in functional-test config dicts are wrapped in `SecretStr`,
+whose `repr()` is masked while `str()` still returns the real value (needed by
+boto3/kubernetes). JUnit XML is sanitized when produced with `--junitxml`.
 
 ## Submodule usage
 

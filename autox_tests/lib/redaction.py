@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import os
-import re
 from typing import Any
 
 REDACTED = "***REDACTED***"
@@ -24,11 +23,13 @@ SECRET_ENV_VARS = (
 
 # Short values (for example "token" in unit tests) would mangle unrelated text.
 MIN_SECRET_LENGTH = 6
-# pytest truncates long reprs as ``head + "..." + tail``; redact that shape too.
-FRAGMENT_LENGTH = 8
-FRAGMENT_WINDOW = 200
+# pytest ellipsizes long values in reprs very aggressively, usually as
+# ``value[:N] + "..."`` with the tail dropped. Any contiguous prefix or suffix
+# of a secret at least this long is treated as a partial leak and redacted.
+MIN_PARTIAL_LENGTH = 12
 
 _registered: set[str] = set()
+_previous_factory: Any = None
 
 
 def register_secret(value: Any) -> None:
@@ -48,22 +49,33 @@ def known_secrets() -> tuple[str, ...]:
     return tuple(sorted(values, key=len, reverse=True))
 
 
-def redact_text(text: str) -> str:
-    """Replace every known credential in ``text`` with :data:`REDACTED`.
+def _redact_secret(text: str, secret: str) -> str:
+    """Replace ``secret`` and any recognizable partial form of it in ``text``."""
+    text = text.replace(secret, REDACTED)
+    if len(secret) <= MIN_PARTIAL_LENGTH:
+        return text
 
-    pytest ellipsizes long reprs (``head + "..." + tail``), so a truncated
-    credential must be matched by its head and tail fragments as well.
-    """
+    # pytest truncates long reprs asymmetrically (``head...``), so scrub every
+    # leading fragment that still carries at least ``MIN_PARTIAL_LENGTH`` chars.
+    if secret[:MIN_PARTIAL_LENGTH] in text:
+        for end in range(len(secret) - 1, MIN_PARTIAL_LENGTH - 1, -1):
+            fragment = secret[:end]
+            if fragment in text:
+                text = text.replace(fragment, REDACTED)
+
+    # Some tools keep a trailing fragment (``...tail``); scrub those too.
+    if secret[-MIN_PARTIAL_LENGTH:] in text:
+        for start in range(1, len(secret) - MIN_PARTIAL_LENGTH + 1):
+            fragment = secret[start:]
+            if fragment in text:
+                text = text.replace(fragment, REDACTED)
+    return text
+
+
+def redact_text(text: str) -> str:
+    """Replace every known credential (or recognizable fragment) in ``text``."""
     for secret in known_secrets():
-        if secret in text:
-            text = text.replace(secret, REDACTED)
-        if len(secret) >= 2 * FRAGMENT_LENGTH:
-            pattern = (
-                re.escape(secret[:FRAGMENT_LENGTH])
-                + rf"[^\n]{{0,{FRAGMENT_WINDOW}}}?"
-                + re.escape(secret[-FRAGMENT_LENGTH:])
-            )
-            text = re.sub(pattern, REDACTED, text)
+        text = _redact_secret(text, secret)
     return text
 
 
@@ -73,8 +85,8 @@ def redact_report(report: Any) -> None:
     pytest renders failing-test arguments, locals, captured output, and log
     records into the report; rewriting them here keeps the token out of the
     terminal output and the JUnit XML while leaving the rest untouched.
-    ``capstdout``/``capstderr``/``caplog`` are read-only views over
-    ``sections``, so scrubbing the sections covers them too.
+    ``longreprtext``/``capstdout``/``capstderr``/``caplog`` are derived from
+    ``longrepr`` and ``sections`` on access, so scrubbing those covers them too.
     """
     longrepr = getattr(report, "longrepr", None)
     if longrepr is not None:
@@ -86,6 +98,10 @@ def redact_report(report: Any) -> None:
     sections = getattr(report, "sections", None)
     if sections:
         report.sections = [(title, redact_text(content)) for title, content in sections]
+
+    # Drop any cached rendered views (defensive; pytest computes them lazily).
+    for attr in ("longreprtext", "caplog", "capstdout", "capstderr"):
+        getattr(report, "__dict__", {}).pop(attr, None)
 
 
 class SecretStr(str):
@@ -110,6 +126,16 @@ def _redact_record(record: logging.LogRecord) -> logging.LogRecord:
     if redacted != message:
         record.msg = redacted
         record.args = ()
+    # Tracebacks carry the creds too when ``logger.exception`` is used; rewrite
+    # the rendered text and drop exc_info so the formatter cannot re-render it.
+    if record.exc_info:
+        exc_text = record.exc_text or logging.Formatter().formatException(
+            record.exc_info
+        )
+        record.exc_text = redact_text(exc_text)
+        record.exc_info = None
+    if record.stack_info:
+        record.stack_info = redact_text(record.stack_info)
     return record
 
 
@@ -119,6 +145,7 @@ def install_log_redaction() -> None:
     A record factory is used instead of handler filters because pytest creates
     its live-log and capture handlers after ``pytest_configure`` has run.
     """
+    global _previous_factory
     factory = logging.getLogRecordFactory()
     if getattr(factory, "_autox_secret_redaction", False):
         return
@@ -127,4 +154,17 @@ def install_log_redaction() -> None:
         return _redact_record(factory(*args, **kwargs))
 
     redacting_factory._autox_secret_redaction = True  # type: ignore[attr-defined]
+    _previous_factory = factory
     logging.setLogRecordFactory(redacting_factory)
+
+
+def restore_log_redaction() -> None:
+    """Undo :func:`install_log_redaction` if our factory is still installed."""
+    global _previous_factory
+    factory = logging.getLogRecordFactory()
+    if (
+        getattr(factory, "_autox_secret_redaction", False)
+        and _previous_factory is not None
+    ):
+        logging.setLogRecordFactory(_previous_factory)
+        _previous_factory = None
